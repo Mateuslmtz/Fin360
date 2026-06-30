@@ -1,6 +1,6 @@
 /* Fin360 — estado da aplicação + persistência local (protótipo, sem backend) */
 
-const STORAGE_KEY = 'fin360_state_v1';
+const STORAGE_KEY = 'fin360_state_v2';
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -30,13 +30,105 @@ function defaultState() {
       { id: 'cat-outros', name: 'Outros', color: '#8b93ac', emoji: '📦' },
     ],
     banks: [],
+    // gastosFixos: {id,nome,valor,diaVencimento(1-31),categoryId,bankId,ativo,observacao,createdAt}
+    // recorrentes — "pago/pendente" é controlado por mês em gastosFixosPagamentos
     gastosFixos: [],
+    gastosFixosPagamentos: [], // {id, gastoFixoId, mes:'YYYY-MM'}
     gastosVariaveis: [],
     recebimentos: [],
     cofrinhos: [],
+    // cartoes: {id,nome,banco,limite,diaFechamento,diaVencimento,cor}
     cartoes: [],
+    // cartaoCompras: {id,cartaoId,descricao,categoryId,valorTotal,data,tipo:'avista'|'parcelado'|'recorrente',parcelas}
+    cartaoCompras: [],
+    cartaoFaturasPagas: [], // {id, cartaoId, mes:'YYYY-MM'}
     investimentos: [],
   };
+}
+
+/* ============ Recorrência: gastos fixos ============ */
+function daysInMonth(year, month0) {
+  return new Date(year, month0 + 1, 0).getDate();
+}
+function clampDayToMonth(mStr, day) {
+  const [y, m] = mStr.split('-').map(Number);
+  return Math.min(day || 1, daysInMonth(y, m - 1));
+}
+function gastoFixoVencimentoISO(gf, mStr) {
+  const day = clampDayToMonth(mStr, gf.diaVencimento);
+  return `${mStr}-${String(day).padStart(2, '0')}`;
+}
+function gastoFixoAppliesToMonth(gf, mStr) {
+  const createdMonth = new Date(gf.createdAt || Date.now()).toISOString().slice(0, 7);
+  return gf.ativo !== false && mStr >= createdMonth;
+}
+function isGastoFixoPago(gastoFixoId, mStr) {
+  return Store.state.gastosFixosPagamentos.some((p) => p.gastoFixoId === gastoFixoId && p.mes === mStr);
+}
+function toggleGastoFixoPago(gastoFixoId, mStr) {
+  const list = Store.state.gastosFixosPagamentos;
+  const idx = list.findIndex((p) => p.gastoFixoId === gastoFixoId && p.mes === mStr);
+  if (idx > -1) list.splice(idx, 1);
+  else list.push({ id: uid(), gastoFixoId, mes: mStr });
+  Store.save();
+}
+function gastosFixosForMonth(mStr) {
+  return Store.state.gastosFixos
+    .filter((gf) => gastoFixoAppliesToMonth(gf, mStr))
+    .map((gf) => ({ ...gf, vencimentoISO: gastoFixoVencimentoISO(gf, mStr), pago: isGastoFixoPago(gf.id, mStr), mesRef: mStr }));
+}
+
+/* ============ Recorrência: compras de cartão (à vista / parcelado / recorrente) ============ */
+function monthAddStr(mStr, n) {
+  const [y, m] = mStr.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function compraOccurrenceInMonth(compra, mStr) {
+  const compraMonth = compra.data.slice(0, 7);
+  if (compra.tipo === 'parcelado') {
+    const parcelas = Math.max(1, compra.parcelas || 1);
+    for (let i = 0; i < parcelas; i++) {
+      if (monthAddStr(compraMonth, i) === mStr) {
+        const valorParcela = Math.round((compra.valorTotal / parcelas) * 100) / 100;
+        return { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
+      }
+    }
+    return null;
+  }
+  if (compra.tipo === 'recorrente') {
+    if (mStr >= compraMonth) return { valor: compra.valorTotal, parcelaLabel: '—' };
+    return null;
+  }
+  // à vista
+  if (mStr === compraMonth) return { valor: compra.valorTotal, parcelaLabel: '1/1' };
+  return null;
+}
+function cartaoComprasForMonth(cartaoId, mStr) {
+  return Store.state.cartaoCompras
+    .filter((c) => c.cartaoId === cartaoId)
+    .map((c) => ({ compra: c, occurrence: compraOccurrenceInMonth(c, mStr) }))
+    .filter((x) => x.occurrence);
+}
+function cartaoFaturaForMonth(cartaoId, mStr) {
+  return cartaoComprasForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valor, 0);
+}
+function allCartoesFaturaForMonth(mStr) {
+  return Store.state.cartoes.reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
+}
+function isCartaoFaturaPaga(cartaoId, mStr) {
+  return Store.state.cartaoFaturasPagas.some((p) => p.cartaoId === cartaoId && p.mes === mStr);
+}
+function toggleCartaoFaturaPaga(cartaoId, mStr) {
+  const list = Store.state.cartaoFaturasPagas;
+  const idx = list.findIndex((p) => p.cartaoId === cartaoId && p.mes === mStr);
+  if (idx > -1) list.splice(idx, 1);
+  else list.push({ id: uid(), cartaoId, mes: mStr });
+  Store.save();
+}
+function parcelasAtivasCount(cartaoId) {
+  const mStr = currentMonthStr();
+  return Store.state.cartaoCompras.filter((c) => c.cartaoId === cartaoId && c.tipo === 'parcelado' && compraOccurrenceInMonth(c, mStr)).length;
 }
 
 const Store = {

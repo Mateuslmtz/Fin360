@@ -38,19 +38,6 @@ function renderSidebar(activeRoute) {
   nav.querySelectorAll('.nav-item').forEach((btn) => {
     btn.addEventListener('click', () => { location.hash = '#/' + btn.dataset.route; });
   });
-
-  document.querySelectorAll('.context-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.context === Store.state.context);
-    btn.onclick = () => {
-      if (btn.dataset.context === 'empresa') {
-        toast('Modo Empresa chega em breve 🚀', 'info');
-        return;
-      }
-      Store.state.context = btn.dataset.context;
-      Store.save();
-      renderSidebar(activeRoute);
-    };
-  });
 }
 
 function renderTopbar(route) {
@@ -146,6 +133,12 @@ function categoryTag(catId) {
   const cat = Store.categoryById(catId);
   if (!cat) return `<span class="category-tag" style="background:var(--bg-input);color:var(--text-muted)">Sem categoria</span>`;
   return `<span class="category-tag" style="background:${hexToSoft(cat.color)};color:${cat.color}">${cat.emoji} ${cat.name}</span>`;
+}
+function categoryAvatar(catId) {
+  const cat = Store.categoryById(catId);
+  const bg = cat ? hexToSoft(cat.color) : 'var(--bg-input)';
+  const emoji = cat ? cat.emoji : '📦';
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:${bg};font-size:16px;flex-shrink:0">${emoji}</span>`;
 }
 function hexToSoft(hex) {
   const c = hex.replace('#', '');
