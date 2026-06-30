@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm -v)",
+      "PowerShell(node -v)",
+      "PowerShell(npm -v)",
+      "Bash(mkdir -p \"/g/Meu Drive/3 - PROJETOS CLAUDE/Fin360/.claude\" && echo ok)"
+    ]
+  }
+}
