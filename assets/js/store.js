@@ -94,25 +94,38 @@ function monthAddStr(mStr, n) {
   const d = new Date(y, m - 1 + n, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+/* ---- Racha / divisão de compras de cartão com outras pessoas ---- */
+function compraValorDividido(compra) {
+  return (compra.divisoes || []).reduce((s, d) => s + (d.valor || 0), 0);
+}
+function compraValorMeu(compra) {
+  return Math.max(0, compra.valorTotal - compraValorDividido(compra));
+}
+function compraFracaoMinha(compra) {
+  return compra.valorTotal > 0 ? compraValorMeu(compra) / compra.valorTotal : 1;
+}
+
 function compraOccurrenceInMonth(compra, mStr) {
   const compraMonth = compra.data.slice(0, 7);
+  const fracaoMinha = compraFracaoMinha(compra);
+  let base = null;
   if (compra.tipo === 'parcelado') {
     const parcelas = Math.max(1, compra.parcelas || 1);
     for (let i = 0; i < parcelas; i++) {
       if (monthAddStr(compraMonth, i) === mStr) {
         const valorParcela = Math.round((compra.valorTotal / parcelas) * 100) / 100;
-        return { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
+        base = { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
+        break;
       }
     }
-    return null;
+  } else if (compra.tipo === 'recorrente') {
+    if (mStr >= compraMonth) base = { valor: compra.valorTotal, parcelaLabel: '—' };
+  } else {
+    // à vista
+    if (mStr === compraMonth) base = { valor: compra.valorTotal, parcelaLabel: '1/1' };
   }
-  if (compra.tipo === 'recorrente') {
-    if (mStr >= compraMonth) return { valor: compra.valorTotal, parcelaLabel: '—' };
-    return null;
-  }
-  // à vista
-  if (mStr === compraMonth) return { valor: compra.valorTotal, parcelaLabel: '1/1' };
-  return null;
+  if (!base) return null;
+  return { ...base, valorMeu: Math.round(base.valor * fracaoMinha * 100) / 100 };
 }
 function cartaoComprasForMonth(cartaoId, mStr) {
   return Store.state.cartaoCompras
@@ -122,6 +135,13 @@ function cartaoComprasForMonth(cartaoId, mStr) {
 }
 function cartaoFaturaForMonth(cartaoId, mStr) {
   return cartaoComprasForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valor, 0);
+}
+// custo real = fatura menos as partes rachadas com outras pessoas (não é gasto seu, é adiantamento)
+function cartaoCustoRealForMonth(cartaoId, mStr) {
+  return cartaoComprasForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valorMeu, 0);
+}
+function allCartoesCustoRealForMonth(mStr) {
+  return Store.state.cartoes.reduce((s, c) => s + cartaoCustoRealForMonth(c.id, mStr), 0);
 }
 function allCartoesFaturaForMonth(mStr) {
   return Store.state.cartoes.reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);

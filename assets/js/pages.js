@@ -133,9 +133,9 @@ function pageDashboard(container) {
     const fixos = months.flatMap((m) => gastosFixosForMonth(m));
     const variaveis = Store.state.gastosVariaveis.filter((g) => months.includes(g.data.slice(0, 7)));
     const receb = months.flatMap((m) => recebimentosForMonth(m));
-    const faturaCartoes = months.reduce((s, m) => s + allCartoesFaturaForMonth(m), 0);
+    const custoRealCartoes = months.reduce((s, m) => s + allCartoesCustoRealForMonth(m), 0);
 
-    const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + faturaCartoes;
+    const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes;
     const totalRecebimentos = receb.reduce((s, r) => s + r.valor, 0);
     const totalAReceber = receb.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
     const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + g.valor, 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0);
@@ -172,7 +172,7 @@ function pageDashboard(container) {
       </div>
 
       <div class="stat-grid">
-        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: 'Fixos + variáveis + cartão', tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: 'Fixos + variáveis + cartão (sua parte)', tone: 'red', iconName: 'arrowDownCircle' })}
         ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: 'Entradas no período', tone: 'green', iconName: 'arrowUpCircle' })}
         ${statCard({ label: 'Total a receber', value: formatCurrency(totalAReceber), sub: 'Recebimentos futuros', tone: 'blue', iconName: 'download' })}
         ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
@@ -1338,6 +1338,25 @@ let selectedFaturaMonth = null;
 let novoCartaoOpen = false;
 let compraTipo = 'avista';
 
+function divisaoRowHTML(nome, valor) {
+  return `
+    <div class="field-row" data-divisao-row style="margin-bottom:8px">
+      <div class="field" style="margin-bottom:0"><input type="text" placeholder="Nome (ex.: João)" class="cp-div-nome" value="${nome || ''}" /></div>
+      <div class="field" style="margin-bottom:0;display:flex;gap:6px">
+        <input type="number" step="0.01" placeholder="0,00" class="cp-div-valor" value="${valor || ''}" style="flex:1" />
+        <button type="button" class="btn-icon" data-remove-divisao title="Remover">${icon('trash')}</button>
+      </div>
+    </div>
+  `;
+}
+function readDivisoesRows() {
+  const rows = document.querySelectorAll('#cp-divisoes-rows [data-divisao-row]');
+  return [...rows].map((row) => ({
+    nome: row.querySelector('.cp-div-nome').value.trim() || 'Sem nome',
+    valor: parseFloat(row.querySelector('.cp-div-valor').value) || 0,
+  })).filter((d) => d.valor > 0);
+}
+
 function pageCartoes(container) {
   const draw = () => {
     const cartoes = Store.state.cartoes;
@@ -1354,6 +1373,7 @@ function pageCartoes(container) {
     const selected = cartoes.find((c) => c.id === selectedCartaoId);
     const faturaItens = selected ? cartaoComprasForMonth(selected.id, selectedFaturaMonth) : [];
     const faturaTotal = faturaItens.reduce((s, x) => s + x.occurrence.valor, 0);
+    const faturaCustoReal = faturaItens.reduce((s, x) => s + x.occurrence.valorMeu, 0);
     const faturaPaga = selected && isCartaoFaturaPaga(selected.id, selectedFaturaMonth);
     const faturaCatTotals = {};
     faturaItens.forEach((x) => { const k = x.compra.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.occurrence.valor; });
@@ -1387,15 +1407,15 @@ function pageCartoes(container) {
           </div>
 
           <div class="panel">
-            <h3 style="margin-bottom:14px">Adicionar compra</h3>
+            <h3 style="margin-bottom:14px">${editingCompra ? 'Editar compra' : 'Adicionar compra'}</h3>
             ${cartoes.length === 0 ? `<div class="row-sub" style="margin-bottom:10px">Cadastre um cartão acima antes de lançar compras.</div>` : ''}
-            <div class="field"><label>Nome da compra</label><input type="text" id="cp-nome" placeholder="Ex.: Mercado" /></div>
+            <div class="field"><label>Nome da compra</label><input type="text" id="cp-nome" placeholder="Ex.: Mercado" value="${editingCompra ? editingCompra.descricao : ''}" /></div>
             <div class="field-row">
-              <div class="field"><label>Valor</label><input type="number" step="0.01" id="cp-valor" placeholder="0,00" /></div>
-              <div class="field"><label>Data</label><input type="date" id="cp-data" value="${todayISO()}" /></div>
+              <div class="field"><label>Valor</label><input type="number" step="0.01" id="cp-valor" placeholder="0,00" value="${editingCompra ? editingCompra.valorTotal : ''}" /></div>
+              <div class="field"><label>Data</label><input type="date" id="cp-data" value="${editingCompra ? editingCompra.data : todayISO()}" /></div>
             </div>
-            <div class="field"><label>Cartão</label><select id="cp-cartao">${cartoes.length === 0 ? '<option value="">Nenhum cartão cadastrado</option>' : cartoes.map((c) => `<option value="${c.id}" ${c.id === selectedCartaoId ? 'selected' : ''}>${c.nome}${c.banco ? ' — ' + c.banco : ''}</option>`).join('')}</select></div>
-            <div class="field"><label>Categoria</label>${fieldHTML({ key: 'cp-categoria', type: 'select-category' }, '')}</div>
+            <div class="field"><label>Cartão</label><select id="cp-cartao">${cartoes.length === 0 ? '<option value="">Nenhum cartão cadastrado</option>' : cartoes.map((c) => `<option value="${c.id}" ${c.id === (editingCompra ? editingCompra.cartaoId : selectedCartaoId) ? 'selected' : ''}>${c.nome}${c.banco ? ' — ' + c.banco : ''}</option>`).join('')}</select></div>
+            <div class="field"><label>Categoria</label>${fieldHTML({ key: 'cp-categoria', type: 'select-category' }, editingCompra ? editingCompra.categoryId : '')}</div>
             <div class="field">
               <label>Tipo de compra</label>
               <div class="pill-group" id="cp-tipo-group">
@@ -1405,9 +1425,19 @@ function pageCartoes(container) {
               </div>
             </div>
             <div class="field" id="cp-parcelas-field" style="display:${compraTipo === 'parcelado' ? 'block' : 'none'}">
-              <label>Número de parcelas</label><input type="number" min="2" max="48" id="cp-parcelas" value="2" />
+              <label>Número de parcelas</label><input type="number" min="2" max="48" id="cp-parcelas" value="${editingCompra ? editingCompra.parcelas || 2 : 2}" />
             </div>
-            <button class="btn btn-primary btn-block" id="cp-save" ${cartoes.length === 0 ? 'disabled' : ''}>Adicionar compra</button>
+            <div class="field">
+              <label class="checkbox-row"><input type="checkbox" id="cp-dividir" ${editingCompra && compraValorDividido(editingCompra) > 0 ? 'checked' : ''} /> Essa compra é rachada com outras pessoas?</label>
+            </div>
+            <div id="cp-divisoes-box" style="display:${editingCompra && compraValorDividido(editingCompra) > 0 ? 'block' : 'none'};margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-input)">
+              <p class="row-sub" style="margin-bottom:10px">O valor total continua contando na fatura do cartão — só a <strong style="color:var(--text)">sua parte</strong> entra nas suas estatísticas de gasto.</p>
+              <div id="cp-divisoes-rows">${(editingCompra ? editingCompra.divisoes || [] : []).map((d) => divisaoRowHTML(d.nome, d.valor)).join('')}</div>
+              <button type="button" class="btn btn-ghost btn-sm" id="cp-add-divisao">${icon('plus')} Adicionar pessoa</button>
+              <div class="row-sub" id="cp-sua-parte" style="margin-top:10px;font-weight:700"></div>
+            </div>
+            <button class="btn btn-primary btn-block" id="cp-save" ${cartoes.length === 0 ? 'disabled' : ''}>${editingCompra ? 'Salvar alterações' : 'Adicionar compra'}</button>
+            ${editingCompra ? `<button class="btn btn-ghost btn-block" id="cp-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
             <div style="margin-top:14px">${collapsibleNewCategory('cp')}</div>
           </div>
         </div>
@@ -1469,23 +1499,28 @@ function pageCartoes(container) {
               ${statCard({ label: 'Limite usado', value: formatCurrency(faturaTotal), tone: 'red', iconName: 'arrowDownCircle' })}
               ${statCard({ label: 'Limite disponível', value: formatCurrency(Math.max(0, selected.limite - faturaTotal)), tone: 'green', iconName: 'checkCircle' })}
               ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
+              ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
             ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.' }) : `
               <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th><th>Compra</th><th>Parcela</th><th>Valor</th><th></th></tr></thead>
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Compra</th><th>Parcela</th><th>Valor da fatura</th><th>Sua parte</th><th></th></tr></thead>
                 <tbody>
-                  ${faturaItens.map(({ compra, occurrence }) => `
+                  ${faturaItens.map(({ compra, occurrence }) => {
+                    const dividido = compraValorDividido(compra);
+                    return `
                     <tr>
-                      <td class="row-title">${compra.descricao}</td>
+                      <td class="row-title">${compra.descricao}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${compra.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
                       <td>${categoryTag(compra.categoryId)}</td>
                       <td>${formatDateBR(compra.data)}</td>
                       <td>${occurrence.parcelaLabel}</td>
                       <td><strong>${formatCurrency(occurrence.valor)}</strong></td>
+                      <td>${dividido > 0 ? `<span class="amount-pos">${formatCurrency(occurrence.valorMeu)}</span>` : formatCurrency(occurrence.valorMeu)}</td>
                       <td><div class="row-actions">
                         <button class="btn-icon" data-action="edit-compra" data-id="${compra.id}">${icon('edit')}</button>
                         <button class="btn-icon" data-action="delete-compra" data-id="${compra.id}">${icon('trash')}</button>
                       </div></td>
-                    </tr>`).join('')}
+                    </tr>`;
+                  }).join('')}
                 </tbody>
               </table>
             `}
@@ -1525,6 +1560,33 @@ function pageCartoes(container) {
     wireQuickAddButtons([{ key: 'cp-categoria', type: 'select-category' }]);
     wireCollapsibleNewCategory('cp', () => draw());
 
+    const atualizarSuaParte = () => {
+      const total = parseFloat(document.getElementById('cp-valor').value) || 0;
+      const dividido = readDivisoesRows().reduce((s, d) => s + d.valor, 0);
+      const el = document.getElementById('cp-sua-parte');
+      if (!el) return;
+      const suaParte = total - dividido;
+      el.textContent = `Sua parte: ${formatCurrency(Math.max(0, suaParte))}${dividido > total ? ' — a soma das divisões passou do valor total!' : ''}`;
+      el.style.color = dividido > total ? 'var(--danger)' : 'var(--text)';
+    };
+    const wireDivisaoRow = (row) => {
+      row.querySelectorAll('input').forEach((inp) => inp.oninput = atualizarSuaParte);
+      const rm = row.querySelector('[data-remove-divisao]');
+      if (rm) rm.onclick = () => { row.remove(); atualizarSuaParte(); };
+    };
+    if (document.getElementById('cp-dividir')) {
+      document.getElementById('cp-divisoes-rows').querySelectorAll('[data-divisao-row]').forEach(wireDivisaoRow);
+      document.getElementById('cp-dividir').onchange = (e) => { document.getElementById('cp-divisoes-box').style.display = e.target.checked ? 'block' : 'none'; atualizarSuaParte(); };
+      document.getElementById('cp-add-divisao').onclick = () => {
+        const box = document.getElementById('cp-divisoes-rows');
+        box.insertAdjacentHTML('beforeend', divisaoRowHTML('', ''));
+        wireDivisaoRow(box.lastElementChild);
+        atualizarSuaParte();
+      };
+      document.getElementById('cp-valor').addEventListener('input', atualizarSuaParte);
+      atualizarSuaParte();
+    }
+
     if (document.getElementById('cp-save')) {
       document.getElementById('cp-save').onclick = () => {
         const descricao = document.getElementById('cp-nome').value.trim();
@@ -1533,8 +1595,10 @@ function pageCartoes(container) {
         if (!descricao) { toast('Informe o nome da compra', 'danger'); return; }
         if (!valorTotal) { toast('Informe um valor', 'danger'); return; }
         if (!cartaoId) { toast('Selecione um cartão', 'danger'); return; }
+        const divisoes = document.getElementById('cp-dividir').checked ? readDivisoesRows() : [];
+        if (divisoes.reduce((s, d) => s + d.valor, 0) > valorTotal) { toast('A soma das divisões não pode passar do valor total', 'danger'); return; }
         const payload = {
-          descricao, valorTotal, cartaoId,
+          descricao, valorTotal, cartaoId, divisoes,
           data: document.getElementById('cp-data').value,
           categoryId: document.getElementById('f-cp-categoria').value,
           tipo: compraTipo,
@@ -1546,6 +1610,7 @@ function pageCartoes(container) {
         draw();
       };
     }
+    if (document.getElementById('cp-cancel-edit')) document.getElementById('cp-cancel-edit').onclick = () => { editingCompraId = null; compraTipo = 'avista'; draw(); };
 
     container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; selectedFaturaMonth = currentMonthStr(); draw(); });
     container.querySelectorAll('[data-action="edit-cartao"]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); editingCartaoId = b.dataset.id; novoCartaoOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
@@ -1561,7 +1626,12 @@ function pageCartoes(container) {
         },
       });
     });
-    container.querySelectorAll('[data-action="edit-compra"]').forEach((b) => b.onclick = () => { editingCompraId = b.dataset.id; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    container.querySelectorAll('[data-action="edit-compra"]').forEach((b) => b.onclick = () => {
+      editingCompraId = b.dataset.id;
+      compraTipo = Store.get('cartaoCompras', b.dataset.id).tipo || 'avista';
+      draw();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     container.querySelectorAll('[data-action="delete-compra"]').forEach((b) => b.onclick = () => {
       confirmModal({
         title: 'Excluir compra', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
