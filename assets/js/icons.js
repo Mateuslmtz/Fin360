@@ -1,11 +1,12 @@
 /* Fin360 — biblioteca de ícones SVG inline (estilo feather, leve e sem dependências) */
 const ICONS = {
   logo: `<svg viewBox="0 0 64 64" class="svg-icon" style="width:100%;height:100%;stroke-width:4">
-    <circle cx="32" cy="32" r="22" stroke="#ffffff" />
-    <circle cx="50" cy="14" r="4" fill="#ffffff" stroke="none" />
-    <circle cx="32" cy="32" r="13" stroke="#ffffff" />
-    <ellipse cx="32" cy="32" rx="22" ry="7" stroke="#ffffff" transform="rotate(-18 32 32)" />
-    <text x="32" y="38" text-anchor="middle" font-size="17" font-family="Segoe UI, sans-serif" fill="#ffffff" stroke="none" font-weight="700">$</text>
+    <rect x="1" y="1" width="62" height="62" rx="16" fill="#050b28" />
+    <circle cx="32" cy="32" r="21" fill="none" stroke="#3866ff" />
+    <circle cx="49" cy="15" r="4" fill="#3866ff" stroke="none" />
+    <circle cx="32" cy="32" r="12" fill="none" stroke="#ffffff" stroke-width="3.5" />
+    <ellipse cx="32" cy="32" rx="21" ry="7" fill="none" stroke="#3866ff" transform="rotate(-18 32 32)" />
+    <text x="32" y="38" text-anchor="middle" font-size="16" font-family="Segoe UI, sans-serif" fill="#ffffff" stroke="none" font-weight="700">$</text>
   </svg>`,
 
   grid: `<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>`,

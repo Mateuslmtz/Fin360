@@ -2394,7 +2394,7 @@ function pageConfiguracoes(container) {
           <div class="field" style="flex:1;min-width:220px;margin-bottom:0"><label>Nova senha</label><input type="password" id="cfg-senha" placeholder="mínimo 6 caracteres" /></div>
           <button class="btn btn-primary btn-sm" id="cfg-save-senha">Alterar senha</button>
         </div>
-        <p class="row-sub" style="margin-top:10px">Este protótipo ainda não tem sistema de login real — este campo fica pronto para quando o backend for ligado.</p>
+        <p class="row-sub" style="margin-top:10px">A senha é validada localmente neste navegador (protótipo sem servidor ainda).</p>
       </div>
 
       <div class="panel">
@@ -2461,10 +2461,16 @@ function pageConfiguracoes(container) {
       toast('Nome atualizado', 'success');
       render();
     };
-    document.getElementById('cfg-save-senha').onclick = () => {
+    document.getElementById('cfg-save-senha').onclick = async () => {
       const senha = document.getElementById('cfg-senha').value;
       if (senha.length < 6) { toast('A senha precisa ter no mínimo 6 caracteres', 'danger'); return; }
-      toast('Senha alterada (simulado — sem backend real ainda)', 'success');
+      const account = Auth.currentUser();
+      if (!account) { toast('Sessão inválida', 'danger'); return; }
+      const salt = randomHex(16);
+      account.passwordHash = await hashPassword(senha, salt);
+      account.salt = salt;
+      Auth.persist();
+      toast('Senha alterada com sucesso', 'success');
       document.getElementById('cfg-senha').value = '';
     };
     document.getElementById('cfg-save-moeda').onclick = () => {
@@ -2479,7 +2485,12 @@ function pageConfiguracoes(container) {
       toast('Preferência salva', 'success');
       render();
     };
-    document.getElementById('cfg-logout').onclick = () => toast('Este protótipo ainda não tem login real para encerrar sessão', 'info');
+    document.getElementById('cfg-logout').onclick = () => {
+      confirmModal({
+        title: 'Sair da conta', text: 'Você precisará entrar novamente com seu e-mail e senha para acessar seus dados.', confirmLabel: 'Sair',
+        onConfirm: () => logout(),
+      });
+    };
 
     document.getElementById('cfg-export').onclick = () => {
       const blob = new Blob([Store.exportBackupJSON()], { type: 'application/json' });

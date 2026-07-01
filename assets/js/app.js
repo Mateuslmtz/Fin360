@@ -32,10 +32,26 @@ function render() {
   ROUTES[route](container);
 }
 
-window.addEventListener('hashchange', render);
-window.addEventListener('DOMContentLoaded', () => {
+function bootApp() {
+  hideAuthScreen();
   Store.load();
+  const user = Auth.currentUser();
+  if (user) {
+    Store.state.profile.name = user.name;
+    Store.state.profile.email = user.email;
+    Store.save();
+  }
   applyShellState();
   if (!location.hash) location.hash = '#/dashboard';
   render();
+}
+
+window.addEventListener('hashchange', render);
+window.addEventListener('DOMContentLoaded', () => {
+  Auth.load();
+  if (!Auth.isLoggedIn()) {
+    showAuthScreen(Auth.data.accounts.length ? 'login' : 'register');
+    return;
+  }
+  bootApp();
 });

@@ -1,6 +1,11 @@
 /* Fin360 — estado da aplicação + persistência local (protótipo, sem backend) */
 
-const STORAGE_KEY = 'fin360_state_v3';
+const STORAGE_KEY_BASE = 'fin360_state_v3';
+
+function storageKey() {
+  const userId = (typeof Auth !== 'undefined' && Auth.currentUserId()) || 'default';
+  return `${STORAGE_KEY_BASE}_${userId}`;
+}
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -339,7 +344,7 @@ const Store = {
 
   load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(storageKey());
       this.state = raw ? Object.assign(defaultState(), JSON.parse(raw)) : defaultState();
     } catch (e) {
       this.state = defaultState();
@@ -348,7 +353,7 @@ const Store = {
   },
 
   save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+    localStorage.setItem(storageKey(), JSON.stringify(this.state));
   },
 
   reset() {
