@@ -12,8 +12,10 @@ const ROUTES = {
   'investimentos': pageInvestimentos,
   'parcelamentos': (c) => pagePlaceholder(c, 'parcelamentos'),
   'extrato': pageExtrato,
-  'conciliacao': (c) => pagePlaceholder(c, 'conciliacao'),
-  'planejamento': (c) => pagePlaceholder(c, 'planejamento'),
+  'conciliacao': pageConciliacao,
+  'planejamento': pagePlanejamento,
+  'importar': pageImportar,
+  'vera': pageVera,
 };
 
 function currentRoute() {

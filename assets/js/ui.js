@@ -14,6 +14,8 @@ const NAV_ITEMS = [
   { route: 'investimentos', label: 'Investimentos', icon: 'trendUp', subtitle: 'Carteira ativa, aportes e rentabilidade' },
   { route: 'conciliacao', label: 'Conciliação', icon: 'checkCircle', subtitle: 'Confira lançamentos com seu extrato bancário' },
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
+  { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'A Vera lê seu PDF e cadastra tudo automaticamente', ia: true },
+  { route: 'vera', label: 'Vera', icon: 'sparkles', subtitle: 'Converse, peça relatórios em PDF e gere análises com seus dados reais', ia: true },
 ];
 
 function navItemByRoute(route) {
@@ -28,10 +30,12 @@ function renderSidebar(activeRoute) {
   }
 
   const nav = document.getElementById('nav');
-  nav.innerHTML = NAV_ITEMS.map((item) => `
+  nav.innerHTML = NAV_ITEMS.map((item, idx) => `
+    ${item.ia && (idx === 0 || !NAV_ITEMS[idx - 1].ia) ? `<div class="nav-divider"><span>Inteligência artificial</span></div>` : ''}
     <button class="nav-item ${item.route === activeRoute ? 'active' : ''}" data-route="${item.route}">
       ${icon(item.icon)}
       <span class="nav-label">${item.label}</span>
+      ${item.ia ? `<span class="nav-ia-badge">IA</span>` : ''}
     </button>
   `).join('');
 

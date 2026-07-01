@@ -8,7 +8,7 @@ function uid() {
 
 function todayISO() {
   const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function defaultState() {
@@ -47,6 +47,8 @@ function defaultState() {
     cartaoCompras: [],
     cartaoFaturasPagas: [], // {id, cartaoId, mes:'YYYY-MM'}
     investimentos: [],
+    conciliacoes: [], // array de chaves de transação (ex: 'gf:id:2026-06') marcadas como conciliadas
+    metasCategoria: [], // {id, categoryId, mes:'YYYY-MM', valor}
   };
 }
 
@@ -63,7 +65,8 @@ function gastoFixoVencimentoISO(gf, mStr) {
   return `${mStr}-${String(day).padStart(2, '0')}`;
 }
 function gastoFixoAppliesToMonth(gf, mStr) {
-  const createdMonth = new Date(gf.createdAt || Date.now()).toISOString().slice(0, 7);
+  const d = new Date(gf.createdAt || Date.now());
+  const createdMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   return gf.ativo !== false && mStr >= createdMonth;
 }
 function isGastoFixoPago(gastoFixoId, mStr) {
@@ -163,6 +166,43 @@ function recebimentosForMonth(mStr) {
       recebido: isRecebimentoRecebido(x.receb.id, mStr),
       dataOcorrencia: `${mStr}-${x.receb.data.slice(8, 10)}`,
     }));
+}
+
+/* ============ Motor de transações unificado (Extrato / Conciliação) ============ */
+function monthsBetweenISO(start, end) {
+  const months = [];
+  let cur = start.slice(0, 7);
+  const endM = end.slice(0, 7);
+  let guard = 0;
+  while (cur <= endM && guard < 60) { months.push(cur); cur = monthAddStr(cur, 1); guard++; }
+  return months;
+}
+function buildTransacoes(start, end) {
+  const months = monthsBetweenISO(start, end);
+  const txs = [
+    ...months.flatMap((m) => gastosFixosForMonth(m)).map((g) => ({
+      key: `gf:${g.id}:${g.mesRef}`, data: g.vencimentoISO, descricao: g.nome, tipo: 'Gasto fixo',
+      bankId: g.bankId, categoryId: g.categoryId, status: g.pago ? 'pago' : 'pendente', valor: g.valor, sinal: -1,
+    })),
+    ...Store.state.gastosVariaveis.map((g) => ({
+      key: `gv:${g.id}`, data: g.data, descricao: g.descricao, tipo: 'Gasto variável',
+      bankId: g.bankId, categoryId: g.categoryId, status: g.status, valor: g.valor, sinal: -1,
+    })),
+    ...months.flatMap((m) => recebimentosForMonth(m)).map((r) => ({
+      key: `rc:${r.id}:${r.mesRef}`, data: r.dataOcorrencia, descricao: r.descricao, tipo: 'Recebimento',
+      bankId: r.bankId, categoryId: r.categoryId, status: r.recebido ? 'recebido' : 'pendente', valor: r.valor, sinal: 1,
+    })),
+  ];
+  return txs.filter((t) => t.data >= start && t.data <= end);
+}
+function isConciliado(key) {
+  return Store.state.conciliacoes.includes(key);
+}
+function toggleConciliado(key) {
+  const list = Store.state.conciliacoes;
+  const idx = list.indexOf(key);
+  if (idx > -1) list.splice(idx, 1); else list.push(key);
+  Store.save();
 }
 
 function isCartaoFaturaPaga(cartaoId, mStr) {
