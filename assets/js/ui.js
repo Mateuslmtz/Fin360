@@ -14,8 +14,8 @@ const NAV_ITEMS = [
   { route: 'investimentos', label: 'Investimentos', icon: 'trendUp', subtitle: 'Carteira ativa, aportes e rentabilidade' },
   { route: 'conciliacao', label: 'Conciliação', icon: 'checkCircle', subtitle: 'Confira lançamentos com seu extrato bancário' },
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
-  { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'A Vera lê seu PDF e cadastra tudo automaticamente', ia: true },
-  { route: 'vera', label: 'Vera', icon: 'sparkles', subtitle: 'Converse, peça relatórios em PDF e gere análises com seus dados reais', ia: true },
+  { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'O Assistente IA lê seu PDF e cadastra tudo automaticamente', ia: true },
+  { route: 'assistente', label: 'Assistente IA', icon: 'sparkles', subtitle: 'Converse, peça relatórios em PDF e gere análises com seus dados reais', ia: true },
   { route: 'configuracoes', label: 'Configurações', icon: 'settings', subtitle: 'Gerencie sua conta e preferências', hidden: true },
 ];
 

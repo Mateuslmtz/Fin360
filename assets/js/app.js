@@ -15,7 +15,7 @@ const ROUTES = {
   'conciliacao': pageConciliacao,
   'planejamento': pagePlanejamento,
   'importar': pageImportar,
-  'vera': pageVera,
+  'assistente': pageAssistente,
   'configuracoes': pageConfiguracoes,
 };
 

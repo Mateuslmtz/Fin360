@@ -2218,7 +2218,7 @@ function pagePlaceholder(container, route) {
 }
 
 /* =========================================================================
-   IA — telas desenhadas mas desativadas (Importar / Vera)
+   IA — telas desenhadas mas desativadas (Importar / Assistente IA)
    ========================================================================= */
 function iaBanner() {
   return `
@@ -2266,19 +2266,19 @@ function pageImportar(container) {
   `;
 }
 
-function pageVera(container) {
+function pageAssistente(container) {
   container.innerHTML = `
     ${iaBanner()}
     <div class="panel" style="opacity:0.6;pointer-events:none">
       <div style="display:flex;gap:12px;margin-bottom:18px">
         <span style="width:40px;height:40px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon('sparkles')}</span>
         <div>
-          <strong>Converse com a Vera</strong>
+          <strong>Converse com o Assistente IA</strong>
           <div class="row-sub">Ex: "gere um PDF dos meus gastos do mês", "relatório dos recebimentos".</div>
         </div>
       </div>
       <div class="panel" style="background:var(--bg-input)">
-        Olá! Sou a <strong>Vera</strong>, sua gerente de contas. Quando esse recurso for ativado, vou poder analisar seus dados, dar orientações e gerar relatórios em PDF sob demanda.
+        Olá! Sou o <strong>Assistente IA</strong> do Fin360. Quando esse recurso for ativado, vou poder analisar seus dados, dar orientações e gerar relatórios em PDF sob demanda.
       </div>
     </div>
     <div class="panel" style="opacity:0.6;pointer-events:none;display:flex;gap:10px">
