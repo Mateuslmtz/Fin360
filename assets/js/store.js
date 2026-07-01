@@ -67,10 +67,12 @@ function gastoFixoVencimentoISO(gf, mStr) {
   const day = clampDayToMonth(mStr, gf.diaVencimento);
   return `${mStr}-${String(day).padStart(2, '0')}`;
 }
-function gastoFixoAppliesToMonth(gf, mStr) {
+function gastoFixoCreatedMonth(gf) {
   const d = new Date(gf.createdAt || Date.now());
-  const createdMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  return gf.ativo !== false && mStr >= createdMonth;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function gastoFixoAppliesToMonth(gf, mStr) {
+  return gf.ativo !== false && mStr >= gastoFixoCreatedMonth(gf);
 }
 function isGastoFixoPago(gastoFixoId, mStr) {
   return Store.state.gastosFixosPagamentos.some((p) => p.gastoFixoId === gastoFixoId && p.mes === mStr);
@@ -85,6 +87,12 @@ function toggleGastoFixoPago(gastoFixoId, mStr) {
 function gastosFixosForMonth(mStr) {
   return Store.state.gastosFixos
     .filter((gf) => gastoFixoAppliesToMonth(gf, mStr))
+    .map((gf) => ({ ...gf, vencimentoISO: gastoFixoVencimentoISO(gf, mStr), pago: isGastoFixoPago(gf.id, mStr), mesRef: mStr }));
+}
+// igual gastosFixosForMonth, mas inclui os inativos (pra tela de listagem não "sumir" com o botão de reativar)
+function gastosFixosForMonthAll(mStr) {
+  return Store.state.gastosFixos
+    .filter((gf) => mStr >= gastoFixoCreatedMonth(gf))
     .map((gf) => ({ ...gf, vencimentoISO: gastoFixoVencimentoISO(gf, mStr), pago: isGastoFixoPago(gf.id, mStr), mesRef: mStr }));
 }
 
