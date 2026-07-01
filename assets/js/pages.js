@@ -132,21 +132,21 @@ function pageDashboard(container) {
     const months = monthsInPeriod(period);
     const fixos = months.flatMap((m) => gastosFixosForMonth(m));
     const variaveis = Store.state.gastosVariaveis.filter((g) => months.includes(g.data.slice(0, 7)));
-    const receb = Store.state.recebimentos.filter((r) => months.includes(r.data.slice(0, 7)));
+    const receb = months.flatMap((m) => recebimentosForMonth(m));
     const faturaCartoes = months.reduce((s, m) => s + allCartoesFaturaForMonth(m), 0);
 
     const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + faturaCartoes;
     const totalRecebimentos = receb.reduce((s, r) => s + r.valor, 0);
-    const totalAReceber = receb.filter((r) => r.status !== 'recebido').reduce((s, r) => s + r.valor, 0);
+    const totalAReceber = receb.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
     const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + g.valor, 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0);
     const faltaPagar = totalGastos - totalPago;
     const saldoBancos = Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
-    const saldoDisponivel = saldoBancos + receb.filter((r) => r.status === 'recebido').reduce((s, r) => s + r.valor, 0) - totalPago;
+    const saldoDisponivel = saldoBancos + receb.filter((r) => r.recebido).reduce((s, r) => s + r.valor, 0) - totalPago;
 
     const allTx = [
       ...fixos.map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'gasto' })),
       ...variaveis.map((g) => ({ ...g, label: g.descricao, date: g.data, kind: 'gasto' })),
-      ...receb.map((r) => ({ ...r, label: r.descricao, date: r.data, kind: 'receb' })),
+      ...receb.map((r) => ({ ...r, label: r.descricao, date: r.dataOcorrencia, kind: 'receb' })),
     ].sort((a, b) => (a.date < b.date ? 1 : -1));
 
     const catTotals = {};
@@ -255,7 +255,8 @@ function areaChartHTML(mStr, saldoInicial) {
   const despesasDia = days.map((d) =>
     Store.state.gastosVariaveis.filter((g) => g.data === d).reduce((s, g) => s + g.valor, 0) +
     Store.state.gastosFixos.filter((g) => g.ativo !== false && gastoFixoVencimentoISO(g, mStr) === d).reduce((s, g) => s + g.valor, 0));
-  const receitasDia = days.map((d) => Store.state.recebimentos.filter((r) => r.data === d).reduce((s, r) => s + r.valor, 0));
+  const recebMes = recebimentosForMonth(mStr);
+  const receitasDia = days.map((d) => recebMes.filter((r) => r.dataOcorrencia === d).reduce((s, r) => s + r.valor, 0));
   let acc = saldoInicial;
   const saldoDia = despesasDia.map((despesa, i) => { acc += receitasDia[i] - despesa; return acc; });
 
@@ -342,13 +343,13 @@ function cofrinhosMini(list) {
     return `
       <div style="margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span>${c.emoji || '🐷'} ${c.nome}</span>
+          <span>${c.icone || '🎯'} ${c.nome}</span>
           <span class="row-sub">${pct}% do objetivo</span>
         </div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
           <strong>${formatCurrency(c.atual)}</strong><span class="row-sub">de ${formatCurrency(c.meta)}</span>
         </div>
-        <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%;background:${c.cor || 'var(--primary)'}"></div></div>
       </div>`;
   }).join('');
 }
@@ -407,7 +408,7 @@ function yearTable(year) {
   let totalGanhos = 0, totalFixos = 0, totalVar = 0, totalCartao = 0;
   const rows = months.map((m) => {
     const mStr = `${year}-${String(m + 1).padStart(2, '0')}`;
-    const ganhos = Store.state.recebimentos.filter((r) => isSameMonth(r.data, mStr)).reduce((s, r) => s + r.valor, 0);
+    const ganhos = recebimentosForMonth(mStr).reduce((s, r) => s + r.valor, 0);
     const fixos = gastosFixosForMonth(mStr).reduce((s, g) => s + g.valor, 0);
     const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr)).reduce((s, g) => s + g.valor, 0);
     const cartao = allCartoesFaturaForMonth(mStr);
@@ -478,7 +479,7 @@ function pageResumo(container) {
       ...resumoMonthsForPeriod(period).flatMap((m) => gastosFixosForMonth(m)).map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'pagar', status: g.pago ? 'pago' : 'pendente' })),
       ...Store.state.gastosVariaveis.map((g) => ({ ...g, label: g.descricao, date: g.data, kind: 'pagar' })),
     ];
-    const receb = Store.state.recebimentos.map((r) => ({ ...r, label: r.descricao, date: r.data, kind: 'receber' }));
+    const receb = resumoMonthsForPeriod(period).flatMap((m) => recebimentosForMonth(m)).map((r) => ({ ...r, label: r.descricao, date: r.dataOcorrencia, kind: 'receber', status: r.recebido ? 'recebido' : 'pendente' }));
 
     const paraPagar = gastos.filter((g) => g.status !== 'pago' && isInResumoPeriod(g.date, period));
     const paraReceber = receb.filter((r) => r.status !== 'recebido' && isInResumoPeriod(r.date, period));
@@ -488,7 +489,7 @@ function pageResumo(container) {
     const totalReceber = paraReceber.reduce((s, r) => s + r.valor, 0);
     const totalPagar = paraPagar.reduce((s, g) => s + g.valor, 0);
     const saldoBancos = Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
-    const recebidoHoje = receb.filter((r) => r.status === 'recebido' && r.data === today).reduce((s, r) => s + r.valor, 0);
+    const recebidoHoje = receb.filter((r) => r.status === 'recebido' && r.date === today).reduce((s, r) => s + r.valor, 0);
     const pagoHoje = gastos.filter((g) => g.status === 'pago' && g.date === today).reduce((s, g) => s + g.valor, 0);
     const pendente = totalReceber + totalPagar;
 
@@ -917,87 +918,414 @@ function genericCrudPage(container, cfg) {
 }
 
 /* ---- Bancos ---- */
+const BANK_CORES = ['#3866ff', '#7c3aed', '#22c55e', '#f04848', '#f5a623', '#14b8a6'];
+let bancosTab = 'bancos';
+let bancoFormOpen = false;
+let editingBancoId = null;
+let novoBancoCor = BANK_CORES[0];
+
 function pageBancos(container) {
-  genericCrudPage(container, {
-    collection: 'banks', icon: 'bank',
-    formTitle: 'Novo banco / conta', submitLabel: 'Salvar banco',
-    singular: 'Banco', singularLower: 'banco',
-    listTitle: 'Seus bancos e contas', listSubtitle: 'Saldos usados no cálculo do saldo disponível.',
-    emptyTitle: 'Nenhum banco cadastrado', emptyText: 'Adicione um banco para registrar gastos, recebimentos e seu saldo real.',
-    fields: [
-      { key: 'name', label: 'Nome', type: 'text', required: true, placeholder: 'Ex.: Nubank' },
-      { key: 'balance', label: 'Saldo inicial', type: 'number', required: false },
-    ],
-    statsFn: (items) => [{ label: 'Saldo total', value: formatCurrency(items.reduce((s, b) => s + (b.balance || 0), 0)), tone: 'blue', iconName: 'wallet' }, { label: 'Contas cadastradas', value: items.length, tone: 'purple', iconName: 'bank' }],
-    renderList: (items) => `<table class="list-table"><tbody>${items.map((b) => `
-      <tr><td><div class="row-title">${icon('bank')} ${b.name}</div></td><td style="text-align:right"><strong>${formatCurrency(b.balance || 0)}</strong></td>
-      <td><div class="row-actions"><button class="btn-icon" data-action="edit" data-id="${b.id}">${icon('edit')}</button><button class="btn-icon" data-action="delete" data-id="${b.id}">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>`,
-  });
+  const draw = () => {
+    const banks = Store.state.banks;
+    const editing = editingBancoId ? Store.get('banks', editingBancoId) : null;
+    if (editing) novoBancoCor = editing.cor || BANK_CORES[0];
+
+    container.innerHTML = `
+      <div class="pill-group" style="margin-bottom:18px;display:inline-flex">
+        <button class="pill ${bancosTab === 'bancos' ? 'active' : ''}" data-tab="bancos">${icon('bank')} Bancos</button>
+        <button class="pill ${bancosTab === 'transferencias' ? 'active' : ''}" data-tab="transferencias">${icon('repeat')} Transferências</button>
+      </div>
+
+      ${bancosTab === 'bancos' ? `
+        <div class="panel-header" style="margin-bottom:16px">
+          <div class="row-sub">${banks.length} banco${banks.length === 1 ? '' : 's'} cadastrado${banks.length === 1 ? '' : 's'}</div>
+          <button class="btn btn-primary btn-sm" id="bc-toggle-form">${icon('plus')} Novo banco</button>
+        </div>
+
+        <div class="panel" id="bc-form-panel" style="display:${bancoFormOpen ? 'block' : 'none'}">
+          <div class="panel-header"><h3>${editing ? 'Editar banco' : 'Novo banco / conta'}</h3><button class="btn btn-ghost btn-sm" id="bc-cancel">Cancelar</button></div>
+          <div class="field"><label>Nome</label><input type="text" id="bc-nome" placeholder="Ex.: Nubank" value="${editing ? editing.name : ''}" /></div>
+          <div class="field"><label>Saldo ${editing ? 'atual' : 'inicial'}</label><input type="number" step="0.01" id="bc-saldo" placeholder="0,00" value="${editing ? editing.balance : ''}" /></div>
+          <div class="field">
+            <label>Cor</label>
+            <div class="chip-row" id="bc-cor-group">
+              ${BANK_CORES.map((c) => `<button type="button" data-cor="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${c === novoBancoCor ? 'var(--text)' : 'transparent'};cursor:pointer"></button>`).join('')}
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block" id="bc-save">${editing ? 'Salvar alterações' : 'Salvar banco'}</button>
+        </div>
+
+        ${banks.length === 0 && !bancoFormOpen ? `<div class="panel">${emptyState({ iconName: 'bank', title: 'Nenhum banco cadastrado', text: 'Adicione um banco para registrar gastos, recebimentos e seu saldo real.', actionLabel: 'Novo banco', actionId: 'bc-empty-create' })}</div>` : ''}
+        ${banks.length > 0 ? `<div class="grid-2">${banks.map((b, i) => `
+          <div class="panel" style="border-top:3px solid ${b.cor || 'var(--primary)'};padding-top:16px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div style="display:flex;gap:10px;align-items:center">
+                <span style="width:40px;height:40px;border-radius:50%;background:${hexToSoft(b.cor || '#3866ff')};display:flex;align-items:center;justify-content:center">${icon('bank')}</span>
+                <div>
+                  <strong>${i + 1} - ${b.name}</strong>
+                  <div class="stat-label" style="margin-top:6px">Saldo atual</div>
+                  <div class="stat-value" style="font-size:19px">${formatCurrency(b.balance || 0)}</div>
+                </div>
+              </div>
+              <div class="row-actions"><button class="btn-icon" data-action="edit-banco" data-id="${b.id}">${icon('edit')}</button><button class="btn-icon" data-action="delete-banco" data-id="${b.id}">${icon('trash')}</button></div>
+            </div>
+          </div>`).join('')}</div>` : ''}
+      ` : transferenciasHTML()}
+    `;
+
+    container.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { bancosTab = b.dataset.tab; draw(); });
+
+    if (document.getElementById('bc-toggle-form')) {
+      document.getElementById('bc-toggle-form').onclick = () => { bancoFormOpen = !bancoFormOpen; if (!bancoFormOpen) editingBancoId = null; draw(); };
+      document.getElementById('bc-cancel').onclick = () => { bancoFormOpen = false; editingBancoId = null; draw(); };
+      if (document.getElementById('bc-empty-create')) document.getElementById('bc-empty-create').onclick = () => { bancoFormOpen = true; draw(); };
+      const corBtns = document.getElementById('bc-cor-group').querySelectorAll('[data-cor]');
+      corBtns.forEach((b) => b.onclick = () => { novoBancoCor = b.dataset.cor; corBtns.forEach((x) => x.style.border = x === b ? '2px solid var(--text)' : '2px solid transparent'); });
+      document.getElementById('bc-save').onclick = () => {
+        const name = document.getElementById('bc-nome').value.trim();
+        if (!name) { toast('Dê um nome para o banco', 'danger'); return; }
+        const payload = { name, balance: parseFloat(document.getElementById('bc-saldo').value) || 0, cor: novoBancoCor };
+        if (editing) { Store.update('banks', editing.id, payload); toast('Banco atualizado', 'success'); }
+        else { Store.add('banks', payload); toast('Banco adicionado', 'success'); }
+        bancoFormOpen = false; editingBancoId = null;
+        draw();
+      };
+      container.querySelectorAll('[data-action="edit-banco"]').forEach((b) => b.onclick = () => { editingBancoId = b.dataset.id; bancoFormOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      container.querySelectorAll('[data-action="delete-banco"]').forEach((b) => b.onclick = () => {
+        confirmModal({
+          title: 'Excluir banco', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+          onConfirm: () => { Store.remove('banks', b.dataset.id); toast('Banco excluído', 'success'); draw(); },
+        });
+      });
+    }
+
+    if (document.getElementById('tf-save')) {
+      document.getElementById('tf-save').onclick = () => {
+        const deId = document.getElementById('tf-de').value;
+        const paraId = document.getElementById('tf-para').value;
+        const valor = parseFloat(document.getElementById('tf-valor').value) || 0;
+        if (!deId || !paraId) { toast('Selecione os dois bancos', 'danger'); return; }
+        if (deId === paraId) { toast('Escolha bancos diferentes', 'danger'); return; }
+        if (!valor) { toast('Informe um valor', 'danger'); return; }
+        const de = Store.get('banks', deId), para = Store.get('banks', paraId);
+        Store.update('banks', deId, { balance: (de.balance || 0) - valor });
+        Store.update('banks', paraId, { balance: (para.balance || 0) + valor });
+        Store.add('transferencias', { deId, paraId, valor, data: document.getElementById('tf-data').value, observacao: document.getElementById('tf-obs').value });
+        toast('Transferência realizada', 'success');
+        draw();
+      };
+    }
+  };
+  draw();
+}
+
+function transferenciasHTML() {
+  const banks = Store.state.banks;
+  const transfs = [...Store.state.transferencias].sort((a, b) => (a.data < b.data ? 1 : -1));
+  return `
+    <div class="grid-form-list">
+      <div class="panel">
+        <h3 style="margin-bottom:14px">Nova transferência</h3>
+        ${banks.length < 2 ? `<div class="row-sub" style="margin-bottom:10px">Cadastre pelo menos 2 bancos para transferir entre eles.</div>` : ''}
+        <div class="field"><label>De</label><select id="tf-de"><option value="">Banco de origem...</option>${banks.map((b) => `<option value="${b.id}">${b.name} (${formatCurrency(b.balance || 0)})</option>`).join('')}</select></div>
+        <div class="field"><label>Para</label><select id="tf-para"><option value="">Banco de destino...</option>${banks.map((b) => `<option value="${b.id}">${b.name}</option>`).join('')}</select></div>
+        <div class="field-row">
+          <div class="field"><label>Valor</label><input type="number" step="0.01" id="tf-valor" placeholder="0,00" /></div>
+          <div class="field"><label>Data</label><input type="date" id="tf-data" value="${todayISO()}" /></div>
+        </div>
+        <div class="field"><label>Observação (opcional)</label><textarea id="tf-obs" placeholder="Observação (opcional)"></textarea></div>
+        <button class="btn btn-primary btn-block" id="tf-save" ${banks.length < 2 ? 'disabled' : ''}>Transferir</button>
+      </div>
+      <div class="panel">
+        <h3 style="margin-bottom:14px">Histórico de transferências</h3>
+        ${transfs.length === 0 ? emptyState({ iconName: 'repeat', title: 'Nenhuma transferência registrada.' }) : `
+          <table class="list-table">
+            <thead><tr><th>De</th><th>Para</th><th>Data</th><th>Valor</th></tr></thead>
+            <tbody>${transfs.map((t) => `<tr>
+              <td>${(Store.bankById(t.deId) || {}).name || '—'}</td>
+              <td>${(Store.bankById(t.paraId) || {}).name || '—'}</td>
+              <td>${formatDateBR(t.data)}</td>
+              <td><strong>${formatCurrency(t.valor)}</strong></td>
+            </tr>`).join('')}</tbody>
+          </table>
+        `}
+      </div>
+    </div>
+  `;
 }
 
 /* ---- Recebimentos ---- */
+let editingRecebId = null;
+let recebTipo = 'unico';
+let recebPeriod = { type: 'month', value: currentMonthStr() };
+
 function pageRecebimentos(container) {
-  genericCrudPage(container, {
-    collection: 'recebimentos', icon: 'download',
-    formTitle: 'Novo recebimento', submitLabel: 'Adicionar recebimento',
-    singular: 'Recebimento', singularLower: 'recebimento',
-    listTitle: 'Recebimentos', listSubtitle: 'Salários, vendas e outras entradas.',
-    emptyTitle: 'Nenhum recebimento cadastrado', emptyText: 'Registre entradas previstas ou já recebidas.',
-    fields: [
-      { key: 'descricao', label: 'Descrição', type: 'text', required: true, placeholder: 'Ex.: Salário' },
-      { key: 'valor', label: 'Valor', type: 'number', required: true },
-      { key: 'data', label: 'Data prevista', type: 'date', required: true },
-      { key: 'categoryId', label: 'Categoria', type: 'select-category' },
-      { key: 'bankId', label: 'Banco vinculado', type: 'select-bank', required: true },
-      { key: 'status', label: 'Status', type: 'select', options: [{ value: 'pendente', label: 'Pendente' }, { value: 'recebido', label: 'Recebido' }] },
-    ],
-    statsFn: (items) => [
-      { label: 'Total', value: formatCurrency(items.reduce((s, r) => s + r.valor, 0)), tone: 'blue', iconName: 'wallet' },
-      { label: 'Recebido', value: formatCurrency(items.filter((r) => r.status === 'recebido').reduce((s, r) => s + r.valor, 0)), tone: 'green', iconName: 'checkCircle' },
-      { label: 'Pendente', value: formatCurrency(items.filter((r) => r.status !== 'recebido').reduce((s, r) => s + r.valor, 0)), tone: 'orange', iconName: 'alertTriangle' },
-    ],
-    renderList: (items) => `<table class="list-table"><thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody>${items.map((r) => `
-      <tr><td class="row-title">${r.descricao}</td><td>${categoryTag(r.categoryId)}</td><td>${formatDateBR(r.data)}</td><td class="amount-pos">${formatCurrency(r.valor)}</td>
-      <td><button class="badge ${r.status === 'recebido' ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-receb" data-id="${r.id}">${r.status === 'recebido' ? 'Recebido' : 'Pendente'}</button></td>
-      <td><div class="row-actions"><button class="btn-icon" data-action="edit" data-id="${r.id}">${icon('edit')}</button><button class="btn-icon" data-action="delete" data-id="${r.id}">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>`,
-    wireExtra: (container, draw) => container.querySelectorAll('[data-action="toggle-receb"]').forEach((b) => {
-      b.onclick = () => {
-        const item = Store.get('recebimentos', b.dataset.id);
-        Store.update('recebimentos', b.dataset.id, { status: item.status === 'recebido' ? 'pendente' : 'recebido' });
-        draw();
+  const draw = () => {
+    const editing = editingRecebId ? Store.get('recebimentos', editingRecebId) : null;
+    const period = recebPeriod;
+    const mStr = period.type === 'year' ? null : (period.value || currentMonthStr());
+    const months = period.type === 'year' ? Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`) : [mStr];
+    const items = months.flatMap((m) => recebimentosForMonth(m));
+
+    const total = items.reduce((s, r) => s + r.valor, 0);
+    const previsto = items.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
+    const maior = items.reduce((max, r) => Math.max(max, r.valor), 0);
+    const ticketMedio = items.length ? total / items.length : 0;
+
+    container.innerHTML = `
+      <div class="grid-form-list">
+        <div class="panel">
+          <h3 style="margin-bottom:14px">${editing ? 'Editar recebimento' : 'Novo recebimento'}</h3>
+          <div class="field"><label>Descrição</label><input type="text" id="rc-desc" placeholder="Ex.: Salário" value="${editing ? editing.descricao : ''}" /></div>
+          <div class="field-row">
+            <div class="field"><label>Valor</label><input type="number" step="0.01" id="rc-valor" placeholder="0,00" value="${editing ? editing.valor : ''}" /></div>
+            <div class="field"><label>Data</label><input type="date" id="rc-data" value="${editing ? editing.data : todayISO()}" /></div>
+          </div>
+          <div class="field"><label>Categoria</label>${fieldHTML({ key: 'rc-categoria', type: 'select-category' }, editing ? editing.categoryId : '')}</div>
+          <div class="field"><label>Banco (obrigatório)</label>${fieldHTML({ key: 'rc-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
+          <div class="field"><label>Observação (opcional)</label><textarea id="rc-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
+          <div class="field">
+            <label>Tipo de recebimento</label>
+            <div class="pill-group" id="rc-tipo-group">
+              <button type="button" class="pill ${recebTipo === 'unico' ? 'active' : ''}" data-tipo="unico">Único</button>
+              <button type="button" class="pill ${recebTipo === 'recorrente' ? 'active' : ''}" data-tipo="recorrente">Recorrente</button>
+              <button type="button" class="pill ${recebTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">Parcelado</button>
+            </div>
+          </div>
+          <div class="field" id="rc-parcelas-field" style="display:${recebTipo === 'parcelado' ? 'block' : 'none'}">
+            <label>Número de parcelas</label><input type="number" min="2" max="48" id="rc-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
+          </div>
+          <button class="btn btn-primary btn-block" id="rc-save">${editing ? 'Salvar alterações' : 'Registrar recebimento'}</button>
+          ${editing ? `<button class="btn btn-ghost btn-block" id="rc-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
+          <div style="margin-top:14px">${collapsibleNewCategory('rc')}</div>
+        </div>
+
+        <div>
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3>Recebimentos</h3><div class="panel-sub">Entradas no período selecionado.</div></div>
+              ${renderPeriodControl('rc', period)}
+            </div>
+            <div class="stat-grid">
+              ${statCard({ label: 'Total recebido', value: formatCurrency(total - previsto), tone: 'green', iconName: 'checkCircle' })}
+              ${statCard({ label: 'Previsto', value: formatCurrency(previsto), sub: `${items.filter((r) => !r.recebido).length} registro(s)`, tone: 'orange', iconName: 'alertTriangle' })}
+              ${statCard({ label: 'Maior recebimento', value: formatCurrency(maior), tone: 'blue', iconName: 'trendUp' })}
+              ${statCard({ label: 'Ticket médio', value: formatCurrency(ticketMedio), tone: 'purple', iconName: 'wallet' })}
+            </div>
+            ${items.length === 0 ? emptyState({ iconName: 'download', title: 'Nenhum recebimento nesse período.' }) : recebimentosTable(items)}
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('rc-tipo-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => {
+      recebTipo = b.dataset.tipo;
+      document.getElementById('rc-tipo-group').querySelectorAll('.pill').forEach((x) => x.classList.toggle('active', x === b));
+      document.getElementById('rc-parcelas-field').style.display = recebTipo === 'parcelado' ? 'block' : 'none';
+    });
+
+    document.getElementById('rc-save').onclick = () => {
+      const descricao = document.getElementById('rc-desc').value.trim();
+      const valor = parseFloat(document.getElementById('rc-valor').value) || 0;
+      const data = document.getElementById('rc-data').value;
+      const bankId = document.getElementById('f-rc-banco').value;
+      if (!descricao) { toast('Informe a descrição', 'danger'); return; }
+      if (!valor) { toast('Informe um valor', 'danger'); return; }
+      if (!bankId) { toast('Selecione o banco', 'danger'); return; }
+      const payload = {
+        descricao, valor, data, bankId,
+        categoryId: document.getElementById('f-rc-categoria').value,
+        observacao: document.getElementById('rc-obs').value,
+        tipo: recebTipo,
+        parcelas: recebTipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('rc-parcelas').value, 10) || 2) : 1,
       };
-    }),
-  });
+      if (editing) { Store.update('recebimentos', editing.id, payload); toast('Recebimento atualizado', 'success'); editingRecebId = null; }
+      else { Store.add('recebimentos', payload); toast('Recebimento registrado', 'success'); }
+      draw();
+    };
+    if (editing) document.getElementById('rc-cancel-edit').onclick = () => { editingRecebId = null; draw(); };
+
+    wireQuickAddButtons([{ key: 'rc-categoria', type: 'select-category' }, { key: 'rc-banco', type: 'select-bank' }]);
+    wireCollapsibleNewCategory('rc', () => draw());
+    wirePeriodControl('rc', period, draw);
+
+    container.querySelectorAll('[data-action="edit-receb"]').forEach((b) => b.onclick = () => { editingRecebId = b.dataset.id; recebTipo = Store.get('recebimentos', b.dataset.id).tipo || 'unico'; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    container.querySelectorAll('[data-action="toggle-receb"]').forEach((b) => b.onclick = () => { toggleRecebimentoRecebido(b.dataset.id, b.dataset.mes); draw(); });
+    container.querySelectorAll('[data-action="delete-receb"]').forEach((b) => b.onclick = () => {
+      confirmModal({
+        title: 'Excluir recebimento', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+        onConfirm: () => { Store.remove('recebimentos', b.dataset.id); toast('Recebimento excluído', 'success'); draw(); },
+      });
+    });
+  };
+  draw();
+}
+
+function recebimentosTable(items) {
+  return `
+    <table class="list-table">
+      <thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Parcela</th><th>Valor</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${items.map((r) => `
+          <tr>
+            <td><div class="row-title">${r.descricao}</div>${r.observacao ? `<div class="row-sub">${r.observacao}</div>` : ''}</td>
+            <td>${categoryTag(r.categoryId)}</td>
+            <td>${formatDateBR(r.mesRef + '-' + r.data.slice(8, 10))}</td>
+            <td>${r.parcelaLabel}</td>
+            <td class="amount-pos">${formatCurrency(r.valor)}</td>
+            <td><button class="badge ${r.recebido ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-receb" data-id="${r.id}" data-mes="${r.mesRef}">${r.recebido ? 'Recebido' : 'Pendente'}</button></td>
+            <td><div class="row-actions">
+              <button class="btn-icon" data-action="edit-receb" data-id="${r.id}">${icon('edit')}</button>
+              <button class="btn-icon" data-action="delete-receb" data-id="${r.id}">${icon('trash')}</button>
+            </div></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
 }
 
 /* ---- Cofrinhos ---- */
+const COFRINHO_ICONS = ['🎯', '🏠', '✈️', '🚗', '💻', '🎓', '💍', '💰', '🎨', '🚨'];
+const COFRINHO_CORES = ['#f5a623', '#7c3aed', '#3866ff', '#22c55e', '#f04848', '#eab308', '#a855f7', '#14b8a6'];
+let cofrinhoFormOpen = false;
+let editingCofrinhoId = null;
+let novoCofrinhoIcone = COFRINHO_ICONS[0];
+let novoCofrinhoCor = COFRINHO_CORES[0];
+
 function pageCofrinhos(container) {
-  genericCrudPage(container, {
-    collection: 'cofrinhos', icon: 'piggy',
-    formTitle: 'Novo cofrinho', submitLabel: 'Criar cofrinho',
-    singular: 'Cofrinho', singularLower: 'cofrinho',
-    listTitle: 'Seus cofrinhos', listSubtitle: 'Reserva de emergência e metas de poupança.',
-    emptyTitle: 'Nenhum cofrinho criado ainda', emptyText: 'Crie metas de economia, tipo "Viagem" ou "Reserva de emergência".',
-    fields: [
-      { key: 'nome', label: 'Nome da meta', type: 'text', required: true, placeholder: 'Ex.: Viagem' },
-      { key: 'emoji', label: 'Emoji', type: 'emoji', default: '🐷' },
-      { key: 'meta', label: 'Valor da meta', type: 'number', required: true },
-      { key: 'atual', label: 'Valor já guardado', type: 'number' },
-    ],
-    renderList: (items) => `<div>${cofrinhosFullList(items)}</div>`,
-  });
+  const draw = () => {
+    const items = Store.state.cofrinhos;
+    const editing = editingCofrinhoId ? Store.get('cofrinhos', editingCofrinhoId) : null;
+    if (editing) { novoCofrinhoIcone = editing.icone || COFRINHO_ICONS[0]; novoCofrinhoCor = editing.cor || COFRINHO_CORES[0]; }
+
+    container.innerHTML = `
+      <div class="panel-header" style="margin-bottom:16px">
+        <div class="row-sub">${items.length} cofrinho${items.length === 1 ? '' : 's'} ativo${items.length === 1 ? '' : 's'}</div>
+        <button class="btn btn-primary btn-sm" id="cf-toggle-form">${icon('plus')} Novo cofrinho</button>
+      </div>
+
+      <div class="panel" id="cf-form-panel" style="display:${cofrinhoFormOpen ? 'block' : 'none'}">
+        <div class="panel-header"><h3>${editing ? 'Editar cofrinho' : 'Novo cofrinho'}</h3><button class="btn btn-ghost btn-sm" id="cf-cancel">Cancelar</button></div>
+        <div class="field"><label>Nome</label><input type="text" id="cf-nome" placeholder='Ex.: Viagem para Bariloche' value="${editing ? editing.nome : ''}" /></div>
+        <div class="field-row">
+          <div class="field"><label>Valor objetivo</label><input type="number" step="0.01" id="cf-meta" placeholder="0,00" value="${editing ? editing.meta : ''}" /></div>
+          <div class="field"><label>Prazo (opcional)</label><input type="date" id="cf-prazo" value="${editing ? (editing.prazo || '') : ''}" /></div>
+        </div>
+        <div class="field">
+          <label>Ícone</label>
+          <div class="chip-row" id="cf-icone-group">
+            ${COFRINHO_ICONS.map((e) => `<button type="button" class="btn-icon" data-icone="${e}" style="font-size:16px;${e === novoCofrinhoIcone ? 'border-color:var(--primary);background:var(--primary-soft)' : ''}">${e}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field">
+          <label>Cor</label>
+          <div class="chip-row" id="cf-cor-group">
+            ${COFRINHO_CORES.map((c) => `<button type="button" data-cor="${c}" style="width:30px;height:30px;border-radius:50%;background:${c};border:2px solid ${c === novoCofrinhoCor ? 'var(--text)' : 'transparent'};cursor:pointer"></button>`).join('')}
+          </div>
+        </div>
+        <div class="field"><label>Observação</label><textarea id="cf-obs" placeholder="Opcional">${editing ? (editing.observacao || '') : ''}</textarea></div>
+        <div class="field checkbox-row" style="align-items:flex-start;gap:10px">
+          <input type="checkbox" id="cf-auto" ${editing && editing.aporteAutomatico ? 'checked' : ''} style="margin-top:3px" />
+          <label for="cf-auto" style="cursor:pointer"><strong style="display:block;color:var(--text)">Aporte automático mensal</strong><span class="row-sub">O sistema transfere automaticamente da conta no dia escolhido.</span></label>
+        </div>
+        <button class="btn btn-primary btn-block" id="cf-save">${editing ? 'Salvar alterações' : 'Criar cofrinho'}</button>
+      </div>
+
+      ${items.length === 0 && !cofrinhoFormOpen ? `
+        <div class="panel">
+          ${emptyState({ iconName: 'target', title: 'Nenhum cofrinho criado ainda', text: 'Crie metas como "Viagem", "Reserva de emergência" ou "Notebook novo" e vá guardando aos poucos.', actionLabel: 'Criar primeiro cofrinho', actionId: 'cf-empty-create' })}
+        </div>
+      ` : ''}
+      ${items.length > 0 ? `<div class="grid-2">${cofrinhosFullList(items)}</div>` : ''}
+    `;
+
+    document.getElementById('cf-toggle-form').onclick = () => { cofrinhoFormOpen = !cofrinhoFormOpen; if (!cofrinhoFormOpen) editingCofrinhoId = null; draw(); };
+    document.getElementById('cf-cancel').onclick = () => { cofrinhoFormOpen = false; editingCofrinhoId = null; draw(); };
+    if (document.getElementById('cf-empty-create')) document.getElementById('cf-empty-create').onclick = () => { cofrinhoFormOpen = true; draw(); };
+
+    if (document.getElementById('cf-icone-group')) {
+      const icoBtns = document.getElementById('cf-icone-group').querySelectorAll('[data-icone]');
+      icoBtns.forEach((b) => b.onclick = () => {
+        novoCofrinhoIcone = b.dataset.icone;
+        icoBtns.forEach((x) => x.style.cssText = x === b ? 'font-size:16px;border-color:var(--primary);background:var(--primary-soft)' : 'font-size:16px');
+      });
+      const corBtns = document.getElementById('cf-cor-group').querySelectorAll('[data-cor]');
+      corBtns.forEach((b) => b.onclick = () => {
+        novoCofrinhoCor = b.dataset.cor;
+        corBtns.forEach((x) => x.style.border = x === b ? '2px solid var(--text)' : '2px solid transparent');
+      });
+      document.getElementById('cf-save').onclick = () => {
+        const nome = document.getElementById('cf-nome').value.trim();
+        const meta = parseFloat(document.getElementById('cf-meta').value) || 0;
+        if (!nome) { toast('Dê um nome para o cofrinho', 'danger'); return; }
+        if (!meta) { toast('Informe o valor objetivo', 'danger'); return; }
+        const payload = {
+          nome, meta,
+          prazo: document.getElementById('cf-prazo').value || null,
+          icone: novoCofrinhoIcone,
+          cor: novoCofrinhoCor,
+          observacao: document.getElementById('cf-obs').value,
+          aporteAutomatico: document.getElementById('cf-auto').checked,
+        };
+        if (editing) { Store.update('cofrinhos', editing.id, payload); toast('Cofrinho atualizado', 'success'); }
+        else { Store.add('cofrinhos', Object.assign({ atual: 0 }, payload)); toast('Cofrinho criado', 'success'); }
+        cofrinhoFormOpen = false; editingCofrinhoId = null;
+        draw();
+      };
+    }
+
+    container.querySelectorAll('[data-action="edit-cofrinho"]').forEach((b) => b.onclick = () => { editingCofrinhoId = b.dataset.id; cofrinhoFormOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    container.querySelectorAll('[data-action="delete-cofrinho"]').forEach((b) => b.onclick = () => {
+      confirmModal({
+        title: 'Excluir cofrinho', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+        onConfirm: () => { Store.remove('cofrinhos', b.dataset.id); toast('Cofrinho excluído', 'success'); draw(); },
+      });
+    });
+    container.querySelectorAll('[data-action="depositar-cofrinho"]').forEach((b) => b.onclick = () => {
+      const overlay = document.getElementById('modal-overlay');
+      overlay.innerHTML = `
+        <div class="modal-box">
+          <h3>Depositar no cofrinho</h3>
+          <div class="field"><label>Valor</label><input type="number" step="0.01" id="dep-valor" placeholder="0,00" /></div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
+            <button class="btn btn-primary btn-sm" id="modal-confirm">Depositar</button>
+          </div>
+        </div>`;
+      overlay.classList.add('open');
+      overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
+      overlay.querySelector('#modal-confirm').onclick = () => {
+        const valor = parseFloat(document.getElementById('dep-valor').value) || 0;
+        if (valor > 0) {
+          const c = Store.get('cofrinhos', b.dataset.id);
+          Store.update('cofrinhos', b.dataset.id, { atual: (c.atual || 0) + valor });
+          toast('Depósito registrado', 'success');
+        }
+        overlay.classList.remove('open');
+        draw();
+      };
+    });
+  };
+  draw();
 }
 function cofrinhosFullList(items) {
   return items.map((c) => {
     const pct = c.meta > 0 ? Math.min(100, Math.round((c.atual / c.meta) * 100)) : 0;
     return `
-      <div class="panel" style="background:var(--bg-input);margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <strong>${c.emoji || '🐷'} ${c.nome}</strong>
-          <div class="row-actions"><button class="btn-icon" data-action="edit" data-id="${c.id}">${icon('edit')}</button><button class="btn-icon" data-action="delete" data-id="${c.id}">${icon('trash')}</button></div>
+      <div class="panel" style="background:var(--bg-input)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <strong style="display:flex;align-items:center;gap:8px"><span style="width:34px;height:34px;border-radius:50%;background:${hexToSoft(c.cor || '#f5a623')};display:inline-flex;align-items:center;justify-content:center">${c.icone || '🎯'}</span>${c.nome}</strong>
+          <div class="row-actions">
+            <button class="btn-icon" data-action="edit-cofrinho" data-id="${c.id}">${icon('edit')}</button>
+            <button class="btn-icon" data-action="delete-cofrinho" data-id="${c.id}">${icon('trash')}</button>
+          </div>
         </div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><strong>${formatCurrency(c.atual)}</strong><span class="row-sub">de ${formatCurrency(c.meta)} · ${pct}%</span></div>
-        <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%;background:${c.cor || 'var(--primary)'}"></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+          <span class="row-sub">${c.prazo ? 'Prazo: ' + formatDateBR(c.prazo) : (c.aporteAutomatico ? 'Aporte automático ativo' : '')}</span>
+          <button class="btn btn-ghost btn-sm" data-action="depositar-cofrinho" data-id="${c.id}">${icon('plus')} Depositar</button>
+        </div>
       </div>`;
   }).join('');
 }
@@ -1265,6 +1593,186 @@ function pageInvestimentos(container) {
       <tr><td class="row-title">${i.nome}</td><td>${i.tipo || '—'}</td><td>${formatDateBR(i.data)}</td><td><strong>${formatCurrency(i.valor)}</strong></td>
       <td><div class="row-actions"><button class="btn-icon" data-action="edit" data-id="${i.id}">${icon('edit')}</button><button class="btn-icon" data-action="delete" data-id="${i.id}">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>`,
   });
+}
+
+/* =========================================================================
+   EXTRATO — livro-razão unificado (gastos fixos + variáveis + recebimentos)
+   ========================================================================= */
+let extratoPeriod = { type: 'sync' };
+let extratoBanco = 'todos';
+let extratoTipo = 'todos';
+let extratoStatus = 'todos';
+let extratoSearch = '';
+let extratoSort = 'desc';
+let extratoFiltrosAbertos = false;
+
+function monthRangeISO(mStr) {
+  const [y, m] = mStr.split('-').map(Number);
+  return [`${mStr}-01`, `${mStr}-${String(daysInMonth(y, m - 1)).padStart(2, '0')}`];
+}
+function extratoDateRange(period) {
+  const today = todayISO();
+  switch (period.type) {
+    case 'sync': return dashPeriod.type === 'year' ? [`${dashPeriod.value}-01-01`, `${dashPeriod.value}-12-31`] : monthRangeISO(dashPeriod.value || currentMonthStr());
+    case 'hoje': return [today, today];
+    case 'ontem': return [addDaysISO(today, -1), addDaysISO(today, -1)];
+    case '7dias': return [addDaysISO(today, -6), today];
+    case '30dias': return [addDaysISO(today, -29), today];
+    case 'mespassado': return monthRangeISO(monthAddStr(currentMonthStr(), -1));
+    case 'custom': return [period.start || today, period.end || today];
+    case 'mes': default: return monthRangeISO(currentMonthStr());
+  }
+}
+function monthsBetween(start, end) {
+  const months = [];
+  let cur = start.slice(0, 7);
+  const endM = end.slice(0, 7);
+  let guard = 0;
+  while (cur <= endM && guard < 60) { months.push(cur); cur = monthAddStr(cur, 1); guard++; }
+  return months;
+}
+
+function pageExtrato(container) {
+  const draw = () => {
+    const [start, end] = extratoDateRange(extratoPeriod);
+    const months = monthsBetween(start, end);
+
+    let txs = [
+      ...months.flatMap((m) => gastosFixosForMonth(m)).map((g) => ({ id: g.id, mesRef: g.mesRef, data: g.vencimentoISO, descricao: g.nome, tipo: 'Gasto fixo', bankId: g.bankId, categoryId: g.categoryId, status: g.pago ? 'pago' : 'pendente', valor: g.valor, sinal: -1 })),
+      ...Store.state.gastosVariaveis.map((g) => ({ id: g.id, data: g.data, descricao: g.descricao, tipo: 'Gasto variável', bankId: g.bankId, categoryId: g.categoryId, status: g.status, valor: g.valor, sinal: -1 })),
+      ...months.flatMap((m) => recebimentosForMonth(m)).map((r) => ({ id: r.id, mesRef: r.mesRef, data: r.dataOcorrencia, descricao: r.descricao, tipo: 'Recebimento', bankId: r.bankId, categoryId: r.categoryId, status: r.recebido ? 'recebido' : 'pendente', valor: r.valor, sinal: 1 })),
+    ].filter((t) => t.data >= start && t.data <= end);
+
+    if (extratoBanco !== 'todos') txs = txs.filter((t) => t.bankId === extratoBanco);
+    if (extratoTipo !== 'todos') txs = txs.filter((t) => t.tipo === extratoTipo);
+    if (extratoStatus !== 'todos') txs = txs.filter((t) => (extratoStatus === 'pago' ? (t.status === 'pago' || t.status === 'recebido') : t.status === 'pendente'));
+    if (extratoSearch) {
+      const q = extratoSearch.toLowerCase();
+      txs = txs.filter((t) => t.descricao.toLowerCase().includes(q) || (Store.categoryById(t.categoryId) || {}).name?.toLowerCase().includes(q));
+    }
+    txs.sort((a, b) => extratoSort === 'asc' ? (a.data < b.data ? -1 : 1) : (a.data < b.data ? 1 : -1));
+
+    const gastos = txs.filter((t) => t.sinal === -1);
+    const receb = txs.filter((t) => t.sinal === 1);
+    const totalGastos = gastos.reduce((s, t) => s + t.valor, 0);
+    const totalRecebimentos = receb.reduce((s, t) => s + t.valor, 0);
+    const totalAReceber = receb.filter((t) => t.status !== 'recebido').reduce((s, t) => s + t.valor, 0);
+    const totalPago = gastos.filter((t) => t.status === 'pago').reduce((s, t) => s + t.valor, 0);
+    const faltaPagar = totalGastos - totalPago;
+    const entradasRealizadas = receb.filter((t) => t.status === 'recebido').reduce((s, t) => s + t.valor, 0);
+    const saidasPagas = totalPago;
+    const saldoBancario = Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
+
+    const periodPills = [
+      { mode: 'sync', label: `Sincronizar com Dashboard (${dashPeriod.type === 'year' ? dashPeriod.value : 'Este mês'})` },
+      { mode: 'hoje', label: 'Hoje' }, { mode: 'ontem', label: 'Ontem' }, { mode: '7dias', label: 'Últimos 7 dias' },
+      { mode: '30dias', label: 'Últimos 30 dias' }, { mode: 'mes', label: 'Este mês' }, { mode: 'mespassado', label: 'Mês passado' },
+      { mode: 'custom', label: 'Personalizado' },
+    ];
+
+    container.innerHTML = `
+      <div class="panel">
+        <div class="section-title" style="margin-top:0">Período</div>
+        <div class="pill-group" id="ex-period-group">${periodPills.map((p) => `<button class="pill ${extratoPeriod.type === p.mode ? 'active' : ''}" data-mode="${p.mode}">${p.label}</button>`).join('')}</div>
+        ${extratoPeriod.type === 'custom' ? `
+          <div class="field-row" style="max-width:340px;margin-top:12px">
+            <div class="field"><label>De</label><input type="date" id="ex-start" value="${extratoPeriod.start || start}" /></div>
+            <div class="field"><label>Até</label><input type="date" id="ex-end" value="${extratoPeriod.end || end}" /></div>
+          </div>` : ''}
+
+        <div class="section-title">Bancos (${extratoBanco === 'todos' ? 'todos' : (Store.bankById(extratoBanco) || {}).name})</div>
+        <div class="pill-group" id="ex-bank-group">
+          <button class="pill ${extratoBanco === 'todos' ? 'active' : ''}" data-bank="todos">Todos</button>
+          ${Store.state.banks.map((b) => `<button class="pill ${extratoBanco === b.id ? 'active' : ''}" data-bank="${b.id}">${icon('bank')} ${b.name}</button>`).join('')}
+        </div>
+
+        <div class="field-row" style="margin-top:14px;align-items:end">
+          <div class="field"><label>Tipo</label><select id="ex-tipo">
+            <option value="todos" ${extratoTipo === 'todos' ? 'selected' : ''}>Todos</option>
+            <option value="Gasto fixo" ${extratoTipo === 'Gasto fixo' ? 'selected' : ''}>Gasto fixo</option>
+            <option value="Gasto variável" ${extratoTipo === 'Gasto variável' ? 'selected' : ''}>Gasto variável</option>
+            <option value="Recebimento" ${extratoTipo === 'Recebimento' ? 'selected' : ''}>Recebimento</option>
+          </select></div>
+          <div class="field" style="flex:1"><label>Buscar</label><input type="text" id="ex-search" placeholder="Descrição, categoria..." value="${extratoSearch}" /></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="ex-toggle-filtros">${icon('chevronDown')} Filtros avançados</button>
+        <div style="display:${extratoFiltrosAbertos ? 'block' : 'none'};margin-top:12px" class="field-row">
+          <div class="field"><label>Status</label><select id="ex-status">
+            <option value="todos" ${extratoStatus === 'todos' ? 'selected' : ''}>Todos</option>
+            <option value="pago" ${extratoStatus === 'pago' ? 'selected' : ''}>Pago/Recebido</option>
+            <option value="pendente" ${extratoStatus === 'pendente' ? 'selected' : ''}>Pendente</option>
+          </select></div>
+          <div class="field"><label>Ordenar por</label><select id="ex-sort">
+            <option value="desc" ${extratoSort === 'desc' ? 'selected' : ''}>Data — mais recente</option>
+            <option value="asc" ${extratoSort === 'asc' ? 'selected' : ''}>Data — mais antiga</option>
+          </select></div>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Recebimentos', value: formatCurrency(totalRecebimentos), tone: 'green', iconName: 'arrowUpCircle' })}
+        ${statCard({ label: 'A receber', value: formatCurrency(totalAReceber), tone: 'blue', iconName: 'download' })}
+        ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), tone: 'purple', iconName: 'checkCircle' })}
+        ${statCard({ label: 'Falta pagar', value: formatCurrency(faltaPagar), tone: 'orange', iconName: 'alertTriangle' })}
+        ${statCard({ label: 'Saldo do período', value: formatCurrency(totalRecebimentos - totalGastos), tone: 'cyan', iconName: 'wallet' })}
+      </div>
+      <div class="stat-grid">
+        ${statCard({ label: 'Entradas (realizadas)', value: formatCurrency(entradasRealizadas), tone: 'green', iconName: 'download' })}
+        ${statCard({ label: 'Saídas (pagas)', value: formatCurrency(saidasPagas), tone: 'red', iconName: 'arrowUpCircle' })}
+        ${statCard({ label: 'Saldo realizado (período)', value: formatCurrency(entradasRealizadas - saidasPagas), tone: 'blue', iconName: 'checkCircle' })}
+        ${statCard({ label: 'Saldo bancário atual', value: formatCurrency(saldoBancario), tone: 'purple', iconName: 'wallet' })}
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h3>${txs.length} movimentações</h3><button class="btn btn-ghost btn-sm" id="ex-export">${icon('download')} Exportar</button></div>
+        ${txs.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhuma movimentação encontrada com os filtros aplicados.' }) : `
+          <table class="list-table">
+            <thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Banco</th><th>Categoria</th><th>Status</th><th>Valor</th></tr></thead>
+            <tbody>${txs.map((t) => `
+              <tr>
+                <td>${formatDateBR(t.data)}</td>
+                <td class="row-title">${t.descricao}</td>
+                <td><span class="badge ${t.sinal === 1 ? 'badge-success' : 'badge-muted'}">${t.tipo}</span></td>
+                <td>${(Store.bankById(t.bankId) || {}).name || '—'}</td>
+                <td>${categoryTag(t.categoryId)}</td>
+                <td>${t.status === 'pago' || t.status === 'recebido' ? '<span class="badge badge-success">' + (t.status === 'pago' ? 'pago' : 'recebido') + '</span>' : '<span class="badge badge-warning">pendente</span>'}</td>
+                <td class="${t.sinal === 1 ? 'amount-pos' : 'amount-neg'}">${t.sinal === 1 ? '+' : '-'} ${formatCurrency(t.valor)}</td>
+              </tr>`).join('')}</tbody>
+          </table>
+        `}
+      </div>
+    `;
+
+    document.getElementById('ex-period-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => { extratoPeriod = { type: b.dataset.mode }; draw(); });
+    const s = document.getElementById('ex-start'), e = document.getElementById('ex-end');
+    if (s) s.onchange = () => { extratoPeriod = { type: 'custom', start: s.value, end: e.value }; draw(); };
+    if (e) e.onchange = () => { extratoPeriod = { type: 'custom', start: s.value, end: e.value }; draw(); };
+    document.getElementById('ex-bank-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => { extratoBanco = b.dataset.bank; draw(); });
+    document.getElementById('ex-tipo').onchange = (ev) => { extratoTipo = ev.target.value; draw(); };
+    document.getElementById('ex-search').oninput = (ev) => { extratoSearch = ev.target.value; draw(); };
+    document.getElementById('ex-toggle-filtros').onclick = () => { extratoFiltrosAbertos = !extratoFiltrosAbertos; draw(); };
+    document.getElementById('ex-status').onchange = (ev) => { extratoStatus = ev.target.value; draw(); };
+    document.getElementById('ex-sort').onchange = (ev) => { extratoSort = ev.target.value; draw(); };
+    document.getElementById('ex-export').onclick = () => exportExtratoCSV(txs);
+  };
+  draw();
+}
+
+function exportExtratoCSV(txs) {
+  const header = ['Data', 'Descrição', 'Tipo', 'Banco', 'Categoria', 'Status', 'Valor'];
+  const rows = txs.map((t) => [
+    formatDateBR(t.data), t.descricao, t.tipo, (Store.bankById(t.bankId) || {}).name || '', (Store.categoryById(t.categoryId) || {}).name || '',
+    t.status, (t.sinal === 1 ? '' : '-') + t.valor.toFixed(2).replace('.', ','),
+  ]);
+  const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `extrato-fin360-${todayISO()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Extrato exportado', 'success');
 }
 
 /* =========================================================================

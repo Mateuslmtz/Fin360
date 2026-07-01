@@ -1,6 +1,6 @@
 /* Fin360 — estado da aplicação + persistência local (protótipo, sem backend) */
 
-const STORAGE_KEY = 'fin360_state_v2';
+const STORAGE_KEY = 'fin360_state_v3';
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -35,8 +35,12 @@ function defaultState() {
     gastosFixos: [],
     gastosFixosPagamentos: [], // {id, gastoFixoId, mes:'YYYY-MM'}
     gastosVariaveis: [],
+    // recebimentos: {id,descricao,valor,data,categoryId,bankId,tipo:'unico'|'recorrente'|'parcelado',parcelas,observacao,createdAt}
     recebimentos: [],
+    recebimentosRecebidos: [], // {id, recebimentoId, mes:'YYYY-MM'}
+    // cofrinhos: {id,nome,meta,atual,icone,cor,prazo,observacao,aporteAutomatico,diaAporte,createdAt}
     cofrinhos: [],
+    transferencias: [], // {id,deId,paraId,valor,data,observacao,createdAt}
     // cartoes: {id,nome,banco,limite,diaFechamento,diaVencimento,cor}
     cartoes: [],
     // cartaoCompras: {id,cartaoId,descricao,categoryId,valorTotal,data,tipo:'avista'|'parcelado'|'recorrente',parcelas}
@@ -116,6 +120,51 @@ function cartaoFaturaForMonth(cartaoId, mStr) {
 function allCartoesFaturaForMonth(mStr) {
   return Store.state.cartoes.reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
 }
+/* ============ Recorrência: recebimentos (único / recorrente / parcelado) ============ */
+function recebimentoOccurrenceInMonth(receb, mStr) {
+  const recebMonth = receb.data.slice(0, 7);
+  if (receb.tipo === 'parcelado') {
+    const parcelas = Math.max(1, receb.parcelas || 1);
+    for (let i = 0; i < parcelas; i++) {
+      if (monthAddStr(recebMonth, i) === mStr) {
+        const valorParcela = Math.round((receb.valor / parcelas) * 100) / 100;
+        return { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
+      }
+    }
+    return null;
+  }
+  if (receb.tipo === 'recorrente') {
+    if (mStr >= recebMonth) return { valor: receb.valor, parcelaLabel: '—' };
+    return null;
+  }
+  // único
+  if (mStr === recebMonth) return { valor: receb.valor, parcelaLabel: '1/1' };
+  return null;
+}
+function isRecebimentoRecebido(recebimentoId, mStr) {
+  return Store.state.recebimentosRecebidos.some((p) => p.recebimentoId === recebimentoId && p.mes === mStr);
+}
+function toggleRecebimentoRecebido(recebimentoId, mStr) {
+  const list = Store.state.recebimentosRecebidos;
+  const idx = list.findIndex((p) => p.recebimentoId === recebimentoId && p.mes === mStr);
+  if (idx > -1) list.splice(idx, 1);
+  else list.push({ id: uid(), recebimentoId, mes: mStr });
+  Store.save();
+}
+function recebimentosForMonth(mStr) {
+  return Store.state.recebimentos
+    .map((r) => ({ receb: r, occurrence: recebimentoOccurrenceInMonth(r, mStr) }))
+    .filter((x) => x.occurrence)
+    .map((x) => ({
+      ...x.receb,
+      valor: x.occurrence.valor,
+      parcelaLabel: x.occurrence.parcelaLabel,
+      mesRef: mStr,
+      recebido: isRecebimentoRecebido(x.receb.id, mStr),
+      dataOcorrencia: `${mStr}-${x.receb.data.slice(8, 10)}`,
+    }));
+}
+
 function isCartaoFaturaPaga(cartaoId, mStr) {
   return Store.state.cartaoFaturasPagas.some((p) => p.cartaoId === cartaoId && p.mes === mStr);
 }
