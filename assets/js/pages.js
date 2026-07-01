@@ -5,7 +5,7 @@ function goRoute(route) { location.hash = '#/' + route; }
 function addDaysISO(iso, n) {
   const d = new Date(iso + 'T00:00:00');
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function inPeriod(iso, period) {
@@ -356,7 +356,7 @@ function cofrinhosMini(list) {
 function investMini(list) {
   return `<table class="list-table"><tbody>${list.map((i) => `
     <tr><td><div class="row-title">${i.nome}</div><div class="row-sub">${i.tipo}</div></td>
-    <td style="text-align:right">${formatCurrency(i.valor)}</td></tr>`).join('')}</tbody></table>`;
+    <td style="text-align:right">${formatCurrency(i.capitalInicial)}</td></tr>`).join('')}</tbody></table>`;
 }
 function categoryDonut(entries, sum) {
   const colors = entries.map(([catId]) => (Store.categoryById(catId) || {}).color || 'var(--text-faint)');
@@ -1575,24 +1575,104 @@ function pageCartoes(container) {
 }
 
 /* ---- Investimentos ---- */
+const INVEST_TIPOS = ['CDB', 'Tesouro Direto', 'LCI/LCA', 'Fundos', 'Ações', 'FIIs', 'Cripto', 'Poupança', 'Outro'];
+let investFormOpen = false;
+let editingInvestId = null;
+
 function pageInvestimentos(container) {
-  genericCrudPage(container, {
-    collection: 'investimentos', icon: 'trendUp',
-    formTitle: 'Novo investimento', submitLabel: 'Adicionar investimento',
-    singular: 'Investimento', singularLower: 'investimento',
-    listTitle: 'Carteira de investimentos', listSubtitle: 'Aportes registrados manualmente.',
-    emptyTitle: 'Você ainda não tem investimentos cadastrados', emptyText: 'Registre seus aportes para acompanhar a evolução do patrimônio.',
-    fields: [
-      { key: 'nome', label: 'Nome do ativo', type: 'text', required: true, placeholder: 'Ex.: Tesouro Selic' },
-      { key: 'tipo', label: 'Tipo', type: 'select', options: [{ value: 'Renda Fixa', label: 'Renda Fixa' }, { value: 'Renda Variável', label: 'Renda Variável' }, { value: 'Fundos', label: 'Fundos' }, { value: 'Cripto', label: 'Cripto' }, { value: 'Outro', label: 'Outro' }] },
-      { key: 'valor', label: 'Valor aportado', type: 'number', required: true },
-      { key: 'data', label: 'Data do aporte', type: 'date' },
-    ],
-    statsFn: (items) => [{ label: 'Total investido', value: formatCurrency(items.reduce((s, i) => s + i.valor, 0)), tone: 'cyan', iconName: 'trendUp' }, { label: 'Ativos', value: items.length, tone: 'purple', iconName: 'layers' }],
-    renderList: (items) => `<table class="list-table"><thead><tr><th>Ativo</th><th>Tipo</th><th>Data</th><th>Valor</th><th></th></tr></thead><tbody>${items.map((i) => `
-      <tr><td class="row-title">${i.nome}</td><td>${i.tipo || '—'}</td><td>${formatDateBR(i.data)}</td><td><strong>${formatCurrency(i.valor)}</strong></td>
-      <td><div class="row-actions"><button class="btn-icon" data-action="edit" data-id="${i.id}">${icon('edit')}</button><button class="btn-icon" data-action="delete" data-id="${i.id}">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>`,
-  });
+  const draw = () => {
+    const items = Store.state.investimentos;
+    const editing = editingInvestId ? Store.get('investimentos', editingInvestId) : null;
+    const capitalAplicado = items.reduce((s, i) => s + (i.capitalInicial || 0), 0);
+    const aporteMensal = items.reduce((s, i) => s + (i.aporteMensal || 0), 0);
+
+    container.innerHTML = `
+      <div class="stat-grid">
+        ${statCard({ label: 'Investimentos ativos', value: items.length, tone: 'blue', iconName: 'trendUp' })}
+        ${statCard({ label: 'Capital aplicado', value: formatCurrency(capitalAplicado), tone: 'purple', iconName: 'wallet' })}
+        ${statCard({ label: 'Aporte mensal', value: formatCurrency(aporteMensal), tone: 'green', iconName: 'checkCircle' })}
+      </div>
+
+      <div class="panel-header" style="margin-bottom:16px">
+        <div class="row-sub">Sua carteira completa</div>
+        <button class="btn btn-primary btn-sm" id="iv-toggle-form">${icon('plus')} Novo investimento</button>
+      </div>
+
+      <div class="panel" id="iv-form-panel" style="display:${investFormOpen ? 'block' : 'none'}">
+        <div class="panel-header"><h3>${editing ? 'Editar investimento' : 'Novo investimento'}</h3><button class="btn btn-ghost btn-sm" id="iv-cancel">Cancelar</button></div>
+        <div class="field"><label>Nome</label><input type="text" id="iv-nome" placeholder="Ex.: CDB Banco Inter 110% CDI" value="${editing ? editing.nome : ''}" /></div>
+        <div class="field-row" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="field"><label>Instituição</label><input type="text" id="iv-instituicao" placeholder="Ex.: XP, Inter, Nubank" value="${editing ? editing.instituicao || '' : ''}" /></div>
+          <div class="field"><label>Tipo</label><select id="iv-tipo">${INVEST_TIPOS.map((t) => `<option value="${t}" ${editing && editing.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+          <div class="field"><label>Data de início</label><input type="date" id="iv-data" value="${editing ? editing.data : todayISO()}" /></div>
+        </div>
+        <div class="field-row" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="field"><label>Capital inicial</label><input type="number" step="0.01" id="iv-capital" placeholder="0,00" value="${editing ? editing.capitalInicial : ''}" /></div>
+          <div class="field"><label>Aporte mensal</label><input type="number" step="0.01" id="iv-aporte" placeholder="0,00" value="${editing ? editing.aporteMensal || '' : ''}" /></div>
+          <div class="field"><label>Rentabilidade anual (%)</label><input type="number" step="0.01" id="iv-rentab" placeholder="0,00" value="${editing ? editing.rentabilidade || '' : ''}" /></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Taxa aplicada (%)</label><input type="number" step="0.01" id="iv-taxa" placeholder="0,00" value="${editing ? editing.taxa || '' : ''}" /></div>
+          <div class="field"><label>Prazo (meses)</label><input type="number" id="iv-prazo" placeholder="Opcional" value="${editing ? editing.prazoMeses || '' : ''}" /></div>
+        </div>
+        <div class="field"><label>Observação</label><textarea id="iv-obs" placeholder="Opcional">${editing ? (editing.observacao || '') : ''}</textarea></div>
+        <button class="btn btn-primary btn-block" id="iv-save">${editing ? 'Salvar alterações' : 'Criar investimento'}</button>
+      </div>
+
+      ${items.length === 0 && !investFormOpen ? `<div class="panel">${emptyState({ iconName: 'trendUp', title: 'Nenhum investimento cadastrado', text: 'Adicione seus investimentos (CDB, Tesouro, FIIs, ações) para acompanhar rentabilidade e evolução em um só lugar.', actionLabel: 'Cadastrar primeiro', actionId: 'iv-empty-create' })}</div>` : ''}
+      ${items.length > 0 ? `
+        <div class="panel">
+          <table class="list-table">
+            <thead><tr><th>Ativo</th><th>Instituição</th><th>Tipo</th><th>Capital</th><th>Aporte mensal</th><th>Rentab. anual</th><th></th></tr></thead>
+            <tbody>${items.map((i) => `
+              <tr>
+                <td class="row-title">${i.nome}</td>
+                <td>${i.instituicao || '—'}</td>
+                <td><span class="badge badge-primary">${i.tipo}</span></td>
+                <td><strong>${formatCurrency(i.capitalInicial)}</strong></td>
+                <td>${formatCurrency(i.aporteMensal || 0)}</td>
+                <td>${i.rentabilidade ? i.rentabilidade + '% a.a.' : '—'}</td>
+                <td><div class="row-actions"><button class="btn-icon" data-action="edit-invest" data-id="${i.id}">${icon('edit')}</button><button class="btn-icon" data-action="delete-invest" data-id="${i.id}">${icon('trash')}</button></div></td>
+              </tr>`).join('')}</tbody>
+          </table>
+        </div>` : ''}
+    `;
+
+    document.getElementById('iv-toggle-form').onclick = () => { investFormOpen = !investFormOpen; if (!investFormOpen) editingInvestId = null; draw(); };
+    if (document.getElementById('iv-cancel')) document.getElementById('iv-cancel').onclick = () => { investFormOpen = false; editingInvestId = null; draw(); };
+    if (document.getElementById('iv-empty-create')) document.getElementById('iv-empty-create').onclick = () => { investFormOpen = true; draw(); };
+    if (document.getElementById('iv-save')) {
+      document.getElementById('iv-save').onclick = () => {
+        const nome = document.getElementById('iv-nome').value.trim();
+        const capitalInicial = parseFloat(document.getElementById('iv-capital').value) || 0;
+        if (!nome) { toast('Informe o nome do investimento', 'danger'); return; }
+        if (!capitalInicial) { toast('Informe o capital inicial', 'danger'); return; }
+        const payload = {
+          nome, capitalInicial,
+          instituicao: document.getElementById('iv-instituicao').value,
+          tipo: document.getElementById('iv-tipo').value,
+          data: document.getElementById('iv-data').value,
+          aporteMensal: parseFloat(document.getElementById('iv-aporte').value) || 0,
+          rentabilidade: parseFloat(document.getElementById('iv-rentab').value) || 0,
+          taxa: parseFloat(document.getElementById('iv-taxa').value) || 0,
+          prazoMeses: parseInt(document.getElementById('iv-prazo').value, 10) || null,
+          observacao: document.getElementById('iv-obs').value,
+        };
+        if (editing) { Store.update('investimentos', editing.id, payload); toast('Investimento atualizado', 'success'); }
+        else { Store.add('investimentos', payload); toast('Investimento cadastrado', 'success'); }
+        investFormOpen = false; editingInvestId = null;
+        draw();
+      };
+    }
+    container.querySelectorAll('[data-action="edit-invest"]').forEach((b) => b.onclick = () => { editingInvestId = b.dataset.id; investFormOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    container.querySelectorAll('[data-action="delete-invest"]').forEach((b) => b.onclick = () => {
+      confirmModal({
+        title: 'Excluir investimento', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+        onConfirm: () => { Store.remove('investimentos', b.dataset.id); toast('Investimento excluído', 'success'); draw(); },
+      });
+    });
+  };
+  draw();
 }
 
 /* =========================================================================
@@ -1623,25 +1703,10 @@ function extratoDateRange(period) {
     case 'mes': default: return monthRangeISO(currentMonthStr());
   }
 }
-function monthsBetween(start, end) {
-  const months = [];
-  let cur = start.slice(0, 7);
-  const endM = end.slice(0, 7);
-  let guard = 0;
-  while (cur <= endM && guard < 60) { months.push(cur); cur = monthAddStr(cur, 1); guard++; }
-  return months;
-}
-
 function pageExtrato(container) {
   const draw = () => {
     const [start, end] = extratoDateRange(extratoPeriod);
-    const months = monthsBetween(start, end);
-
-    let txs = [
-      ...months.flatMap((m) => gastosFixosForMonth(m)).map((g) => ({ id: g.id, mesRef: g.mesRef, data: g.vencimentoISO, descricao: g.nome, tipo: 'Gasto fixo', bankId: g.bankId, categoryId: g.categoryId, status: g.pago ? 'pago' : 'pendente', valor: g.valor, sinal: -1 })),
-      ...Store.state.gastosVariaveis.map((g) => ({ id: g.id, data: g.data, descricao: g.descricao, tipo: 'Gasto variável', bankId: g.bankId, categoryId: g.categoryId, status: g.status, valor: g.valor, sinal: -1 })),
-      ...months.flatMap((m) => recebimentosForMonth(m)).map((r) => ({ id: r.id, mesRef: r.mesRef, data: r.dataOcorrencia, descricao: r.descricao, tipo: 'Recebimento', bankId: r.bankId, categoryId: r.categoryId, status: r.recebido ? 'recebido' : 'pendente', valor: r.valor, sinal: 1 })),
-    ].filter((t) => t.data >= start && t.data <= end);
+    let txs = buildTransacoes(start, end);
 
     if (extratoBanco !== 'todos') txs = txs.filter((t) => t.bankId === extratoBanco);
     if (extratoTipo !== 'todos') txs = txs.filter((t) => t.tipo === extratoTipo);
@@ -1776,6 +1841,203 @@ function exportExtratoCSV(txs) {
 }
 
 /* =========================================================================
+   CONCILIAÇÃO
+   ========================================================================= */
+let conciliacaoStart = null;
+let conciliacaoEnd = null;
+let conciliacaoBanco = 'todos';
+let conciliacaoTipo = 'todos';
+let conciliacaoStatus = 'todos';
+let conciliacaoSearch = '';
+
+function pageConciliacao(container) {
+  const draw = () => {
+    const [defStart, defEnd] = monthRangeISO(currentMonthStr());
+    const start = conciliacaoStart || defStart;
+    const end = conciliacaoEnd || defEnd;
+    let txs = buildTransacoes(start, end);
+    const totalMovimentos = txs.length;
+
+    const entradas = txs.filter((t) => t.sinal === 1).reduce((s, t) => s + t.valor, 0);
+    const saidas = txs.filter((t) => t.sinal === -1).reduce((s, t) => s + t.valor, 0);
+    const conciliadas = txs.filter((t) => isConciliado(t.key));
+    const conciliadoValor = conciliadas.reduce((s, t) => s + t.valor, 0);
+    const naoConciliadoValor = txs.reduce((s, t) => s + t.valor, 0) - conciliadoValor;
+    const progresso = totalMovimentos ? Math.round((conciliadas.length / totalMovimentos) * 100) : 0;
+
+    if (conciliacaoBanco !== 'todos') txs = txs.filter((t) => t.bankId === conciliacaoBanco);
+    if (conciliacaoTipo !== 'todos') txs = txs.filter((t) => t.tipo === conciliacaoTipo);
+    if (conciliacaoStatus !== 'todos') txs = txs.filter((t) => (conciliacaoStatus === 'conciliado') === isConciliado(t.key));
+    if (conciliacaoSearch) {
+      const q = conciliacaoSearch.toLowerCase();
+      txs = txs.filter((t) => t.descricao.toLowerCase().includes(q) || (Store.categoryById(t.categoryId) || {}).name?.toLowerCase().includes(q) || (Store.bankById(t.bankId) || {}).name?.toLowerCase().includes(q));
+    }
+    txs.sort((a, b) => (a.data < b.data ? 1 : -1));
+
+    container.innerHTML = `
+      <div class="stat-grid">
+        ${statCard({ label: 'Entradas', value: formatCurrency(entradas), tone: 'green', iconName: 'arrowUpCircle' })}
+        ${statCard({ label: 'Saídas', value: formatCurrency(saidas), tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Conciliado', value: formatCurrency(conciliadoValor), tone: 'blue', iconName: 'checkCircle' })}
+        ${statCard({ label: 'Não conciliado', value: formatCurrency(naoConciliadoValor), tone: 'orange', iconName: 'alertTriangle' })}
+        ${statCard({ label: 'Progresso', value: progresso + '%', sub: `${conciliadas.length} de ${totalMovimentos} movimentos`, tone: 'purple', iconName: 'target' })}
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:14px">${icon('search')} Filtros</h3>
+        <div class="field-row">
+          <div class="field"><label>Início</label><input type="date" id="cn-start" value="${start}" /></div>
+          <div class="field"><label>Fim</label><input type="date" id="cn-end" value="${end}" /></div>
+        </div>
+        <div class="field"><label>Bancos</label>
+          <div class="pill-group" id="cn-bank-group">
+            <button class="pill ${conciliacaoBanco === 'todos' ? 'active' : ''}" data-bank="todos">Todos</button>
+            ${Store.state.banks.map((b) => `<button class="pill ${conciliacaoBanco === b.id ? 'active' : ''}" data-bank="${b.id}">${icon('bank')} ${b.name}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field-row" style="grid-template-columns:1fr 1fr 2fr">
+          <div class="field"><label>Tipo</label><select id="cn-tipo">
+            <option value="todos">Todos</option>
+            <option value="Gasto fixo" ${conciliacaoTipo === 'Gasto fixo' ? 'selected' : ''}>Gasto fixo</option>
+            <option value="Gasto variável" ${conciliacaoTipo === 'Gasto variável' ? 'selected' : ''}>Gasto variável</option>
+            <option value="Recebimento" ${conciliacaoTipo === 'Recebimento' ? 'selected' : ''}>Recebimento</option>
+          </select></div>
+          <div class="field"><label>Status</label><select id="cn-status">
+            <option value="todos">Todos</option>
+            <option value="conciliado" ${conciliacaoStatus === 'conciliado' ? 'selected' : ''}>Conciliado</option>
+            <option value="pendente" ${conciliacaoStatus === 'pendente' ? 'selected' : ''}>Pendente</option>
+          </select></div>
+          <div class="field"><label>Buscar</label><input type="text" id="cn-search" placeholder="Descrição, banco, categoria" value="${conciliacaoSearch}" /></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        ${txs.length === 0 ? emptyState({ iconName: 'checkCircle', title: 'Nenhum lançamento encontrado com os filtros aplicados.' }) : `
+          <table class="list-table">
+            <thead><tr><th>Data</th><th>Descrição</th><th>Origem</th><th>Banco</th><th>Valor</th><th>Status</th><th>Ação</th></tr></thead>
+            <tbody>${txs.map((t) => {
+              const conc = isConciliado(t.key);
+              return `<tr>
+                <td>${formatDateBR(t.data)}</td>
+                <td class="row-title">${t.descricao}</td>
+                <td><span class="badge badge-muted">${t.tipo}</span></td>
+                <td>${(Store.bankById(t.bankId) || {}).name || '—'}</td>
+                <td class="${t.sinal === 1 ? 'amount-pos' : 'amount-neg'}">${t.sinal === 1 ? '+' : '-'} ${formatCurrency(t.valor)}</td>
+                <td>${conc ? '<span class="badge badge-success">' + icon('checkCircle') + ' Conciliado</span>' : '<span class="badge badge-warning">Pendente</span>'}</td>
+                <td><button class="btn ${conc ? 'btn-ghost' : 'btn-primary'} btn-sm" data-action="toggle-conciliar" data-key="${t.key}">${conc ? 'Desfazer' : 'Conciliar'}</button></td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        `}
+      </div>
+    `;
+
+    document.getElementById('cn-start').onchange = (e) => { conciliacaoStart = e.target.value; draw(); };
+    document.getElementById('cn-end').onchange = (e) => { conciliacaoEnd = e.target.value; draw(); };
+    document.getElementById('cn-bank-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => { conciliacaoBanco = b.dataset.bank; draw(); });
+    document.getElementById('cn-tipo').onchange = (e) => { conciliacaoTipo = e.target.value; draw(); };
+    document.getElementById('cn-status').onchange = (e) => { conciliacaoStatus = e.target.value; draw(); };
+    document.getElementById('cn-search').oninput = (e) => { conciliacaoSearch = e.target.value; draw(); };
+    container.querySelectorAll('[data-action="toggle-conciliar"]').forEach((b) => b.onclick = () => { toggleConciliado(b.dataset.key); draw(); });
+  };
+  draw();
+}
+
+/* =========================================================================
+   PLANEJAMENTO
+   ========================================================================= */
+let planejamentoMes = currentMonthStr();
+let planejamentoBusca = '';
+
+function metaCategoria(categoryId, mes) {
+  const m = Store.state.metasCategoria.find((x) => x.categoryId === categoryId && x.mes === mes);
+  return m ? m.valor : 0;
+}
+function setMetaCategoria(categoryId, mes, valor) {
+  const list = Store.state.metasCategoria;
+  const idx = list.findIndex((x) => x.categoryId === categoryId && x.mes === mes);
+  if (idx > -1) list[idx].valor = valor; else list.push({ id: uid(), categoryId, mes, valor });
+  Store.save();
+}
+function realizadoCategoria(categoryId, mes) {
+  const fixos = gastosFixosForMonth(mes).filter((g) => g.categoryId === categoryId).reduce((s, g) => s + g.valor, 0);
+  const variaveis = Store.state.gastosVariaveis.filter((g) => g.categoryId === categoryId && isSameMonth(g.data, mes)).reduce((s, g) => s + g.valor, 0);
+  return fixos + variaveis;
+}
+
+function pagePlanejamento(container) {
+  const draw = () => {
+    const mes = planejamentoMes;
+    let categorias = Store.state.categories;
+    if (planejamentoBusca) categorias = categorias.filter((c) => c.name.toLowerCase().includes(planejamentoBusca.toLowerCase()));
+
+    const totalPlanejado = Store.state.categories.reduce((s, c) => s + metaCategoria(c.id, mes), 0);
+    const totalRealizado = Store.state.categories.reduce((s, c) => s + realizadoCategoria(c.id, mes), 0);
+
+    container.innerHTML = `
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 style="font-size:20px">Planejamento</h2>
+            <p class="row-sub" style="margin-top:4px">Compare o planejado com o realizado de cada categoria neste mês.</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:18px">
+            <input type="month" id="pl-mes" value="${mes}" />
+            <div><div class="stat-label" style="text-align:right">Planejado</div><strong>${formatCurrency(totalPlanejado)}</strong></div>
+            <div><div class="stat-label" style="text-align:right">Realizado</div><strong style="color:${totalRealizado > totalPlanejado && totalPlanejado > 0 ? 'var(--danger)' : 'var(--text)'}">${formatCurrency(totalRealizado)}</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h3>Categorias</h3><input type="text" id="pl-busca" placeholder="Buscar categoria..." style="max-width:280px" value="${planejamentoBusca}" /></div>
+        ${categorias.map((c) => {
+          const planejado = metaCategoria(c.id, mes);
+          const realizado = realizadoCategoria(c.id, mes);
+          const pct = planejado > 0 ? Math.min(100, Math.round((realizado / planejado) * 100)) : 0;
+          return `
+          <div style="display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--border-soft)">
+            ${categoryAvatar(c.id)}
+            <div style="flex:1">
+              <strong>${c.name}</strong>
+              <div class="row-sub">Planejado: ${formatCurrency(planejado)} · Realizado: ${formatCurrency(realizado)}</div>
+              ${planejado > 0 ? `<div class="progress-track" style="margin-top:6px;max-width:280px"><div class="progress-fill" style="width:${pct}%;background:${pct > 100 ? 'var(--danger)' : c.color}"></div></div>` : ''}
+            </div>
+            <button class="btn btn-ghost btn-sm" data-action="definir-meta" data-id="${c.id}">${icon('plus')} Definir meta</button>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+
+    document.getElementById('pl-mes').onchange = (e) => { planejamentoMes = e.target.value; draw(); };
+    document.getElementById('pl-busca').oninput = (e) => { planejamentoBusca = e.target.value; draw(); };
+    container.querySelectorAll('[data-action="definir-meta"]').forEach((b) => b.onclick = () => {
+      const cat = Store.categoryById(b.dataset.id);
+      const overlay = document.getElementById('modal-overlay');
+      overlay.innerHTML = `
+        <div class="modal-box">
+          <h3>Meta de ${cat.name}</h3>
+          <p>Defina o valor planejado para ${monthLabel(Number(mes.slice(5, 7)) - 1)} de ${mes.slice(2, 4)}.</p>
+          <div class="field"><label>Valor planejado</label><input type="number" step="0.01" id="meta-valor" value="${metaCategoria(b.dataset.id, mes) || ''}" placeholder="0,00" /></div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
+            <button class="btn btn-primary btn-sm" id="modal-confirm">Salvar</button>
+          </div>
+        </div>`;
+      overlay.classList.add('open');
+      overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
+      overlay.querySelector('#modal-confirm').onclick = () => {
+        setMetaCategoria(b.dataset.id, mes, parseFloat(document.getElementById('meta-valor').value) || 0);
+        overlay.classList.remove('open');
+        toast('Meta salva', 'success');
+        draw();
+      };
+    });
+  };
+  draw();
+}
+
+/* =========================================================================
    PLACEHOLDERS — telas que ainda vão ser desenhadas a partir dos próximos prints
    ========================================================================= */
 function pagePlaceholder(container, route) {
@@ -1785,6 +2047,78 @@ function pagePlaceholder(container, route) {
       ${icon('layers')}
       <h2>${item.label} chega em breve</h2>
       <p>Essa tela ainda não foi desenhada — manda o print de referência dessa parte do sistema que eu monto igual ao resto do Fin360.</p>
+    </div>
+  `;
+}
+
+/* =========================================================================
+   IA — telas desenhadas mas desativadas (Importar / Vera)
+   ========================================================================= */
+function iaBanner() {
+  return `
+    <div class="panel" style="border-color:var(--primary);background:var(--primary-soft);display:flex;align-items:center;gap:12px">
+      <span style="color:var(--primary)">${icon('lock')}</span>
+      <div>
+        <strong style="color:var(--text)">Recurso de IA — desativado por enquanto</strong>
+        <div class="row-sub">A tela já está pronta, mas a inteligência artificial só é ligada quando você decidir ativar. Por enquanto, cadastre tudo manualmente nas páginas de Gastos, Recebimentos e Cartões.</div>
+      </div>
+    </div>
+  `;
+}
+
+function pageImportar(container) {
+  container.innerHTML = `
+    ${iaBanner()}
+    <div class="panel" style="opacity:0.55;pointer-events:none">
+      <h3 style="margin-bottom:14px">1. O que você quer importar?</h3>
+      <div class="grid-2" style="margin-bottom:18px">
+        <div class="panel" style="background:var(--bg-input);border-color:var(--primary)">
+          <strong style="display:flex;align-items:center;gap:8px">${icon('list')} Extrato bancário</strong>
+          <p class="row-sub" style="margin-top:6px">Receitas vão para "Recebimentos" e despesas para "Gastos variáveis"</p>
+        </div>
+        <div class="panel" style="background:var(--bg-input)">
+          <strong style="display:flex;align-items:center;gap:8px">${icon('card')} Fatura de cartão</strong>
+          <p class="row-sub" style="margin-top:6px">Lança no cartão escolhido</p>
+        </div>
+      </div>
+      <div class="field"><label>${icon('bank')} Banco do extrato</label><select disabled><option>Selecione...</option></select></div>
+      <p class="row-sub" style="margin:-8px 0 14px">Todos os lançamentos importados serão vinculados a este banco.</p>
+      <div class="field"><label>Mês de referência do extrato</label><input type="month" disabled value="${currentMonthStr()}" /></div>
+      <p class="row-sub" style="margin:-8px 0 18px">Todos os lançamentos serão fixados neste mês — preservamos o dia da movimentação, mas não saímos do mês selecionado.</p>
+
+      <h3 style="margin-bottom:14px">2. Envie seu extrato (PDF, OFX, CSV ou TXT)</h3>
+      <div style="border:2px dashed var(--border);border-radius:14px;padding:40px;text-align:center;color:var(--text-muted)">
+        ${icon('upload', 'svg-icon')}
+        <div style="margin-top:10px;font-weight:700;color:var(--text)">Clique para escolher PDF, OFX, CSV ou TXT</div>
+        <div class="row-sub" style="margin-top:4px">OFX/CSV são mais precisos que PDF (vêm direto do banco)</div>
+      </div>
+      <button class="btn btn-primary btn-block" style="margin-top:18px" disabled>${icon('sparkles')} Processar extrato</button>
+
+      <h3 style="margin:24px 0 12px">Histórico de importações</h3>
+      <div class="empty-state"><span>Nenhuma importação no modo Pessoal ainda.</span></div>
+    </div>
+  `;
+}
+
+function pageVera(container) {
+  container.innerHTML = `
+    ${iaBanner()}
+    <div class="panel" style="opacity:0.6;pointer-events:none">
+      <div style="display:flex;gap:12px;margin-bottom:18px">
+        <span style="width:40px;height:40px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon('sparkles')}</span>
+        <div>
+          <strong>Converse com a Vera</strong>
+          <div class="row-sub">Ex: "gere um PDF dos meus gastos do mês", "relatório dos recebimentos".</div>
+        </div>
+      </div>
+      <div class="panel" style="background:var(--bg-input)">
+        Olá! Sou a <strong>Vera</strong>, sua gerente de contas. Quando esse recurso for ativado, vou poder analisar seus dados, dar orientações e gerar relatórios em PDF sob demanda.
+      </div>
+    </div>
+    <div class="panel" style="opacity:0.6;pointer-events:none;display:flex;gap:10px">
+      <input type="text" placeholder="Pergunte ou peça um relatório (ex: gere PDF dos gastos do mês)" disabled style="flex:1" />
+      <button class="btn-icon" disabled>${icon('mic')}</button>
+      <button class="btn btn-primary" disabled>${icon('send')} Enviar</button>
     </div>
   `;
 }
