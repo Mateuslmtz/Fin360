@@ -11,7 +11,7 @@ const ROUTES = {
   'cartoes': pageCartoes,
   'investimentos': pageInvestimentos,
   'parcelamentos': (c) => pagePlaceholder(c, 'parcelamentos'),
-  'extrato': (c) => pagePlaceholder(c, 'extrato'),
+  'extrato': pageExtrato,
   'conciliacao': (c) => pagePlaceholder(c, 'conciliacao'),
   'planejamento': (c) => pagePlaceholder(c, 'planejamento'),
 };

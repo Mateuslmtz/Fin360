@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { route: 'recebimentos', label: 'Recebimentos', icon: 'download', subtitle: 'Entradas previstas e recebidas' },
   { route: 'cofrinhos', label: 'Cofrinhos', icon: 'piggy', subtitle: 'Reserva de emergência e metas de poupança' },
   { route: 'bancos', label: 'Bancos', icon: 'bank', subtitle: 'Contas e saldos vinculados' },
-  { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Histórico completo de movimentações' },
+  { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Espelha o Dashboard com os mesmos filtros e regras' },
   { route: 'investimentos', label: 'Investimentos', icon: 'trendUp', subtitle: 'Carteira ativa, aportes e rentabilidade' },
   { route: 'conciliacao', label: 'Conciliação', icon: 'checkCircle', subtitle: 'Confira lançamentos com seu extrato bancário' },
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
