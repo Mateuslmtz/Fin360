@@ -10,12 +10,13 @@ const ROUTES = {
   'cofrinhos': pageCofrinhos,
   'cartoes': pageCartoes,
   'investimentos': pageInvestimentos,
-  'parcelamentos': (c) => pagePlaceholder(c, 'parcelamentos'),
+  'parcelamentos': pageParcelamentos,
   'extrato': pageExtrato,
   'conciliacao': pageConciliacao,
   'planejamento': pagePlanejamento,
   'importar': pageImportar,
   'vera': pageVera,
+  'configuracoes': pageConfiguracoes,
 };
 
 function currentRoute() {

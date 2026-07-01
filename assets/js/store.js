@@ -17,7 +17,7 @@ function defaultState() {
     hideValues: false,
     context: 'pessoal',
     collapsed: false,
-    profile: { name: 'Mateus' },
+    profile: { name: 'Mateus', email: 'mateusgiacomollilemmertz@gmail.com', currency: 'BRL' },
     categories: [
       { id: 'cat-alimentacao', name: 'Alimentação', color: '#22c55e', emoji: '🍽️' },
       { id: 'cat-assinaturas', name: 'Assinaturas', color: '#a855f7', emoji: '📺' },
@@ -49,6 +49,9 @@ function defaultState() {
     investimentos: [],
     conciliacoes: [], // array de chaves de transação (ex: 'gf:id:2026-06') marcadas como conciliadas
     metasCategoria: [], // {id, categoryId, mes:'YYYY-MM', valor}
+    // parcelamentos: {id,nome,tipo,sistema:'price'|'sac',categoryId,bankId,dataContratacao,primeiraParcela,valorPrincipal,numParcelas,taxaJurosMensal,observacao,createdAt}
+    parcelamentos: [],
+    parcelamentosPagamentos: [], // {id, parcelamentoId, numero}
   };
 }
 
@@ -205,6 +208,63 @@ function toggleConciliado(key) {
   Store.save();
 }
 
+/* ============ Parcelamentos: amortização Price / SAC ============ */
+function dateAddMonthsISO(iso, n) {
+  const mStr = monthAddStr(iso.slice(0, 7), n);
+  const day = clampDayToMonth(mStr, parseInt(iso.slice(8, 10), 10));
+  return `${mStr}-${String(day).padStart(2, '0')}`;
+}
+function amortizacaoPrice(principal, taxaMensalPct, n) {
+  const i = taxaMensalPct / 100;
+  const pmt = i === 0 ? principal / n : (principal * i) / (1 - Math.pow(1 + i, -n));
+  let saldo = principal;
+  const parcelas = [];
+  for (let k = 1; k <= n; k++) {
+    const juros = saldo * i;
+    const amort = Math.min(saldo, pmt - juros);
+    saldo = Math.max(0, saldo - amort);
+    parcelas.push({ numero: k, valor: amort + juros, juros, amortizacao: amort, saldo });
+  }
+  return parcelas;
+}
+function amortizacaoSAC(principal, taxaMensalPct, n) {
+  const i = taxaMensalPct / 100;
+  const amortConst = principal / n;
+  let saldo = principal;
+  const parcelas = [];
+  for (let k = 1; k <= n; k++) {
+    const juros = saldo * i;
+    saldo = Math.max(0, saldo - amortConst);
+    parcelas.push({ numero: k, valor: amortConst + juros, juros, amortizacao: amortConst, saldo });
+  }
+  return parcelas;
+}
+function parcelamentoSchedule(p) {
+  return p.sistema === 'sac' ? amortizacaoSAC(p.valorPrincipal, p.taxaJurosMensal, p.numParcelas) : amortizacaoPrice(p.valorPrincipal, p.taxaJurosMensal, p.numParcelas);
+}
+function parcelamentoVencimento(p, numero) {
+  return dateAddMonthsISO(p.primeiraParcela || p.dataContratacao, numero - 1);
+}
+function isParcelaPaga(parcelamentoId, numero) {
+  return Store.state.parcelamentosPagamentos.some((x) => x.parcelamentoId === parcelamentoId && x.numero === numero);
+}
+function toggleParcelaPaga(parcelamentoId, numero) {
+  const list = Store.state.parcelamentosPagamentos;
+  const idx = list.findIndex((x) => x.parcelamentoId === parcelamentoId && x.numero === numero);
+  if (idx > -1) list.splice(idx, 1); else list.push({ id: uid(), parcelamentoId, numero });
+  Store.save();
+}
+function parcelasPagasCount(parcelamentoId) {
+  return Store.state.parcelamentosPagamentos.filter((x) => x.parcelamentoId === parcelamentoId).length;
+}
+function parcelamentoQuitado(p) {
+  return parcelasPagasCount(p.id) >= p.numParcelas;
+}
+function proximaParcelaPendente(p) {
+  const schedule = parcelamentoSchedule(p);
+  return schedule.find((s) => !isParcelaPaga(p.id, s.numero)) || null;
+}
+
 function isCartaoFaturaPaga(cartaoId, mStr) {
   return Store.state.cartaoFaturasPagas.some((p) => p.cartaoId === cartaoId && p.mes === mStr);
 }
@@ -239,6 +299,21 @@ const Store = {
 
   reset() {
     this.state = defaultState();
+    this.save();
+  },
+
+  resetFinancialData() {
+    const keep = { theme: this.state.theme, hideValues: this.state.hideValues, context: this.state.context, collapsed: this.state.collapsed, profile: this.state.profile, categories: this.state.categories };
+    this.state = Object.assign(defaultState(), keep);
+    this.save();
+  },
+
+  exportBackupJSON() {
+    return JSON.stringify(this.state, null, 2);
+  },
+  importBackupJSON(json) {
+    const parsed = JSON.parse(json);
+    this.state = Object.assign(defaultState(), parsed);
     this.save();
   },
 
@@ -277,10 +352,18 @@ const Store = {
 };
 
 /* ============ Format helpers ============ */
+const CURRENCIES = {
+  BRL: { locale: 'pt-BR', symbol: 'R$' },
+  USD: { locale: 'en-US', symbol: '$' },
+  EUR: { locale: 'de-DE', symbol: '€' },
+  GBP: { locale: 'en-GB', symbol: '£' },
+};
 function formatCurrency(value) {
   const v = Number(value) || 0;
-  if (Store.state && Store.state.hideValues) return 'R$ •••••';
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const code = (Store.state && Store.state.profile.currency) || 'BRL';
+  const cfg = CURRENCIES[code] || CURRENCIES.BRL;
+  if (Store.state && Store.state.hideValues) return `${cfg.symbol} •••••`;
+  return v.toLocaleString(cfg.locale, { style: 'currency', currency: code });
 }
 
 function formatDateBR(iso) {

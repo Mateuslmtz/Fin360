@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
   { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'A Vera lê seu PDF e cadastra tudo automaticamente', ia: true },
   { route: 'vera', label: 'Vera', icon: 'sparkles', subtitle: 'Converse, peça relatórios em PDF e gere análises com seus dados reais', ia: true },
+  { route: 'configuracoes', label: 'Configurações', icon: 'settings', subtitle: 'Gerencie sua conta e preferências', hidden: true },
 ];
 
 function navItemByRoute(route) {
@@ -30,8 +31,8 @@ function renderSidebar(activeRoute) {
   }
 
   const nav = document.getElementById('nav');
-  nav.innerHTML = NAV_ITEMS.map((item, idx) => `
-    ${item.ia && (idx === 0 || !NAV_ITEMS[idx - 1].ia) ? `<div class="nav-divider"><span>Inteligência artificial</span></div>` : ''}
+  nav.innerHTML = NAV_ITEMS.filter((item) => !item.hidden).map((item, idx, arr) => `
+    ${item.ia && (idx === 0 || !arr[idx - 1].ia) ? `<div class="nav-divider"><span>Inteligência artificial</span></div>` : ''}
     <button class="nav-item ${item.route === activeRoute ? 'active' : ''}" data-route="${item.route}">
       ${icon(item.icon)}
       <span class="nav-label">${item.label}</span>
@@ -82,7 +83,7 @@ function renderTopbar(route) {
 
   const avatar = document.getElementById('avatar-btn');
   avatar.textContent = (Store.state.profile.name || 'M').charAt(0).toUpperCase();
-  avatar.onclick = () => toast('Perfil e configurações chegam em breve ⚙️', 'info');
+  avatar.onclick = () => goRoute('configuracoes');
 
   if (window.innerWidth <= 720) {
     document.getElementById('app-shell').classList.remove('mobile-open');
