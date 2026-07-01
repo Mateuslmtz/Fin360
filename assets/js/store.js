@@ -17,7 +17,7 @@ function defaultState() {
     hideValues: false,
     context: 'pessoal',
     collapsed: false,
-    profile: { name: 'Mateus', email: 'mateusgiacomollilemmertz@gmail.com', currency: 'BRL' },
+    profile: { name: 'Mateus', email: 'mateusgiacomollilemmertz@gmail.com', currency: 'BRL', gastoCartaoPorCompra: true },
     categories: [
       { id: 'cat-alimentacao', name: 'Alimentação', color: '#22c55e', emoji: '🍽️' },
       { id: 'cat-assinaturas', name: 'Assinaturas', color: '#a855f7', emoji: '📺' },
@@ -105,40 +105,65 @@ function compraFracaoMinha(compra) {
   return compra.valorTotal > 0 ? compraValorMeu(compra) / compra.valorTotal : 1;
 }
 
-function compraOccurrenceInMonth(compra, mStr) {
+// "caixa" = mês da fatura em que a compra realmente é cobrada (respeita o dia de fechamento do cartão)
+// "competencia" = mês em que a compra foi feita (útil pra quem organiza o orçamento por "recebo pra gastar")
+function compraBaseMonth(compra, cartao, regime) {
   const compraMonth = compra.data.slice(0, 7);
+  if (regime === 'caixa') {
+    const dia = parseInt(compra.data.slice(8, 10), 10);
+    const fechamento = cartao && cartao.diaFechamento;
+    if (fechamento && dia > fechamento) return monthAddStr(compraMonth, 1);
+  }
+  return compraMonth;
+}
+function compraOccurrenceInMonth(compra, mStr, cartao, regime) {
+  const baseMonth = compraBaseMonth(compra, cartao, regime);
   const fracaoMinha = compraFracaoMinha(compra);
   let base = null;
   if (compra.tipo === 'parcelado') {
     const parcelas = Math.max(1, compra.parcelas || 1);
     for (let i = 0; i < parcelas; i++) {
-      if (monthAddStr(compraMonth, i) === mStr) {
+      if (monthAddStr(baseMonth, i) === mStr) {
         const valorParcela = Math.round((compra.valorTotal / parcelas) * 100) / 100;
         base = { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
         break;
       }
     }
   } else if (compra.tipo === 'recorrente') {
-    if (mStr >= compraMonth) base = { valor: compra.valorTotal, parcelaLabel: '—' };
+    if (mStr >= baseMonth) base = { valor: compra.valorTotal, parcelaLabel: '—' };
   } else {
     // à vista
-    if (mStr === compraMonth) base = { valor: compra.valorTotal, parcelaLabel: '1/1' };
+    if (mStr === baseMonth) base = { valor: compra.valorTotal, parcelaLabel: '1/1' };
   }
   if (!base) return null;
   return { ...base, valorMeu: Math.round(base.valor * fracaoMinha * 100) / 100 };
 }
+function regimeGastoCartao() {
+  return Store.state.profile.gastoCartaoPorCompra !== false ? 'competencia' : 'caixa';
+}
+// fatura real do cartão — sempre pelo ciclo de fechamento, é o que você de fato paga ao banco naquele mês
 function cartaoComprasForMonth(cartaoId, mStr) {
+  const cartao = Store.get('cartoes', cartaoId);
   return Store.state.cartaoCompras
     .filter((c) => c.cartaoId === cartaoId)
-    .map((c) => ({ compra: c, occurrence: compraOccurrenceInMonth(c, mStr) }))
+    .map((c) => ({ compra: c, occurrence: compraOccurrenceInMonth(c, mStr, cartao, 'caixa') }))
     .filter((x) => x.occurrence);
 }
 function cartaoFaturaForMonth(cartaoId, mStr) {
   return cartaoComprasForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valor, 0);
 }
-// custo real = fatura menos as partes rachadas com outras pessoas (não é gasto seu, é adiantamento)
+// custo real pro seu orçamento pessoal — segue o regime escolhido em Configurações (padrão: mês da compra)
+// e já desconta a parte rachada com outras pessoas
+function cartaoComprasCustoRealForMonth(cartaoId, mStr) {
+  const cartao = Store.get('cartoes', cartaoId);
+  const regime = regimeGastoCartao();
+  return Store.state.cartaoCompras
+    .filter((c) => c.cartaoId === cartaoId)
+    .map((c) => ({ compra: c, occurrence: compraOccurrenceInMonth(c, mStr, cartao, regime) }))
+    .filter((x) => x.occurrence);
+}
 function cartaoCustoRealForMonth(cartaoId, mStr) {
-  return cartaoComprasForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valorMeu, 0);
+  return cartaoComprasCustoRealForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valorMeu, 0);
 }
 function allCartoesCustoRealForMonth(mStr) {
   return Store.state.cartoes.reduce((s, c) => s + cartaoCustoRealForMonth(c.id, mStr), 0);
@@ -297,7 +322,8 @@ function toggleCartaoFaturaPaga(cartaoId, mStr) {
 }
 function parcelasAtivasCount(cartaoId) {
   const mStr = currentMonthStr();
-  return Store.state.cartaoCompras.filter((c) => c.cartaoId === cartaoId && c.tipo === 'parcelado' && compraOccurrenceInMonth(c, mStr)).length;
+  const cartao = Store.get('cartoes', cartaoId);
+  return Store.state.cartaoCompras.filter((c) => c.cartaoId === cartaoId && c.tipo === 'parcelado' && compraOccurrenceInMonth(c, mStr, cartao, 'caixa')).length;
 }
 
 const Store = {
