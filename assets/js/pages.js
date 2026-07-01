@@ -2038,6 +2038,172 @@ function pagePlanejamento(container) {
 }
 
 /* =========================================================================
+   PARCELAMENTOS — financiamentos e empréstimos com amortização Price/SAC
+   ========================================================================= */
+const PARCELAMENTO_TIPOS = ['Financiamento', 'Empréstimo Pessoal', 'Consórcio', 'Outro'];
+let parcelamentosTab = 'ativos';
+let editingParcelamentoId = null;
+let expandedParcelamentoId = null;
+
+function pageParcelamentos(container) {
+  const draw = () => {
+    const all = Store.state.parcelamentos;
+    const ativos = all.filter((p) => !parcelamentoQuitado(p));
+    const quitados = all.filter((p) => parcelamentoQuitado(p));
+    const list = parcelamentosTab === 'ativos' ? ativos : quitados;
+
+    const valorFinanciado = ativos.reduce((s, p) => s + p.valorPrincipal, 0);
+    const jaPago = all.reduce((s, p) => s + parcelamentoSchedule(p).filter((x) => isParcelaPaga(p.id, x.numero)).reduce((s2, x) => s2 + x.valor, 0), 0);
+
+    container.innerHTML = `
+      <div class="stat-grid">
+        ${statCard({ label: 'Contratos ativos', value: ativos.length, tone: 'blue', iconName: 'layers' })}
+        ${statCard({ label: 'Total de contratos', value: all.length, tone: 'purple', iconName: 'checkCircle' })}
+        ${statCard({ label: 'Valor financiado (ativos)', value: formatCurrency(valorFinanciado), tone: 'orange', iconName: 'wallet' })}
+        ${statCard({ label: 'Já pago', value: formatCurrency(jaPago), tone: 'green', iconName: 'checkCircle' })}
+      </div>
+
+      <div class="panel-header" style="margin-bottom:16px">
+        <div class="pill-group">
+          <button class="pill ${parcelamentosTab === 'ativos' ? 'active' : ''}" data-tab="ativos">Ativos (${ativos.length})</button>
+          <button class="pill ${parcelamentosTab === 'quitados' ? 'active' : ''}" data-tab="quitados">Quitados (${quitados.length})</button>
+        </div>
+        <button class="btn btn-primary btn-sm" id="pz-new">${icon('plus')} Novo contrato</button>
+      </div>
+
+      ${list.length === 0 ? `<div class="panel">${emptyState({ iconName: 'layers', title: parcelamentosTab === 'ativos' ? 'Nenhum contrato ativo' : 'Nenhum contrato quitado ainda', text: 'Cadastre financiamentos, empréstimos ou consórcios para acompanhar as parcelas.', actionLabel: parcelamentosTab === 'ativos' ? 'Novo contrato' : null, actionId: 'pz-empty-new' })}</div>` : list.map((p) => parcelamentoCard(p)).join('')}
+    `;
+
+    container.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { parcelamentosTab = b.dataset.tab; draw(); });
+    document.getElementById('pz-new').onclick = () => openParcelamentoModal(null, draw);
+    if (document.getElementById('pz-empty-new')) document.getElementById('pz-empty-new').onclick = () => openParcelamentoModal(null, draw);
+
+    container.querySelectorAll('[data-action="expand-parcelamento"]').forEach((b) => b.onclick = () => { expandedParcelamentoId = expandedParcelamentoId === b.dataset.id ? null : b.dataset.id; draw(); });
+    container.querySelectorAll('[data-action="edit-parcelamento"]').forEach((b) => b.onclick = () => openParcelamentoModal(Store.get('parcelamentos', b.dataset.id), draw));
+    container.querySelectorAll('[data-action="delete-parcelamento"]').forEach((b) => b.onclick = () => {
+      confirmModal({
+        title: 'Excluir contrato', text: 'Isso remove o contrato e todo o histórico de parcelas pagas. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+        onConfirm: () => {
+          Store.remove('parcelamentos', b.dataset.id);
+          Store.state.parcelamentosPagamentos = Store.state.parcelamentosPagamentos.filter((x) => x.parcelamentoId !== b.dataset.id);
+          Store.save();
+          toast('Contrato excluído', 'success'); draw();
+        },
+      });
+    });
+    container.querySelectorAll('[data-action="toggle-parcela"]').forEach((b) => b.onclick = () => { toggleParcelaPaga(b.dataset.id, Number(b.dataset.numero)); draw(); });
+  };
+  draw();
+}
+
+function parcelamentoCard(p) {
+  const schedule = parcelamentoSchedule(p);
+  const pagas = parcelasPagasCount(p.id);
+  const pct = Math.round((pagas / p.numParcelas) * 100);
+  const proxima = proximaParcelaPendente(p);
+  const expanded = expandedParcelamentoId === p.id;
+  return `
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <strong>${p.nome}</strong> <span class="badge badge-primary">${p.tipo}</span> <span class="badge badge-muted">${p.sistema === 'sac' ? 'SAC' : 'Price'}</span>
+          <div class="row-sub" style="margin-top:6px">${formatCurrency(p.valorPrincipal)} em ${p.numParcelas}x · ${p.taxaJurosMensal}% a.m.${Store.bankById(p.bankId) ? ' · ' + Store.bankById(p.bankId).name : ''}</div>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-ghost btn-sm" data-action="expand-parcelamento" data-id="${p.id}">${icon('list')} ${expanded ? 'Ocultar parcelas' : 'Ver parcelas'}</button>
+          <button class="btn-icon" data-action="edit-parcelamento" data-id="${p.id}">${icon('edit')}</button>
+          <button class="btn-icon" data-action="delete-parcelamento" data-id="${p.id}">${icon('trash')}</button>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:5px">
+        <span>${pagas} de ${p.numParcelas} parcelas pagas</span><span>${proxima ? 'Próxima: ' + formatDateBR(parcelamentoVencimento(p, proxima.numero)) + ' · ' + formatCurrency(proxima.valor) : 'Quitado 🎉'}</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+      ${expanded ? `
+        <div class="month-table-wrap" style="margin-top:16px">
+          <table class="month-table">
+            <thead><tr><th>Nº</th><th>Vencimento</th><th>Valor</th><th>Juros</th><th>Amortização</th><th>Saldo devedor</th><th>Status</th></tr></thead>
+            <tbody>${schedule.map((s) => {
+              const paga = isParcelaPaga(p.id, s.numero);
+              return `<tr>
+                <td>${s.numero}/${p.numParcelas}</td>
+                <td>${formatDateBR(parcelamentoVencimento(p, s.numero))}</td>
+                <td><strong>${formatCurrency(s.valor)}</strong></td>
+                <td>${formatCurrency(s.juros)}</td>
+                <td>${formatCurrency(s.amortizacao)}</td>
+                <td>${formatCurrency(s.saldo)}</td>
+                <td><button class="badge ${paga ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-parcela" data-id="${p.id}" data-numero="${s.numero}">${paga ? 'Paga' : 'Pendente'}</button></td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function openParcelamentoModal(editing, onSaved) {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.innerHTML = `
+    <div class="modal-box modal-box-lg">
+      <h3 style="margin-bottom:16px">${editing ? 'Editar contrato' : 'Novo contrato de parcelamento'}</h3>
+      <div class="field"><label>Nome</label><input type="text" id="pz-nome" placeholder="Ex.: Financiamento do carro" value="${editing ? editing.nome : ''}" /></div>
+      <div class="field-row">
+        <div class="field"><label>Tipo</label><select id="pz-tipo">${PARCELAMENTO_TIPOS.map((t) => `<option value="${t}" ${editing && editing.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div class="field"><label>Sistema</label><select id="pz-sistema">
+          <option value="price" ${!editing || editing.sistema === 'price' ? 'selected' : ''}>Price (parcela fixa)</option>
+          <option value="sac" ${editing && editing.sistema === 'sac' ? 'selected' : ''}>SAC (amortização constante)</option>
+        </select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Categoria (opcional)</label>${fieldHTML({ key: 'pz-categoria', type: 'select-category' }, editing ? editing.categoryId : '')}</div>
+        <div class="field"><label>Banco (origem do recurso)</label>${fieldHTML({ key: 'pz-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Data da contratação</label><input type="date" id="pz-data-contratacao" value="${editing ? editing.dataContratacao : todayISO()}" /></div>
+        <div class="field"><label>Primeira parcela</label><input type="date" id="pz-primeira-parcela" value="${editing ? editing.primeiraParcela || '' : ''}" /></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Valor principal</label><input type="number" step="0.01" id="pz-valor" placeholder="0,00" value="${editing ? editing.valorPrincipal : ''}" /></div>
+        <div class="field"><label>Quantidade de parcelas</label><input type="number" min="1" id="pz-parcelas" value="${editing ? editing.numParcelas : ''}" /></div>
+      </div>
+      <div class="field"><label>Taxa de juros mensal (%)</label><input type="number" step="0.01" id="pz-taxa" value="${editing ? editing.taxaJurosMensal : '0'}" /></div>
+      <div class="field"><label>Observação</label><textarea id="pz-obs" placeholder="Opcional">${editing ? (editing.observacao || '') : ''}</textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="modal-confirm">${editing ? 'Salvar alterações' : 'Criar contrato'}</button>
+      </div>
+    </div>
+  `;
+  overlay.classList.add('open');
+  wireQuickAddButtons([{ key: 'pz-categoria', type: 'select-category' }, { key: 'pz-banco', type: 'select-bank' }]);
+  overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
+  overlay.querySelector('#modal-confirm').onclick = () => {
+    const nome = document.getElementById('pz-nome').value.trim();
+    const valorPrincipal = parseFloat(document.getElementById('pz-valor').value) || 0;
+    const numParcelas = parseInt(document.getElementById('pz-parcelas').value, 10) || 0;
+    if (!nome) { toast('Informe o nome do contrato', 'danger'); return; }
+    if (!valorPrincipal) { toast('Informe o valor principal', 'danger'); return; }
+    if (!numParcelas || numParcelas < 1) { toast('Informe a quantidade de parcelas', 'danger'); return; }
+    const payload = {
+      nome, valorPrincipal, numParcelas,
+      tipo: document.getElementById('pz-tipo').value,
+      sistema: document.getElementById('pz-sistema').value,
+      categoryId: document.getElementById('f-pz-categoria').value,
+      bankId: document.getElementById('f-pz-banco').value,
+      dataContratacao: document.getElementById('pz-data-contratacao').value,
+      primeiraParcela: document.getElementById('pz-primeira-parcela').value || document.getElementById('pz-data-contratacao').value,
+      taxaJurosMensal: parseFloat(document.getElementById('pz-taxa').value) || 0,
+      observacao: document.getElementById('pz-obs').value,
+    };
+    if (editing) { Store.update('parcelamentos', editing.id, payload); toast('Contrato atualizado', 'success'); }
+    else { Store.add('parcelamentos', payload); toast('Contrato criado', 'success'); }
+    overlay.classList.remove('open');
+    onSaved();
+  };
+}
+
+/* =========================================================================
    PLACEHOLDERS — telas que ainda vão ser desenhadas a partir dos próximos prints
    ========================================================================= */
 function pagePlaceholder(container, route) {
@@ -2121,5 +2287,134 @@ function pageVera(container) {
       <button class="btn btn-primary" disabled>${icon('send')} Enviar</button>
     </div>
   `;
+}
+
+/* =========================================================================
+   CONFIGURAÇÕES
+   ========================================================================= */
+function pageConfiguracoes(container) {
+  const draw = () => {
+    const p = Store.state.profile;
+    container.innerHTML = `
+      <div class="panel">
+        <h3 style="margin-bottom:16px">${icon('grid')} Perfil</h3>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div style="position:relative;width:88px;height:88px;flex-shrink:0">
+            <div style="width:88px;height:88px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800">${(p.name || 'M').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</div>
+            <button class="btn-icon" id="cfg-avatar-btn" style="position:absolute;bottom:0;right:0;background:var(--primary);color:#fff;border-color:var(--primary)" title="Upload de foto (em breve)">${icon('camera')}</button>
+          </div>
+          <div style="flex:1;min-width:260px">
+            <div class="field"><label>Email</label><input type="text" id="cfg-email" value="${p.email || ''}" disabled /></div>
+            <div class="field"><label>Nome</label><input type="text" id="cfg-nome" value="${p.name || ''}" /></div>
+            <button class="btn btn-primary btn-sm" id="cfg-save-nome">Salvar nome</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:16px">${icon('lock')} Alterar senha</h3>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div class="field" style="flex:1;min-width:220px;margin-bottom:0"><label>Nova senha</label><input type="password" id="cfg-senha" placeholder="mínimo 6 caracteres" /></div>
+          <button class="btn btn-primary btn-sm" id="cfg-save-senha">Alterar senha</button>
+        </div>
+        <p class="row-sub" style="margin-top:10px">Este protótipo ainda não tem sistema de login real — este campo fica pronto para quando o backend for ligado.</p>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:10px">${icon('wallet')} Moeda da conta</h3>
+        <p class="row-sub" style="margin-bottom:14px">Escolha a moeda exibida em todo o sistema (dashboards, gráficos, tabelas, relatórios e formulários). Os valores já cadastrados <strong style="color:var(--text)">não são convertidos</strong> — apenas o símbolo monetário muda.</p>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div class="field" style="min-width:260px;margin-bottom:0"><label>Moeda</label>
+            <select id="cfg-moeda">
+              <option value="BRL" ${p.currency === 'BRL' ? 'selected' : ''}>Real Brasileiro (BRL - R$)</option>
+              <option value="USD" ${p.currency === 'USD' ? 'selected' : ''}>Dólar Americano (USD - $)</option>
+              <option value="EUR" ${p.currency === 'EUR' ? 'selected' : ''}>Euro (EUR - €)</option>
+              <option value="GBP" ${p.currency === 'GBP' ? 'selected' : ''}>Libra Esterlina (GBP - £)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-sm" id="cfg-save-moeda">Salvar configurações</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:10px">${icon('logout')} Sessão</h3>
+        <p class="row-sub" style="margin-bottom:14px">Encerre sua sessão neste dispositivo.</p>
+        <button class="btn btn-danger-ghost btn-sm" id="cfg-logout">Sair da conta</button>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:10px">${icon('download')} Backup</h3>
+        <p class="row-sub" style="margin-bottom:14px">Exporte um arquivo com todos os seus dados (bancos, cartões, lançamentos, categorias, metas etc.) ou restaure um backup anterior.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" id="cfg-export">${icon('download')} Exportar Backup</button>
+          <button class="btn btn-ghost btn-sm" id="cfg-import-btn">${icon('upload')} Importar Backup</button>
+          <input type="file" id="cfg-import-file" accept="application/json" style="display:none" />
+        </div>
+      </div>
+
+      <div class="panel" style="border-color:var(--danger)">
+        <h3 style="margin-bottom:10px;color:var(--danger)">${icon('alertTriangle')} Zona de risco</h3>
+        <p class="row-sub" style="margin-bottom:14px">Apague todos os dados financeiros e comece do zero. Seu perfil e categorias permanecem intactos — apenas transações, bancos, cartões, metas e demais dados são removidos.</p>
+        <button class="btn btn-danger-ghost btn-sm" id="cfg-reset">${icon('trash')} Começar do zero</button>
+      </div>
+    `;
+
+    document.getElementById('cfg-avatar-btn').onclick = () => toast('Upload de foto chega em breve', 'info');
+    document.getElementById('cfg-save-nome').onclick = () => {
+      const nome = document.getElementById('cfg-nome').value.trim();
+      if (!nome) { toast('Informe um nome', 'danger'); return; }
+      Store.state.profile.name = nome;
+      Store.save();
+      toast('Nome atualizado', 'success');
+      render();
+    };
+    document.getElementById('cfg-save-senha').onclick = () => {
+      const senha = document.getElementById('cfg-senha').value;
+      if (senha.length < 6) { toast('A senha precisa ter no mínimo 6 caracteres', 'danger'); return; }
+      toast('Senha alterada (simulado — sem backend real ainda)', 'success');
+      document.getElementById('cfg-senha').value = '';
+    };
+    document.getElementById('cfg-save-moeda').onclick = () => {
+      Store.state.profile.currency = document.getElementById('cfg-moeda').value;
+      Store.save();
+      toast('Moeda atualizada', 'success');
+      render();
+    };
+    document.getElementById('cfg-logout').onclick = () => toast('Este protótipo ainda não tem login real para encerrar sessão', 'info');
+
+    document.getElementById('cfg-export').onclick = () => {
+      const blob = new Blob([Store.exportBackupJSON()], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `fin360-backup-${todayISO()}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast('Backup exportado', 'success');
+    };
+    document.getElementById('cfg-import-btn').onclick = () => document.getElementById('cfg-import-file').click();
+    document.getElementById('cfg-import-file').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          Store.importBackupJSON(reader.result);
+          toast('Backup importado com sucesso', 'success');
+          render();
+        } catch (err) {
+          toast('Arquivo de backup inválido', 'danger');
+        }
+      };
+      reader.readAsText(file);
+    };
+
+    document.getElementById('cfg-reset').onclick = () => {
+      confirmModal({
+        title: 'Começar do zero', text: 'Isso apaga TODOS os dados financeiros (bancos, cartões, gastos, recebimentos, metas etc.). Seu perfil e categorias continuam. Essa ação não pode ser desfeita.', confirmLabel: 'Apagar tudo', danger: true,
+        onConfirm: () => { Store.resetFinancialData(); toast('Dados financeiros zerados', 'success'); goRoute('dashboard'); },
+      });
+    };
+  };
+  draw();
 }
 
