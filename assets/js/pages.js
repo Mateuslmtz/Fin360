@@ -586,10 +586,11 @@ function pageGastosFixos(container) {
     // para a lista, no modo "ano" mostramos a recorrência consolidada (1 linha por gasto fixo ativo no ano)
     const listMonth = period.type === 'year' ? currentMonthStr() : mStr;
     const inPeriodList = gastosFixosForMonth(listMonth);
+    const displayList = gastosFixosForMonthAll(listMonth);
     const totalMes = inPeriodList.reduce((s, g) => s + g.valor, 0);
     const pagoMes = inPeriodList.filter((g) => g.pago).reduce((s, g) => s + g.valor, 0);
     const pendenteMes = totalMes - pagoMes;
-    const desativados = all.filter((g) => g.ativo === false);
+    const desativados = displayList.filter((g) => g.ativo === false);
 
     container.innerHTML = `
       <div class="grid-form-list">
@@ -622,7 +623,7 @@ function pageGastosFixos(container) {
               ${statCard({ label: 'Pendente', value: formatCurrency(pendenteMes), tone: 'orange', iconName: 'alertTriangle' })}
               ${statCard({ label: 'Desativados', value: formatCurrency(desativados.reduce((s, g) => s + g.valor, 0)), sub: `${desativados.length} contas`, tone: 'red', iconName: 'trash' })}
             </div>
-            ${inPeriodList.length === 0 ? emptyState({ iconName: 'repeat', title: 'Nenhum gasto fixo cadastrado.' }) : gastosFixosTable(inPeriodList, listMonth)}
+            ${displayList.length === 0 ? emptyState({ iconName: 'repeat', title: 'Nenhum gasto fixo cadastrado.' }) : gastosFixosTable(displayList, listMonth)}
           </div>
         </div>
       </div>
