@@ -172,7 +172,7 @@ function pageDashboard(container) {
       </div>
 
       <div class="stat-grid">
-        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: 'Fixos + variáveis + cartão (sua parte)', tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: `Fixos + variáveis + cartão (sua parte, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})`, tone: 'red', iconName: 'arrowDownCircle' })}
         ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: 'Entradas no período', tone: 'green', iconName: 'arrowUpCircle' })}
         ${statCard({ label: 'Total a receber', value: formatCurrency(totalAReceber), sub: 'Recebimentos futuros', tone: 'blue', iconName: 'download' })}
         ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
@@ -2407,6 +2407,22 @@ function pageConfiguracoes(container) {
       </div>
 
       <div class="panel">
+        <h3 style="margin-bottom:10px">${icon('card')} Gastos do cartão no orçamento</h3>
+        <p class="row-sub" style="margin-bottom:14px">A <strong style="color:var(--text)">fatura do cartão</strong> (em Cartões de crédito) sempre segue o ciclo real de fechamento — é o valor exato que você paga ao banco. Já o <strong style="color:var(--text)">Total de gastos</strong> do Dashboard pode contar essas compras de dois jeitos:</p>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+          <label class="checkbox-row" style="align-items:flex-start;gap:10px">
+            <input type="radio" name="cfg-regime-cartao" id="cfg-regime-competencia" ${p.gastoCartaoPorCompra !== false ? 'checked' : ''} style="margin-top:3px" />
+            <span><strong style="display:block;color:var(--text)">Pela data da compra</strong><span class="row-sub">O gasto conta no mês em que você comprou, não no mês em que a fatura fecha. Combina com quem se organiza no formato "recebo pra gastar" — o dinheiro já está comprometido no mês da compra, mesmo que o pagamento real da fatura seja só no mês seguinte.</span></span>
+          </label>
+          <label class="checkbox-row" style="align-items:flex-start;gap:10px">
+            <input type="radio" name="cfg-regime-cartao" id="cfg-regime-caixa" ${p.gastoCartaoPorCompra === false ? 'checked' : ''} style="margin-top:3px" />
+            <span><strong style="display:block;color:var(--text)">Pela fatura (vencimento)</strong><span class="row-sub">O gasto só conta no mês em que a fatura realmente vence — igual ao dinheiro saindo de fato da sua conta.</span></span>
+          </label>
+        </div>
+        <button class="btn btn-primary btn-sm" id="cfg-save-regime">Salvar</button>
+      </div>
+
+      <div class="panel">
         <h3 style="margin-bottom:10px">${icon('logout')} Sessão</h3>
         <p class="row-sub" style="margin-bottom:14px">Encerre sua sessão neste dispositivo.</p>
         <button class="btn btn-danger-ghost btn-sm" id="cfg-logout">Sair da conta</button>
@@ -2448,6 +2464,12 @@ function pageConfiguracoes(container) {
       Store.state.profile.currency = document.getElementById('cfg-moeda').value;
       Store.save();
       toast('Moeda atualizada', 'success');
+      render();
+    };
+    document.getElementById('cfg-save-regime').onclick = () => {
+      Store.state.profile.gastoCartaoPorCompra = document.getElementById('cfg-regime-competencia').checked;
+      Store.save();
+      toast('Preferência salva', 'success');
       render();
     };
     document.getElementById('cfg-logout').onclick = () => toast('Este protótipo ainda não tem login real para encerrar sessão', 'info');
