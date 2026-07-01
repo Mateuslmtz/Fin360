@@ -918,7 +918,7 @@ function genericCrudPage(container, cfg) {
 }
 
 /* ---- Bancos ---- */
-const BANK_CORES = ['#3866ff', '#7c3aed', '#22c55e', '#f04848', '#f5a623', '#14b8a6'];
+const BANK_CORES = ['#3866ff', '#7c3aed', '#22c55e', '#f04848', '#f5a623', '#14b8a6', '#000000', '#eab308'];
 let bancosTab = 'bancos';
 let bancoFormOpen = false;
 let editingBancoId = null;
@@ -949,7 +949,7 @@ function pageBancos(container) {
           <div class="field">
             <label>Cor</label>
             <div class="chip-row" id="bc-cor-group">
-              ${BANK_CORES.map((c) => `<button type="button" data-cor="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${c === novoBancoCor ? 'var(--text)' : 'transparent'};cursor:pointer"></button>`).join('')}
+              ${BANK_CORES.map((c) => `<button type="button" data-cor="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${c === novoBancoCor ? 'var(--primary)' : 'var(--border)'};box-shadow:${c === novoBancoCor ? '0 0 0 2px var(--primary-soft)' : 'none'};cursor:pointer"></button>`).join('')}
             </div>
           </div>
           <button class="btn btn-primary btn-block" id="bc-save">${editing ? 'Salvar alterações' : 'Salvar banco'}</button>
@@ -980,7 +980,13 @@ function pageBancos(container) {
       document.getElementById('bc-cancel').onclick = () => { bancoFormOpen = false; editingBancoId = null; draw(); };
       if (document.getElementById('bc-empty-create')) document.getElementById('bc-empty-create').onclick = () => { bancoFormOpen = true; draw(); };
       const corBtns = document.getElementById('bc-cor-group').querySelectorAll('[data-cor]');
-      corBtns.forEach((b) => b.onclick = () => { novoBancoCor = b.dataset.cor; corBtns.forEach((x) => x.style.border = x === b ? '2px solid var(--text)' : '2px solid transparent'); });
+      corBtns.forEach((b) => b.onclick = () => {
+        novoBancoCor = b.dataset.cor;
+        corBtns.forEach((x) => {
+          x.style.border = x === b ? '2px solid var(--primary)' : '2px solid var(--border)';
+          x.style.boxShadow = x === b ? '0 0 0 2px var(--primary-soft)' : 'none';
+        });
+      });
       document.getElementById('bc-save').onclick = () => {
         const name = document.getElementById('bc-nome').value.trim();
         if (!name) { toast('Dê um nome para o banco', 'danger'); return; }
