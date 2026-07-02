@@ -912,7 +912,7 @@ function pageGastosFixos(container) {
     // para a lista, no modo "ano" mostramos a recorrência consolidada (1 linha por gasto fixo ativo no ano)
     const listMonth = period.type === 'year' ? currentMonthStr() : mStr;
     const inPeriodList = gastosFixosForMonth(listMonth);
-    const displayList = gastosFixosForMonthAll(listMonth);
+    const displayList = gastosFixosForMonthAll(listMonth).sort((a, b) => (a.vencimentoISO < b.vencimentoISO ? -1 : 1));
     const totalMes = inPeriodList.reduce((s, g) => s + g.valor, 0);
     const pagoMes = inPeriodList.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0);
     const pendenteMes = totalMes - pagoMes;
@@ -1410,7 +1410,7 @@ function pageRecebimentos(container) {
     const period = recebPeriod;
     const mStr = period.type === 'year' ? null : (period.value || currentMonthStr());
     const months = period.type === 'year' ? Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`) : [mStr];
-    const items = months.flatMap((m) => recebimentosForMonth(m));
+    const items = months.flatMap((m) => recebimentosForMonth(m)).sort((a, b) => (a.dataOcorrencia < b.dataOcorrencia ? -1 : 1));
 
     const total = items.reduce((s, r) => s + r.valor, 0);
     const previsto = items.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
