@@ -1802,7 +1802,7 @@ function pageCartoes(container) {
               <div class="field"><label>Valor</label>${moneyInputHTML('cp-valor', editingCompra ? editingCompra.valorTotal : '')}</div>
               <div class="field"><label>Data</label><input type="date" id="cp-data" value="${editingCompra ? editingCompra.data : todayISO()}" /></div>
             </div>
-            <div class="field"><label>Cartão</label><select id="cp-cartao">${cartoes.length === 0 ? '<option value="">Nenhum cartão cadastrado</option>' : cartoes.map((c) => `<option value="${c.id}" ${c.id === (editingCompra ? editingCompra.cartaoId : selectedCartaoId) ? 'selected' : ''}>${c.nome}${(Store.bankById(c.bankId) || {}).name ? ' — ' + Store.bankById(c.bankId).name : ''}</option>`).join('')}</select></div>
+            <div class="field"><label>Cartão</label><select id="cp-cartao">${cartoes.length === 0 ? '<option value="">Nenhum cartão cadastrado</option>' : cartoes.map((c) => `<option value="${c.id}" ${c.id === (editingCompra ? editingCompra.cartaoId : selectedCartaoId) ? 'selected' : ''}>${c.nome}${(Store.bankById(c.bankId) || {}).name ? ' (' + Store.bankById(c.bankId).name + ')' : ''}</option>`).join('')}</select></div>
             <div class="field"><label>Categoria</label>${fieldHTML({ key: 'cp-categoria', type: 'select-category', catTipo: 'despesa' }, editingCompra ? editingCompra.categoryId : '')}</div>
             <div class="field">
               <label>Tipo de compra</label>
