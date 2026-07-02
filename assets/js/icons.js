@@ -1,12 +1,12 @@
 /* Fin360 — biblioteca de ícones SVG inline (estilo feather, leve e sem dependências) */
 const ICONS = {
-  logo: `<svg viewBox="0 0 64 64" class="svg-icon" style="width:100%;height:100%;stroke-width:4">
+  logo: `<svg viewBox="0 0 64 64" class="svg-icon" style="width:100%;height:100%">
     <rect x="1" y="1" width="62" height="62" rx="16" fill="#050b28" />
-    <circle cx="32" cy="32" r="21" fill="none" stroke="#3866ff" />
-    <circle cx="49" cy="15" r="4" fill="#3866ff" stroke="none" />
-    <circle cx="32" cy="32" r="12" fill="none" stroke="#ffffff" stroke-width="3.5" />
-    <ellipse cx="32" cy="32" rx="21" ry="7" fill="none" stroke="#3866ff" transform="rotate(-18 32 32)" />
-    <text x="32" y="38" text-anchor="middle" font-size="16" font-family="Segoe UI, sans-serif" fill="#ffffff" stroke="none" font-weight="700">$</text>
+    <circle cx="32" cy="32" r="23" fill="none" stroke="#3866ff" stroke-width="4" />
+    <ellipse cx="32" cy="32" rx="28" ry="6" fill="#3866ff" transform="rotate(-20 32 32)" />
+    <circle cx="32" cy="32" r="13" fill="none" stroke="#ffffff" stroke-width="3.5" />
+    <text x="32" y="40" text-anchor="middle" font-size="23" font-family="Arial, sans-serif" fill="#ffffff" stroke="none" font-weight="800">$</text>
+    <circle cx="46" cy="13" r="4" fill="#3866ff" stroke="none" />
   </svg>`,
 
   grid: `<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>`,
@@ -23,6 +23,7 @@ const ICONS = {
   checkCircle: `<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>`,
   target: `<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>`,
   menu: `<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>`,
+  gripVertical: `<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>`,
   sun: `<circle cx="12" cy="12" r="4.5"/><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="3.5" y1="12" x2="1.5" y2="12"/><line x1="22.5" y1="12" x2="20.5" y2="12"/><line x1="5" y1="5" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19" y2="19"/><line x1="19" y1="5" x2="17.5" y2="6.5"/><line x1="6.5" y1="17.5" x2="5" y2="19"/>`,
   moon: `<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>`,
   eye: `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,

@@ -14,29 +14,111 @@ function inPeriod(iso, period) {
   return isSameMonth(iso, period.value || currentMonthStr());
 }
 
+const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+/* fecha qualquer dropdown aberto ao clicar fora dele */
+document.addEventListener('click', () => {
+  document.querySelectorAll('.dropdown.open').forEach((d) => d.classList.remove('open'));
+});
+
+function wireDropdownToggle(ddEl) {
+  if (!ddEl) return;
+  const trigger = ddEl.querySelector('.dropdown-trigger');
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    const wasOpen = ddEl.classList.contains('open');
+    document.querySelectorAll('.dropdown.open').forEach((d) => d.classList.remove('open'));
+    if (!wasOpen) ddEl.classList.add('open');
+  };
+}
+
+function paintMonthPanel(panel, browseYear, period, onChange) {
+  const selYear = period.type === 'month' && period.value ? Number(period.value.slice(0, 4)) : null;
+  const selMonth = period.type === 'month' && period.value ? Number(period.value.slice(5, 7)) : null;
+  panel.innerHTML = `
+    <div class="picker-head">
+      <button type="button" class="picker-nav" data-nav="prev">${icon('chevronDown', 'chevron-prev')}</button>
+      <strong>${browseYear}</strong>
+      <button type="button" class="picker-nav" data-nav="next">${icon('chevronDown', 'chevron-next')}</button>
+    </div>
+    <div class="month-grid">
+      ${MONTH_NAMES_SHORT.map((name, i) => {
+        const m = i + 1;
+        const active = selYear === browseYear && selMonth === m;
+        return `<button type="button" class="month-cell ${active ? 'active' : ''}" data-month="${String(m).padStart(2, '0')}">${name}</button>`;
+      }).join('')}
+    </div>
+  `;
+  panel.querySelector('[data-nav="prev"]').onclick = (e) => { e.stopPropagation(); paintMonthPanel(panel, browseYear - 1, period, onChange); };
+  panel.querySelector('[data-nav="next"]').onclick = (e) => { e.stopPropagation(); paintMonthPanel(panel, browseYear + 1, period, onChange); };
+  panel.querySelectorAll('.month-cell').forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      period.type = 'month';
+      period.value = `${browseYear}-${btn.dataset.month}`;
+      onChange();
+    };
+  });
+}
+
+function paintYearPanel(panel, browseYear, period, onChange) {
+  const selYear = period.type === 'year' ? Number(period.value) : null;
+  const start = browseYear - 5;
+  const years = Array.from({ length: 8 }, (_, i) => start + i);
+  panel.innerHTML = `
+    <div class="picker-head">
+      <button type="button" class="picker-nav" data-nav="prev">${icon('chevronDown', 'chevron-prev')}</button>
+      <span class="picker-title">Selecionar ano</span>
+      <button type="button" class="picker-nav" data-nav="next">${icon('chevronDown', 'chevron-next')}</button>
+    </div>
+    <div class="year-grid">
+      ${years.map((y) => `<button type="button" class="year-cell ${y === selYear ? 'active' : ''}" data-year="${y}">${y}</button>`).join('')}
+    </div>
+  `;
+  panel.querySelector('[data-nav="prev"]').onclick = (e) => { e.stopPropagation(); paintYearPanel(panel, browseYear - 8, period, onChange); };
+  panel.querySelector('[data-nav="next"]').onclick = (e) => { e.stopPropagation(); paintYearPanel(panel, browseYear + 8, period, onChange); };
+  panel.querySelectorAll('.year-cell').forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      period.type = 'year';
+      period.value = btn.dataset.year;
+      onChange();
+    };
+  });
+}
+
 function renderPeriodControl(prefix, period) {
+  const isThisMonth = period.type === 'month' && (period.value || currentMonthStr()) === currentMonthStr();
+  const isCustomMonth = period.type === 'month' && !isThisMonth;
+  const isYear = period.type === 'year';
   return `
     <div class="pill-group" id="${prefix}-period-group">
-      <button class="pill ${period.type === 'month' ? 'active' : ''}" data-mode="thismonth">Este mês</button>
-      <button class="pill" data-mode="custommonth">Escolher mês</button>
-      <button class="pill ${period.type === 'year' ? 'active' : ''}" data-mode="year">Ano</button>
-      ${period.type === 'month' ? `<input type="month" id="${prefix}-month-input" value="${period.value || currentMonthStr()}" style="width:150px" />` : ''}
+      <button type="button" class="pill ${isThisMonth ? 'active' : ''}" data-mode="thismonth">Este mês</button>
+      <div class="dropdown" id="${prefix}-month-dd">
+        <button type="button" class="pill dropdown-trigger ${isCustomMonth ? 'active' : ''}">${icon('calendar')} Escolher mês</button>
+        <div class="dropdown-panel" id="${prefix}-month-panel"></div>
+      </div>
+      <div class="dropdown" id="${prefix}-year-dd">
+        <button type="button" class="pill dropdown-trigger ${isYear ? 'active' : ''}">${icon('calendar')} Ano</button>
+        <div class="dropdown-panel" id="${prefix}-year-panel"></div>
+      </div>
     </div>
   `;
 }
 function wirePeriodControl(prefix, period, onChange) {
   const group = document.getElementById(`${prefix}-period-group`);
   if (!group) return;
-  group.querySelectorAll('.pill').forEach((btn) => {
-    btn.onclick = () => {
-      if (btn.dataset.mode === 'thismonth') { period.type = 'month'; period.value = currentMonthStr(); }
-      else if (btn.dataset.mode === 'custommonth') { period.type = 'month'; period.value = period.value || currentMonthStr(); }
-      else if (btn.dataset.mode === 'year') { period.type = 'year'; period.value = String(new Date().getFullYear()); }
-      onChange();
-    };
-  });
-  const monthInput = document.getElementById(`${prefix}-month-input`);
-  if (monthInput) monthInput.onchange = () => { period.value = monthInput.value; onChange(); };
+  group.querySelector('[data-mode="thismonth"]').onclick = () => { period.type = 'month'; period.value = currentMonthStr(); onChange(); };
+
+  const monthDD = document.getElementById(`${prefix}-month-dd`);
+  const yearDD = document.getElementById(`${prefix}-year-dd`);
+  wireDropdownToggle(monthDD);
+  wireDropdownToggle(yearDD);
+
+  const monthBrowseYear = period.type === 'month' && period.value ? Number(period.value.slice(0, 4)) : new Date().getFullYear();
+  const yearBrowseYear = period.type === 'year' && period.value ? Number(period.value) : new Date().getFullYear();
+  paintMonthPanel(document.getElementById(`${prefix}-month-panel`), monthBrowseYear, period, onChange);
+  paintYearPanel(document.getElementById(`${prefix}-year-panel`), yearBrowseYear, period, onChange);
 }
 
 /* ============ generic field rendering for simple CRUD pages ============ */
@@ -44,21 +126,21 @@ function fieldHTML(field, value) {
   const id = `f-${field.key}`;
   switch (field.type) {
     case 'number':
-      return `<input type="number" step="0.01" id="${id}" value="${value ?? ''}" placeholder="${field.placeholder || '0,00'}" />`;
+      return moneyInputHTML(id, value, field.placeholder);
     case 'date':
       return `<input type="date" id="${id}" value="${value || todayISO()}" />`;
     case 'textarea':
       return `<textarea id="${id}" placeholder="${field.placeholder || ''}">${value || ''}</textarea>`;
     case 'select-category':
-      return `<div class="input-with-btn"><select id="${id}">${categoryOptions(value)}</select><button type="button" class="btn-icon" id="${id}-add" title="Nova categoria">${icon('plus')}</button></div>`;
+      return `<div class="input-with-btn"><select id="${id}" ${field.optional ? '' : 'required'}>${categoryOptions(value, field.catTipo)}</select><button type="button" class="btn-add-new" id="${id}-add" title="Nova categoria">+ Nova</button></div>`;
     case 'select-bank':
-      return `<div class="input-with-btn"><select id="${id}">${bankOptions(value)}</select><button type="button" class="btn-icon" id="${id}-add" title="Novo banco">${icon('plus')}</button></div>`;
+      return `<div class="input-with-btn"><select id="${id}">${bankOptions(value)}</select><button type="button" class="btn-add-new" id="${id}-add" title="Novo banco">+ Novo</button></div>`;
     case 'select':
       return `<select id="${id}">${field.options.map((o) => `<option value="${o.value}" ${o.value === value ? 'selected' : ''}>${o.label}</option>`).join('')}</select>`;
     case 'checkbox':
       return `<label class="checkbox-row"><input type="checkbox" id="${id}" ${value ? 'checked' : ''} /> ${field.label}</label>`;
     case 'emoji':
-      return `<input type="text" id="${id}" value="${value || '🏷️'}" maxlength="2" style="width:64px;text-align:center" />`;
+      return renderEmojiPicker(id, value);
     default:
       return `<input type="text" id="${id}" value="${value || ''}" placeholder="${field.placeholder || ''}" />`;
   }
@@ -66,7 +148,7 @@ function fieldHTML(field, value) {
 function readField(field) {
   const el = document.getElementById(`f-${field.key}`);
   if (!el) return undefined;
-  if (field.type === 'number') return parseFloat(el.value) || 0;
+  if (field.type === 'number') return moneyValue(`f-${field.key}`);
   if (field.type === 'checkbox') return el.checked;
   return el.value;
 }
@@ -74,7 +156,7 @@ function wireQuickAddButtons(fields) {
   fields.forEach((f) => {
     if (f.type === 'select-category') {
       const btn = document.getElementById(`f-${f.key}-add`);
-      if (btn) btn.onclick = () => quickAddCategory((id) => { document.getElementById(`f-${f.key}`).innerHTML = categoryOptions(id); });
+      if (btn) btn.onclick = () => quickAddCategory((id) => { document.getElementById(`f-${f.key}`).innerHTML = categoryOptions(id, f.catTipo); }, f.catTipo);
     }
     if (f.type === 'select-bank') {
       const btn = document.getElementById(`f-${f.key}-add`);
@@ -83,65 +165,292 @@ function wireQuickAddButtons(fields) {
   });
 }
 
-function collapsibleNewCategory(prefix) {
+let catBoxOpenState = {};
+let editingCategoryId = null;
+
+function categoryListHTML(tipo) {
+  const list = Store.state.categories.filter((c) => (c.tipo || 'despesa') === tipo);
+  if (!list.length) return `<div class="row-sub" style="padding:10px 0">Nenhuma categoria cadastrada ainda.</div>`;
   return `
-    <button type="button" class="btn btn-ghost btn-block" id="${prefix}-toggle-cat" style="justify-content:space-between">
-      <span>${icon('plus')} Nova categoria</span>${icon('chevronDown')}
-    </button>
-    <div id="${prefix}-newcat-box" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-input)">
-      <div class="field-row">
-        <div class="field"><label>Nome</label><input type="text" id="${prefix}-nc-name" placeholder="Ex.: Pet" /></div>
-        <div class="field"><label>Emoji</label><input type="text" id="${prefix}-nc-emoji" value="🏷️" maxlength="2" /></div>
-      </div>
-      <div class="field"><label>Cor</label><input type="text" id="${prefix}-nc-color" value="#3866ff" /></div>
-      <button type="button" class="btn btn-primary btn-sm btn-block" id="${prefix}-nc-add">Adicionar categoria</button>
+    <div class="cat-list-title">Categorias existentes</div>
+    <div class="cat-list-scroll">
+      ${list.map((c) => `
+        <div class="cat-list-row" draggable="true" data-id="${c.id}">
+          <span class="cat-drag-handle">${icon('gripVertical')}</span>
+          <span class="cat-list-name">${c.emoji} ${c.name}</span>
+          <div class="row-actions">
+            <button type="button" class="btn-icon" data-action="edit-cat" data-id="${c.id}">${icon('edit')}</button>
+            <button type="button" class="btn-icon" data-action="delete-cat" data-id="${c.id}">${icon('trash')}</button>
+          </div>
+        </div>
+      `).join('')}
     </div>
   `;
 }
-function wireCollapsibleNewCategory(prefix, onAdded) {
+// arrastar uma linha e soltar em cima de outra move ela pra posição da alvo — a ordem aqui é a mesma usada
+// em todas as listas suspensas de categoria do app (ver categoryOptions)
+function wireCategoryDragDrop(scopeEl, onChange) {
+  let draggedId = null;
+  scopeEl.querySelectorAll('.cat-list-row').forEach((row) => {
+    row.addEventListener('dragstart', () => {
+      draggedId = row.dataset.id;
+      row.classList.add('dragging');
+    });
+    row.addEventListener('dragend', () => row.classList.remove('dragging'));
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      const targetId = row.dataset.id;
+      if (draggedId && targetId && draggedId !== targetId) {
+        Store.reorderCategories(draggedId, targetId);
+        onChange();
+      }
+    });
+  });
+}
+function collapsibleNewCategory(prefix, opts) {
+  opts = opts || {};
+  const isOpen = !!catBoxOpenState[prefix];
+  const editingCat = isOpen && editingCategoryId ? Store.categoryById(editingCategoryId) : null;
+  return `
+    <button type="button" class="btn btn-ghost btn-block" id="${prefix}-toggle-cat" style="justify-content:space-between">
+      <span class="btn-toggle-label">${icon('plus')} Nova categoria</span>${icon('chevronDown')}
+    </button>
+    <div id="${prefix}-newcat-box" style="display:${isOpen ? 'block' : 'none'};margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-input)">
+      <div class="field-row">
+        <div class="field"><label>Nome</label><input type="text" id="${prefix}-nc-name" placeholder="Ex.: Pet" value="${editingCat ? editingCat.name : ''}" /></div>
+        <div class="field"><label>Emoji</label>${renderEmojiPicker(`${prefix}-nc-emoji`, editingCat ? editingCat.emoji : '🏷️')}</div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm btn-block" id="${prefix}-nc-add">${editingCat ? 'Salvar alterações' : 'Adicionar categoria'}</button>
+      ${opts.showList ? categoryListHTML(opts.catTipo || 'despesa') : ''}
+    </div>
+  `;
+}
+function wireCollapsibleNewCategory(prefix, onChange, opts) {
+  opts = opts || {};
+  const tipo = opts.catTipo || 'despesa';
   const toggle = document.getElementById(`${prefix}-toggle-cat`);
   const box = document.getElementById(`${prefix}-newcat-box`);
   if (!toggle) return;
-  toggle.onclick = () => { box.style.display = box.style.display === 'none' ? 'block' : 'none'; };
+  toggle.onclick = () => {
+    catBoxOpenState[prefix] = !catBoxOpenState[prefix];
+    if (!catBoxOpenState[prefix]) editingCategoryId = null;
+    box.style.display = catBoxOpenState[prefix] ? 'block' : 'none';
+  };
+  wireEmojiPicker(`${prefix}-nc-emoji`);
   document.getElementById(`${prefix}-nc-add`).onclick = () => {
     const name = document.getElementById(`${prefix}-nc-name`).value.trim();
     if (!name) { toast('Dê um nome para a categoria', 'danger'); return; }
-    const cat = Store.add('categories', {
-      name,
-      emoji: document.getElementById(`${prefix}-nc-emoji`).value || '🏷️',
-      color: document.getElementById(`${prefix}-nc-color`).value || '#3866ff',
-    });
-    toast('Categoria adicionada', 'success');
-    onAdded && onAdded(cat.id);
+    const emoji = document.getElementById(`${prefix}-nc-emoji`).value || '🏷️';
+    if (editingCategoryId) {
+      Store.update('categories', editingCategoryId, { name, emoji });
+      toast('Categoria atualizada', 'success');
+      editingCategoryId = null;
+      onChange && onChange();
+    } else {
+      const cat = Store.add('categories', { name, emoji, color: nextCategoryColor(), tipo });
+      toast('Categoria adicionada', 'success');
+      onChange && onChange(cat.id);
+    }
   };
+  if (opts.showList) {
+    box.querySelectorAll('[data-action="edit-cat"]').forEach((b) => b.onclick = () => {
+      editingCategoryId = b.dataset.id;
+      onChange && onChange();
+    });
+    box.querySelectorAll('[data-action="delete-cat"]').forEach((b) => b.onclick = () => {
+      confirmModal({
+        title: 'Excluir categoria', text: 'Lançamentos que já usam essa categoria ficarão sem categoria. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+        onConfirm: () => { Store.remove('categories', b.dataset.id); toast('Categoria excluída', 'success'); onChange && onChange(); },
+      });
+    });
+    wireCategoryDragDrop(box, () => onChange && onChange());
+  }
+}
+
+/* ============ Pagamento de gasto fixo (banco usado + data + valor) ============ */
+function payGastoFixoModal(gastoFixo, mStr, onConfirm) {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>Pagar gasto fixo</h3>
+      <p>Confirme banco, data e valor pago. O valor base do gasto fixo permanece intacto.</p>
+      <div class="field">
+        <label>Banco usado <span class="req">*</span></label>
+        ${fieldHTML({ key: 'pg-banco', type: 'select-bank' }, gastoFixo.bankId)}
+        <span class="row-sub" style="display:block;margin-top:6px">O valor será debitado deste banco e registrado no extrato.</span>
+      </div>
+      <div class="field"><label>Data do pagamento</label>${fieldHTML({ key: 'pg-data', type: 'date' }, todayISO())}</div>
+      <div class="field">
+        <label>Valor pago</label>
+        ${fieldHTML({ key: 'pg-valor', type: 'number' }, gastoFixo.valor)}
+        <span class="row-sub" style="display:block;margin-top:6px">Valor original: <strong>${formatCurrency(gastoFixo.valor)}</strong>. Alterar aqui afeta somente esta baixa — o lançamento original e as próximas competências mantêm o valor base.</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-success btn-sm" id="modal-confirm">Confirmar pagamento</button>
+      </div>
+    </div>
+  `;
+  overlay.classList.add('open');
+  wireQuickAddButtons([{ key: 'pg-banco', type: 'select-bank' }]);
+  overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
+  overlay.querySelector('#modal-confirm').onclick = () => {
+    const bankId = document.getElementById('f-pg-banco').value;
+    if (!bankId) { toast('Selecione o banco usado', 'danger'); return; }
+    const data = document.getElementById('f-pg-data').value || todayISO();
+    const valor = moneyValue('f-pg-valor') || gastoFixo.valor;
+    payGastoFixo(gastoFixo.id, mStr, { bankId, data, valor });
+    overlay.classList.remove('open');
+    toast('Pagamento confirmado', 'success');
+    onConfirm && onConfirm();
+  };
+}
+
+function deleteGastoFixoModal(gastoFixo, mStr, onConfirm) {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>Excluir gasto fixo</h3>
+      <p>"${gastoFixo.nome}" aparece todo mês. Como deseja excluir? O histórico passado é sempre preservado.</p>
+      <button type="button" class="choice-card" id="del-fixo-mes">
+        <strong>Apenas este mês</strong>
+        <span>Esconde a ocorrência somente do mês selecionado. Demais meses continuam.</span>
+      </button>
+      <button type="button" class="choice-card danger" id="del-fixo-diante">
+        <strong>Deste mês em diante</strong>
+        <span>Encerra o gasto fixo a partir deste mês. Meses anteriores ficam preservados.</span>
+      </button>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
+      </div>
+    </div>
+  `;
+  overlay.classList.add('open');
+  overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
+  overlay.querySelector('#del-fixo-mes').onclick = () => {
+    deleteGastoFixoMes(gastoFixo.id, mStr);
+    overlay.classList.remove('open');
+    toast('Ocorrência removida deste mês', 'success');
+    onConfirm && onConfirm();
+  };
+  overlay.querySelector('#del-fixo-diante').onclick = () => {
+    endGastoFixoFromMonth(gastoFixo.id, mStr);
+    overlay.classList.remove('open');
+    toast('Gasto fixo encerrado a partir deste mês', 'success');
+    onConfirm && onConfirm();
+  };
+}
+
+function aplicarAlteracaoGastoFixoModal(gastoFixo, mStrReferencia, payload, onConfirm) {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>Aplicar alteração</h3>
+      <p>Você está alterando "${gastoFixo.nome}". Onde aplicar?</p>
+      <button type="button" class="choice-card danger" id="apl-deste-mes">
+        <strong>Deste mês em diante</strong>
+        <span>Os meses anteriores mantêm o valor antigo. Este mês e os próximos passam a usar o novo valor.</span>
+      </button>
+      <button type="button" class="choice-card" id="apl-historico">
+        <strong>Todo o histórico</strong>
+        <span>Aplica o novo valor em todos os meses, inclusive nos passados que ainda não foram pagos.</span>
+      </button>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
+      </div>
+    </div>
+  `;
+  overlay.classList.add('open');
+  overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
+  overlay.querySelector('#apl-deste-mes').onclick = () => {
+    updateGastoFixoComHistorico(gastoFixo.id, mStrReferencia, payload, 'deste-mes');
+    overlay.classList.remove('open');
+    toast('Alteração aplicada deste mês em diante', 'success');
+    onConfirm && onConfirm();
+  };
+  overlay.querySelector('#apl-historico').onclick = () => {
+    updateGastoFixoComHistorico(gastoFixo.id, mStrReferencia, payload, 'historico');
+    overlay.classList.remove('open');
+    toast('Alteração aplicada em todo o histórico', 'success');
+    onConfirm && onConfirm();
+  };
+}
+
+function wirePagoFixoActions(container, onChange) {
+  container.querySelectorAll('[data-action="pay-fixo"]').forEach((b) => b.onclick = () => {
+    const gastoFixo = Store.get('gastosFixos', b.dataset.id);
+    payGastoFixoModal(gastoFixo, b.dataset.mes, onChange);
+  });
+  container.querySelectorAll('[data-action="reopen-fixo"]').forEach((b) => b.onclick = () => {
+    reopenGastoFixo(b.dataset.id, b.dataset.mes);
+    toast('Pagamento reaberto', 'success');
+    onChange();
+  });
 }
 
 /* =========================================================================
    DASHBOARD
    ========================================================================= */
 let dashPeriod = { type: 'month', value: currentMonthStr() };
+let dashBank = 'todos';
 
 function monthsInPeriod(period) {
   if (period.type === 'year') return Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`);
   return [period.value || currentMonthStr()];
 }
 
+function renderBankFilter(prefix, bankId) {
+  const banks = Store.state.banks;
+  const selLabel = bankId === 'todos' ? 'Todos os bancos' : ((Store.bankById(bankId) || {}).name || 'Todos os bancos');
+  return `
+    <div class="dropdown" id="${prefix}-bank-dd">
+      <button type="button" class="dropdown-trigger">
+        ${icon('bank')}<span>${selLabel}</span>${icon('chevronDown', 'chevron')}
+      </button>
+      <div class="dropdown-panel bank-panel">
+        <button type="button" class="bank-option ${bankId === 'todos' ? 'active' : ''}" data-bank="todos">Todos os bancos</button>
+        ${banks.map((b, i) => `<button type="button" class="bank-option ${bankId === b.id ? 'active' : ''}" data-bank="${b.id}">${icon('bank')} ${i + 1} - ${b.name}</button>`).join('')}
+      </div>
+    </div>
+  `;
+}
+function wireBankFilter(prefix, setBank, onChange) {
+  const dd = document.getElementById(`${prefix}-bank-dd`);
+  if (!dd) return;
+  wireDropdownToggle(dd);
+  dd.querySelectorAll('.bank-option').forEach((btn) => {
+    btn.onclick = (e) => { e.stopPropagation(); setBank(btn.dataset.bank); onChange(); };
+  });
+}
+
 function pageDashboard(container) {
   const draw = () => {
     const period = dashPeriod;
     const months = monthsInPeriod(period);
-    const fixos = months.flatMap((m) => gastosFixosForMonth(m));
-    const variaveis = Store.state.gastosVariaveis.filter((g) => months.includes(g.data.slice(0, 7)));
-    const receb = months.flatMap((m) => recebimentosForMonth(m));
-    const custoRealCartoes = months.reduce((s, m) => s + allCartoesCustoRealForMonth(m), 0);
+    const bankFilterOn = dashBank !== 'todos';
+    const fixos = months.flatMap((m) => gastosFixosForMonth(m)).filter((g) => !bankFilterOn || g.bankId === dashBank);
+    const variaveis = Store.state.gastosVariaveis.filter((g) => months.includes(g.data.slice(0, 7)) && (!bankFilterOn || g.bankId === dashBank));
+    const receb = months.flatMap((m) => recebimentosForMonth(m)).filter((r) => !bankFilterOn || r.bankId === dashBank);
+    const cartoesFiltrados = Store.state.cartoes.filter((c) => !bankFilterOn || c.bankId === dashBank);
+    const custoRealCartoes = months.reduce((s, m) => s + cartoesFiltrados.reduce((s2, c) => s2 + cartaoCustoRealForMonth(c.id, m), 0), 0);
+    // "pago" do cartão sempre pelo ciclo de fatura (caixa), já que é quando o dinheiro de fato sai do banco
+    const custoRealCartoesPago = months.reduce((s, m) => s + cartoesFiltrados.filter((c) => isCartaoFaturaPaga(c.id, m)).reduce((s2, c) => s2 + cartaoCustoRealCaixaForMonth(c.id, m), 0), 0);
 
     const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes;
     const totalRecebimentos = receb.reduce((s, r) => s + r.valor, 0);
     const totalAReceber = receb.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
-    const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + g.valor, 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0);
+    const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0) + custoRealCartoesPago;
     const faltaPagar = totalGastos - totalPago;
-    const saldoBancos = Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
-    const saldoDisponivel = saldoBancos + receb.filter((r) => r.recebido).reduce((s, r) => s + r.valor, 0) - totalPago;
+    const saldoBancos = bankFilterOn ? ((Store.bankById(dashBank) || {}).balance || 0) : Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
+    // saldo do banco já é atualizado na hora (pagar/receber/reabrir), então "disponível" é sempre o valor real agora —
+    // sem somar de novo os fluxos do período, senão conta em dobro e o saldo de um mês não carrega certinho pro seguinte.
+    const saldoDisponivel = saldoBancos;
 
     const allTx = [
       ...fixos.map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'gasto' })),
@@ -167,12 +476,15 @@ function pageDashboard(container) {
             <span class="stat-label">Período</span>
             <h3 style="margin-top:4px">${period.type === 'year' ? period.value : 'Este mês'}</h3>
           </div>
-          ${renderPeriodControl('dash', period)}
+          <div class="period-toolbar">
+            ${renderBankFilter('dash', dashBank)}
+            ${renderPeriodControl('dash', period)}
+          </div>
         </div>
       </div>
 
       <div class="stat-grid">
-        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: `Fixos + variáveis + cartão (sua parte, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})`, tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: bankFilterOn ? `Fixos + variáveis (cartão não é filtrado por banco, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})` : `Fixos + variáveis + cartão (sua parte, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})`, tone: 'red', iconName: 'arrowDownCircle' })}
         ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: 'Entradas no período', tone: 'green', iconName: 'arrowUpCircle' })}
         ${statCard({ label: 'Total a receber', value: formatCurrency(totalAReceber), sub: 'Recebimentos futuros', tone: 'blue', iconName: 'download' })}
         ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
@@ -182,7 +494,7 @@ function pageDashboard(container) {
 
       <div class="panel">
         <div class="panel-header"><div><h3>Evolução do saldo</h3><div class="panel-sub">Acumulado no período selecionado</div></div></div>
-        ${period.type === 'month' ? areaChartHTML(period.value, saldoBancos) : emptyState({ iconName: 'trendUp', title: 'Selecione "Este mês" ou "Escolher mês" para ver a evolução diária.' })}
+        ${period.type === 'month' ? areaChartHTML(period.value, saldoBancosNoFimDoMes(monthAddStr(period.value, -1), bankFilterOn ? dashBank : null)) : emptyState({ iconName: 'trendUp', title: 'Selecione "Este mês" ou "Escolher mês" para ver a evolução diária.' })}
       </div>
 
       <div class="panel">
@@ -238,12 +550,13 @@ function pageDashboard(container) {
     `;
 
     wirePeriodControl('dash', period, draw);
+    wireBankFilter('dash', (id) => { dashBank = id; }, draw);
     document.getElementById('dash-year-select').onchange = (e) => { dashPeriod = { type: 'year', value: e.target.value }; draw(); };
     const go = (id, route) => { const el = document.getElementById(id); if (el) el.onclick = () => goRoute(route); };
     go('dash-add-fixo', 'gastos-fixos'); go('dash-go-cartoes', 'cartoes'); go('dash-add-cartao', 'cartoes');
     go('dash-go-cofrinhos', 'cofrinhos'); go('dash-add-cofrinho', 'cofrinhos');
     go('dash-go-investimentos', 'investimentos'); go('dash-add-investimento', 'investimentos');
-    container.querySelectorAll('[data-action="toggle-pago-fixo"]').forEach((b) => b.onclick = () => { toggleGastoFixoPago(b.dataset.id, b.dataset.mes); draw(); });
+    wirePagoFixoActions(container, draw);
   };
   draw();
 }
@@ -252,9 +565,10 @@ function areaChartHTML(mStr, saldoInicial) {
   const [y, m] = mStr.split('-').map(Number);
   const nDays = daysInMonth(y, m - 1);
   const days = Array.from({ length: nDays }, (_, i) => `${mStr}-${String(i + 1).padStart(2, '0')}`);
+  const fixosMes = gastosFixosForMonth(mStr);
   const despesasDia = days.map((d) =>
     Store.state.gastosVariaveis.filter((g) => g.data === d).reduce((s, g) => s + g.valor, 0) +
-    Store.state.gastosFixos.filter((g) => g.ativo !== false && gastoFixoVencimentoISO(g, mStr) === d).reduce((s, g) => s + g.valor, 0));
+    fixosMes.filter((g) => g.vencimentoISO === d).reduce((s, g) => s + g.valor, 0));
   const recebMes = recebimentosForMonth(mStr);
   const receitasDia = days.map((d) => recebMes.filter((r) => r.dataOcorrencia === d).reduce((s, r) => s + r.valor, 0));
   let acc = saldoInicial;
@@ -299,6 +613,18 @@ function areaChartHTML(mStr, saldoInicial) {
   `;
 }
 
+function pagoFixoStatusHTML(g, mStr) {
+  if (g.pago) {
+    return `<div style="display:inline-flex;align-items:center;gap:8px">
+      <span class="badge badge-success">Pago</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="reopen-fixo" data-id="${g.id}" data-mes="${mStr}">Reabrir</button>
+    </div>`;
+  }
+  return `<div style="display:inline-flex;align-items:center;gap:8px">
+    <span class="badge badge-warning">A pagar</span>
+    <button type="button" class="btn-pay" data-action="pay-fixo" data-id="${g.id}" data-mes="${mStr}">${icon('checkCircle')} Pagar</button>
+  </div>`;
+}
 function gastosFixosMiniList(items) {
   return items.map((g) => `
     <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border-soft)">
@@ -308,7 +634,7 @@ function gastosFixosMiniList(items) {
         <div class="row-sub">${(Store.categoryById(g.categoryId) || {}).name || 'Sem categoria'} · dia ${g.diaVencimento}</div>
       </div>
       <strong>${formatCurrency(g.valor)}</strong>
-      <button class="badge ${g.pago ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-pago-fixo" data-id="${g.id}" data-mes="${g.mesRef}">${g.pago ? 'Pago' : 'Paga este mês'}</button>
+      ${pagoFixoStatusHTML(g, g.mesRef)}
     </div>`).join('');
 }
 
@@ -403,8 +729,7 @@ function badgeStatus(status) {
 function yearTable(year) {
   const now = new Date();
   const months = Array.from({ length: 12 }, (_, i) => i);
-  const saldoBancos = Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
-  let runningBalance = saldoBancos;
+  let runningBalance = 0;
   let totalGanhos = 0, totalFixos = 0, totalVar = 0, totalCartao = 0;
   const rows = months.map((m) => {
     const mStr = `${year}-${String(m + 1).padStart(2, '0')}`;
@@ -413,7 +738,8 @@ function yearTable(year) {
     const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr)).reduce((s, g) => s + g.valor, 0);
     const cartao = allCartoesFaturaForMonth(mStr);
     totalGanhos += ganhos; totalFixos += fixos; totalVar += variaveis; totalCartao += cartao;
-    runningBalance += ganhos - fixos - variaveis - cartao;
+    // reconstrói o saldo real no fim de cada mês a partir do saldo atual dos bancos — carrega certinho mês a mês.
+    runningBalance = saldoBancosNoFimDoMes(mStr);
     let status = 'PROJETADO', cls = 'badge-warning';
     if (year < now.getFullYear() || (year === now.getFullYear() && m < now.getMonth())) { status = 'REALIZADO'; cls = 'badge-success'; }
     else if (year === now.getFullYear() && m === now.getMonth()) { status = 'ATUAL'; cls = 'badge-primary'; }
@@ -588,7 +914,7 @@ function pageGastosFixos(container) {
     const inPeriodList = gastosFixosForMonth(listMonth);
     const displayList = gastosFixosForMonthAll(listMonth);
     const totalMes = inPeriodList.reduce((s, g) => s + g.valor, 0);
-    const pagoMes = inPeriodList.filter((g) => g.pago).reduce((s, g) => s + g.valor, 0);
+    const pagoMes = inPeriodList.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0);
     const pendenteMes = totalMes - pagoMes;
     const desativados = displayList.filter((g) => g.ativo === false);
 
@@ -598,16 +924,18 @@ function pageGastosFixos(container) {
           <h3 style="margin-bottom:14px">${editing ? 'Editar gasto fixo' : 'Novo gasto fixo'}</h3>
           <div class="field"><label>Nome</label><input type="text" id="ff-nome" placeholder="Ex.: Aluguel" value="${editing ? editing.nome : ''}" /></div>
           <div class="field-row">
-            <div class="field"><label>Valor</label><input type="number" step="0.01" id="ff-valor" placeholder="0,00" value="${editing ? editing.valor : ''}" /></div>
+            <div class="field"><label>Valor</label>${moneyInputHTML('ff-valor', editing ? editing.valor : '')}</div>
             <div class="field"><label>Dia do vencimento</label><input type="number" min="1" max="31" id="ff-dia" placeholder="Ex.: 10" value="${editing ? editing.diaVencimento : ''}" /></div>
           </div>
-          <div class="field"><label>Categoria</label>${fieldHTML({ key: 'ff-categoria', type: 'select-category' }, editing ? editing.categoryId : '')}</div>
+          <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(period)}" /></div>
+          <div class="row-sub" style="margin:-8px 0 14px">Segue o mês escolhido no filtro da lista — mude aqui se quiser lançar/pagar meses passados deste gasto fixo.</div>
+          <div class="field"><label>Categoria</label>${fieldHTML({ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
           <div class="field" style="display:flex;align-items:center;padding-top:4px"><label class="checkbox-row"><input type="checkbox" id="ff-ativo" ${!editing || editing.ativo !== false ? 'checked' : ''} /> Ativo (recorrente todo mês)</label></div>
           <div class="field"><label>Banco vinculado <span class="req">*</span></label>${fieldHTML({ key: 'ff-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
           <div class="field"><label>Observação (opcional)</label><textarea id="ff-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
           <button class="btn btn-primary btn-block" id="ff-save">${editing ? 'Salvar alterações' : 'Salvar gasto fixo'}</button>
           ${editing ? `<button class="btn btn-ghost btn-block" id="ff-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
-          <div style="margin-top:14px">${collapsibleNewCategory('ff')}</div>
+          <div style="margin-top:14px">${collapsibleNewCategory('ff', { catTipo: 'despesa' })}</div>
         </div>
 
         <div>
@@ -616,7 +944,7 @@ function pageGastosFixos(container) {
               <div><h3>Lista de gastos fixos</h3><div class="panel-sub">Recorrentes — voltam como pendentes a cada mês.</div></div>
               ${renderPeriodControl('gf', period)}
             </div>
-            <div class="stat-grid">
+            <div class="stat-grid stat-grid-tight">
               ${statCard({ label: 'Total do mês', value: formatCurrency(totalMes), tone: 'blue', iconName: 'wallet' })}
               ${statCard({ label: 'Cadastrados', value: inPeriodList.length, sub: `${all.length} no total`, tone: 'purple', iconName: 'repeat' })}
               ${statCard({ label: 'Pago no mês', value: formatCurrency(pagoMes), tone: 'green', iconName: 'checkCircle' })}
@@ -631,26 +959,41 @@ function pageGastosFixos(container) {
 
     document.getElementById('ff-save').onclick = () => {
       const nome = document.getElementById('ff-nome').value.trim();
-      const valor = parseFloat(document.getElementById('ff-valor').value) || 0;
+      const valor = moneyValue('ff-valor');
       const diaVencimento = Math.min(31, Math.max(1, parseInt(document.getElementById('ff-dia').value, 10) || 1));
+      const inicioMes = document.getElementById('ff-inicio').value || currentMonthStr();
       const bankId = document.getElementById('f-ff-banco').value;
+      const categoryId = document.getElementById('f-ff-categoria').value;
       if (!nome) { toast('Informe o nome do gasto fixo', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
       if (!bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
+      if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
       const payload = {
-        nome, valor, diaVencimento, bankId,
-        categoryId: document.getElementById('f-ff-categoria').value,
+        nome, valor, diaVencimento, inicioMes, bankId,
+        categoryId,
         ativo: document.getElementById('ff-ativo').checked,
         observacao: document.getElementById('ff-obs').value,
       };
-      if (editing) { Store.update('gastosFixos', editing.id, payload); toast('Gasto fixo atualizado', 'success'); editingFixoId = null; }
-      else { Store.add('gastosFixos', payload); toast('Gasto fixo cadastrado', 'success'); }
-      draw();
+      if (editing) {
+        const valorMudou = valor !== editing.valor || diaVencimento !== editing.diaVencimento;
+        if (valorMudou) {
+          aplicarAlteracaoGastoFixoModal(editing, listMonth, payload, () => { editingFixoId = null; draw(); });
+        } else {
+          Store.update('gastosFixos', editing.id, payload);
+          toast('Gasto fixo atualizado', 'success');
+          editingFixoId = null;
+          draw();
+        }
+      } else {
+        Store.add('gastosFixos', Object.assign({ historico: [{ id: uid(), mes: inicioMes, valor, diaVencimento }] }, payload));
+        toast('Gasto fixo cadastrado', 'success');
+        draw();
+      }
     };
     if (editing) document.getElementById('ff-cancel-edit').onclick = () => { editingFixoId = null; draw(); };
 
-    wireQuickAddButtons([{ key: 'ff-categoria', type: 'select-category' }, { key: 'ff-banco', type: 'select-bank' }]);
-    wireCollapsibleNewCategory('ff', () => draw());
+    wireQuickAddButtons([{ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'ff-banco', type: 'select-bank' }]);
+    wireCollapsibleNewCategory('ff', () => draw(), { catTipo: 'despesa' });
     wirePeriodControl('gf', period, draw);
 
     container.querySelectorAll('[data-action="edit-fixo"]').forEach((b) => b.onclick = () => { editingFixoId = b.dataset.id; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
@@ -659,15 +1002,9 @@ function pageGastosFixos(container) {
       Store.update('gastosFixos', b.dataset.id, { ativo: item.ativo === false });
       draw();
     });
-    container.querySelectorAll('[data-action="toggle-pago-fixo"]').forEach((b) => b.onclick = () => {
-      toggleGastoFixoPago(b.dataset.id, b.dataset.mes);
-      draw();
-    });
+    wirePagoFixoActions(container, draw);
     container.querySelectorAll('[data-action="delete-fixo"]').forEach((b) => b.onclick = () => {
-      confirmModal({
-        title: 'Excluir gasto fixo', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
-        onConfirm: () => { Store.remove('gastosFixos', b.dataset.id); toast('Gasto fixo excluído', 'success'); draw(); },
-      });
+      deleteGastoFixoModal(Store.get('gastosFixos', b.dataset.id), b.dataset.mes, draw);
     });
   };
   draw();
@@ -676,20 +1013,21 @@ function pageGastosFixos(container) {
 function gastosFixosTable(list, mStr) {
   return `
     <table class="list-table">
-      <thead><tr><th>Nome</th><th>Categoria</th><th>Venc.</th><th>Banco</th><th>Valor</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Nome</th><th>Categoria</th><th>Vencimento</th><th>Pagamento</th><th>Banco</th><th>Valor</th><th style="text-align:center">Status</th><th></th></tr></thead>
       <tbody>
         ${list.map((g) => `
           <tr>
             <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
             <td>${categoryTag(g.categoryId)}</td>
-            <td>dia ${g.diaVencimento}</td>
+            <td>${formatDateBR(g.vencimentoISO)}</td>
+            <td>${g.pagamento ? formatDateBR(g.pagamento.data) : '<span class="row-sub">—</span>'}</td>
             <td>${Store.bankById(g.bankId) ? Store.bankById(g.bankId).name : '—'}</td>
-            <td><strong>${formatCurrency(g.valor)}</strong></td>
-            <td><button class="badge ${g.pago ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-pago-fixo" data-id="${g.id}" data-mes="${mStr}">${g.pago ? 'Pago — reabrir' : 'Pendente'}</button></td>
+            <td><strong>${formatCurrency(gastoFixoValorEfetivo(g))}</strong></td>
+            <td style="text-align:center">${pagoFixoStatusHTML(g, mStr)}</td>
             <td><div class="row-actions">
               <button class="btn-icon" data-action="toggle-ativo-fixo" data-id="${g.id}" title="${g.ativo === false ? 'Reativar' : 'Desativar'}">${icon(g.ativo === false ? 'checkCircle' : 'alertTriangle')}</button>
               <button class="btn-icon" data-action="edit-fixo" data-id="${g.id}">${icon('edit')}</button>
-              <button class="btn-icon" data-action="delete-fixo" data-id="${g.id}">${icon('trash')}</button>
+              <button class="btn-icon" data-action="delete-fixo" data-id="${g.id}" data-mes="${mStr}">${icon('trash')}</button>
             </div></td>
           </tr>`).join('')}
       </tbody>
@@ -736,16 +1074,15 @@ function pageGastosVariaveis(container) {
           <h3 style="margin-bottom:14px">${editing ? 'Editar lançamento' : 'Novo lançamento'}</h3>
           <div class="field"><label>Descrição</label><input type="text" id="gv-desc" placeholder="Ex.: Mercado" value="${editing ? editing.descricao : ''}" /></div>
           <div class="field-row">
-            <div class="field"><label>Valor</label><input type="number" step="0.01" id="gv-valor" placeholder="0,00" value="${editing ? editing.valor : ''}" /></div>
+            <div class="field"><label>Valor</label>${moneyInputHTML('gv-valor', editing ? editing.valor : '')}</div>
             <div class="field"><label>Data</label><input type="date" id="gv-data" value="${editing ? editing.data : todayISO()}" /></div>
           </div>
-          <div class="field"><label>Categoria</label>${fieldHTML({ key: 'gv-categoria', type: 'select-category' }, editing ? editing.categoryId : '')}</div>
-          <div class="field"><label>Status</label><select id="gv-status"><option value="pendente" ${editing && editing.status === 'pendente' ? 'selected' : ''}>Pendente</option><option value="pago" ${editing && editing.status === 'pago' ? 'selected' : ''}>Pago</option></select></div>
+          <div class="field"><label>Categoria</label>${fieldHTML({ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
           <div class="field"><label>Banco vinculado <span class="req">*</span></label>${fieldHTML({ key: 'gv-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
           <div class="field"><label>Observação (opcional)</label><textarea id="gv-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
           <button class="btn btn-primary btn-block" id="gv-save">${editing ? 'Salvar alterações' : 'Adicionar lançamento'}</button>
           ${editing ? `<button class="btn btn-ghost btn-block" id="gv-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
-          <div style="margin-top:14px">${collapsibleNewCategory('gv')}</div>
+          <div style="margin-top:14px">${collapsibleNewCategory('gv', { catTipo: 'despesa' })}</div>
         </div>
 
         <div>
@@ -762,7 +1099,7 @@ function pageGastosVariaveis(container) {
               </select>
               <select id="gv-filter-cat" style="max-width:200px">
                 <option value="todos">Todas categorias</option>
-                ${Store.state.categories.map((c) => `<option value="${c.id}" ${gvFilters.category === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('')}
+                ${Store.state.categories.filter((c) => (c.tipo || 'despesa') === 'despesa').map((c) => `<option value="${c.id}" ${gvFilters.category === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('')}
               </select>
               <select id="gv-filter-sort" style="max-width:140px">
                 <option value="desc" ${gvFilters.sort === 'desc' ? 'selected' : ''}>Data ↓</option>
@@ -793,26 +1130,27 @@ function pageGastosVariaveis(container) {
 
     document.getElementById('gv-save').onclick = () => {
       const descricao = document.getElementById('gv-desc').value.trim();
-      const valor = parseFloat(document.getElementById('gv-valor').value) || 0;
+      const valor = moneyValue('gv-valor');
       const data = document.getElementById('gv-data').value;
       const bankId = document.getElementById('f-gv-banco').value;
+      const categoryId = document.getElementById('f-gv-categoria').value;
       if (!descricao) { toast('Informe a descrição', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
       if (!bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
+      if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
       const payload = {
         descricao, valor, data, bankId,
-        categoryId: document.getElementById('f-gv-categoria').value,
-        status: document.getElementById('gv-status').value,
+        categoryId,
         observacao: document.getElementById('gv-obs').value,
       };
-      if (editing) { Store.update('gastosVariaveis', editing.id, payload); toast('Lançamento atualizado', 'success'); editingVariavelId = null; }
-      else { Store.add('gastosVariaveis', payload); toast('Lançamento adicionado', 'success'); }
+      if (editing) { updateGastoVariavel(editing.id, payload); toast('Lançamento atualizado', 'success'); editingVariavelId = null; }
+      else { addGastoVariavel(payload); toast('Lançamento adicionado', 'success'); }
       draw();
     };
     if (editing) document.getElementById('gv-cancel-edit').onclick = () => { editingVariavelId = null; draw(); };
 
-    wireQuickAddButtons([{ key: 'gv-categoria', type: 'select-category' }, { key: 'gv-banco', type: 'select-bank' }]);
-    wireCollapsibleNewCategory('gv', () => draw());
+    wireQuickAddButtons([{ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'gv-banco', type: 'select-bank' }]);
+    wireCollapsibleNewCategory('gv', () => draw(), { catTipo: 'despesa' });
     wirePeriodControl('gvp', period, draw);
 
     document.getElementById('gv-filter-status').onchange = (e) => { gvFilters.status = e.target.value; draw(); };
@@ -824,13 +1162,13 @@ function pageGastosVariaveis(container) {
     container.querySelectorAll('[data-action="edit-var"]').forEach((b) => b.onclick = () => { editingVariavelId = b.dataset.id; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="toggle-pago-var"]').forEach((b) => b.onclick = () => {
       const item = Store.get('gastosVariaveis', b.dataset.id);
-      Store.update('gastosVariaveis', b.dataset.id, { status: item.status === 'pago' ? 'pendente' : 'pago' });
+      if (item.status === 'pago') reopenGastoVariavel(b.dataset.id); else payGastoVariavel(b.dataset.id);
       draw();
     });
     container.querySelectorAll('[data-action="delete-var"]').forEach((b) => b.onclick = () => {
       confirmModal({
         title: 'Excluir lançamento', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
-        onConfirm: () => { Store.remove('gastosVariaveis', b.dataset.id); toast('Lançamento excluído', 'success'); draw(); },
+        onConfirm: () => { deleteGastoVariavel(b.dataset.id); toast('Lançamento excluído', 'success'); draw(); },
       });
     });
   };
@@ -946,7 +1284,7 @@ function pageBancos(container) {
         <div class="panel" id="bc-form-panel" style="display:${bancoFormOpen ? 'block' : 'none'}">
           <div class="panel-header"><h3>${editing ? 'Editar banco' : 'Novo banco / conta'}</h3><button class="btn btn-ghost btn-sm" id="bc-cancel">Cancelar</button></div>
           <div class="field"><label>Nome</label><input type="text" id="bc-nome" placeholder="Ex.: Nubank" value="${editing ? editing.name : ''}" /></div>
-          <div class="field"><label>Saldo ${editing ? 'atual' : 'inicial'}</label><input type="number" step="0.01" id="bc-saldo" placeholder="0,00" value="${editing ? editing.balance : ''}" /></div>
+          <div class="field"><label>Saldo ${editing ? 'atual' : 'inicial'}</label>${moneyInputHTML('bc-saldo', editing ? editing.balance : '')}</div>
           <div class="field">
             <label>Cor</label>
             <div class="chip-row" id="bc-cor-group">
@@ -957,13 +1295,13 @@ function pageBancos(container) {
         </div>
 
         ${banks.length === 0 && !bancoFormOpen ? `<div class="panel">${emptyState({ iconName: 'bank', title: 'Nenhum banco cadastrado', text: 'Adicione um banco para registrar gastos, recebimentos e seu saldo real.', actionLabel: 'Novo banco', actionId: 'bc-empty-create' })}</div>` : ''}
-        ${banks.length > 0 ? `<div class="grid-2">${banks.map((b, i) => `
+        ${banks.length > 0 ? `<div class="grid-2">${banks.map((b) => `
           <div class="panel" style="border-top:3px solid ${b.cor || 'var(--primary)'};padding-top:16px">
             <div style="display:flex;justify-content:space-between;align-items:flex-start">
               <div style="display:flex;gap:10px;align-items:center">
                 <span style="width:40px;height:40px;border-radius:50%;background:${hexToSoft(b.cor || '#3866ff')};display:flex;align-items:center;justify-content:center">${icon('bank')}</span>
                 <div>
-                  <strong>${i + 1} - ${b.name}</strong>
+                  <strong>${b.name}</strong>
                   <div class="stat-label" style="margin-top:6px">Saldo atual</div>
                   <div class="stat-value" style="font-size:19px">${formatCurrency(b.balance || 0)}</div>
                 </div>
@@ -991,7 +1329,7 @@ function pageBancos(container) {
       document.getElementById('bc-save').onclick = () => {
         const name = document.getElementById('bc-nome').value.trim();
         if (!name) { toast('Dê um nome para o banco', 'danger'); return; }
-        const payload = { name, balance: parseFloat(document.getElementById('bc-saldo').value) || 0, cor: novoBancoCor };
+        const payload = { name, balance: moneyValue('bc-saldo'), cor: novoBancoCor };
         if (editing) { Store.update('banks', editing.id, payload); toast('Banco atualizado', 'success'); }
         else { Store.add('banks', payload); toast('Banco adicionado', 'success'); }
         bancoFormOpen = false; editingBancoId = null;
@@ -1010,7 +1348,7 @@ function pageBancos(container) {
       document.getElementById('tf-save').onclick = () => {
         const deId = document.getElementById('tf-de').value;
         const paraId = document.getElementById('tf-para').value;
-        const valor = parseFloat(document.getElementById('tf-valor').value) || 0;
+        const valor = moneyValue('tf-valor');
         if (!deId || !paraId) { toast('Selecione os dois bancos', 'danger'); return; }
         if (deId === paraId) { toast('Escolha bancos diferentes', 'danger'); return; }
         if (!valor) { toast('Informe um valor', 'danger'); return; }
@@ -1037,7 +1375,7 @@ function transferenciasHTML() {
         <div class="field"><label>De</label><select id="tf-de"><option value="">Banco de origem...</option>${banks.map((b) => `<option value="${b.id}">${b.name} (${formatCurrency(b.balance || 0)})</option>`).join('')}</select></div>
         <div class="field"><label>Para</label><select id="tf-para"><option value="">Banco de destino...</option>${banks.map((b) => `<option value="${b.id}">${b.name}</option>`).join('')}</select></div>
         <div class="field-row">
-          <div class="field"><label>Valor</label><input type="number" step="0.01" id="tf-valor" placeholder="0,00" /></div>
+          <div class="field"><label>Valor</label>${moneyInputHTML('tf-valor', '')}</div>
           <div class="field"><label>Data</label><input type="date" id="tf-data" value="${todayISO()}" /></div>
         </div>
         <div class="field"><label>Observação (opcional)</label><textarea id="tf-obs" placeholder="Observação (opcional)"></textarea></div>
@@ -1085,26 +1423,31 @@ function pageRecebimentos(container) {
           <h3 style="margin-bottom:14px">${editing ? 'Editar recebimento' : 'Novo recebimento'}</h3>
           <div class="field"><label>Descrição</label><input type="text" id="rc-desc" placeholder="Ex.: Salário" value="${editing ? editing.descricao : ''}" /></div>
           <div class="field-row">
-            <div class="field"><label>Valor</label><input type="number" step="0.01" id="rc-valor" placeholder="0,00" value="${editing ? editing.valor : ''}" /></div>
+            <div class="field"><label>Valor</label>${moneyInputHTML('rc-valor', editing ? editing.valor : '')}</div>
             <div class="field"><label>Data</label><input type="date" id="rc-data" value="${editing ? editing.data : todayISO()}" /></div>
           </div>
-          <div class="field"><label>Categoria</label>${fieldHTML({ key: 'rc-categoria', type: 'select-category' }, editing ? editing.categoryId : '')}</div>
+          <div class="field"><label>Categoria</label>${fieldHTML({ key: 'rc-categoria', type: 'select-category', catTipo: 'receita' }, editing ? editing.categoryId : '')}</div>
           <div class="field"><label>Banco (obrigatório)</label>${fieldHTML({ key: 'rc-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
           <div class="field"><label>Observação (opcional)</label><textarea id="rc-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
           <div class="field">
             <label>Tipo de recebimento</label>
-            <div class="pill-group" id="rc-tipo-group">
-              <button type="button" class="pill ${recebTipo === 'unico' ? 'active' : ''}" data-tipo="unico">Único</button>
-              <button type="button" class="pill ${recebTipo === 'recorrente' ? 'active' : ''}" data-tipo="recorrente">Recorrente</button>
-              <button type="button" class="pill ${recebTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">Parcelado</button>
+            <div class="type-box-group" id="rc-tipo-group">
+              <button type="button" class="type-box ${recebTipo === 'unico' ? 'active' : ''}" data-tipo="unico">${icon('wallet')}<span>Único</span></button>
+              <button type="button" class="type-box ${recebTipo === 'recorrente' ? 'active' : ''}" data-tipo="recorrente">${icon('repeat')}<span>Recorrente</span></button>
+              <button type="button" class="type-box ${recebTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">${icon('layers')}<span>Parcelado</span></button>
             </div>
           </div>
           <div class="field" id="rc-parcelas-field" style="display:${recebTipo === 'parcelado' ? 'block' : 'none'}">
             <label>Número de parcelas</label><input type="number" min="2" max="48" id="rc-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
           </div>
+          <div class="field" id="rc-datafinal-field" style="display:${recebTipo === 'recorrente' ? 'block' : 'none'}">
+            <label>Data final (opcional — deixe em branco para infinito)</label>
+            <input type="date" id="rc-data-final" value="${editing ? (editing.dataFinal || '') : ''}" />
+            <div class="row-sub" style="margin-top:6px">Será replicado todo mês no dia <strong id="rc-dia-replica" style="color:var(--text)">${(editing ? editing.data : todayISO()).slice(8, 10)}</strong>.</div>
+          </div>
           <button class="btn btn-primary btn-block" id="rc-save">${editing ? 'Salvar alterações' : 'Registrar recebimento'}</button>
           ${editing ? `<button class="btn btn-ghost btn-block" id="rc-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
-          <div style="margin-top:14px">${collapsibleNewCategory('rc')}</div>
+          <div style="margin-top:14px">${collapsibleNewCategory('rc', { catTipo: 'receita' })}</div>
         </div>
 
         <div>
@@ -1125,35 +1468,48 @@ function pageRecebimentos(container) {
       </div>
     `;
 
-    document.getElementById('rc-tipo-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => {
+    document.getElementById('rc-tipo-group').querySelectorAll('.type-box').forEach((b) => b.onclick = () => {
       recebTipo = b.dataset.tipo;
-      document.getElementById('rc-tipo-group').querySelectorAll('.pill').forEach((x) => x.classList.toggle('active', x === b));
+      document.getElementById('rc-tipo-group').querySelectorAll('.type-box').forEach((x) => x.classList.toggle('active', x === b));
       document.getElementById('rc-parcelas-field').style.display = recebTipo === 'parcelado' ? 'block' : 'none';
+      document.getElementById('rc-datafinal-field').style.display = recebTipo === 'recorrente' ? 'block' : 'none';
     });
+    document.getElementById('rc-data').oninput = (e) => {
+      const dia = e.target.value ? e.target.value.slice(8, 10) : '';
+      const diaEl = document.getElementById('rc-dia-replica');
+      if (diaEl && dia) diaEl.textContent = dia;
+    };
 
     document.getElementById('rc-save').onclick = () => {
       const descricao = document.getElementById('rc-desc').value.trim();
-      const valor = parseFloat(document.getElementById('rc-valor').value) || 0;
+      const valor = moneyValue('rc-valor');
       const data = document.getElementById('rc-data').value;
       const bankId = document.getElementById('f-rc-banco').value;
+      const categoryId = document.getElementById('f-rc-categoria').value;
       if (!descricao) { toast('Informe a descrição', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
       if (!bankId) { toast('Selecione o banco', 'danger'); return; }
+      if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
       const payload = {
         descricao, valor, data, bankId,
-        categoryId: document.getElementById('f-rc-categoria').value,
+        categoryId,
         observacao: document.getElementById('rc-obs').value,
         tipo: recebTipo,
         parcelas: recebTipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('rc-parcelas').value, 10) || 2) : 1,
+        dataFinal: recebTipo === 'recorrente' ? (document.getElementById('rc-data-final').value || null) : null,
       };
-      if (editing) { Store.update('recebimentos', editing.id, payload); toast('Recebimento atualizado', 'success'); editingRecebId = null; }
-      else { Store.add('recebimentos', payload); toast('Recebimento registrado', 'success'); }
+      if (editing) { updateRecebimento(editing.id, payload); toast('Recebimento atualizado', 'success'); editingRecebId = null; }
+      else {
+        const novo = Store.add('recebimentos', payload);
+        if (data <= todayISO()) toggleRecebimentoRecebido(novo.id, data.slice(0, 7));
+        toast('Recebimento registrado', 'success');
+      }
       draw();
     };
     if (editing) document.getElementById('rc-cancel-edit').onclick = () => { editingRecebId = null; draw(); };
 
-    wireQuickAddButtons([{ key: 'rc-categoria', type: 'select-category' }, { key: 'rc-banco', type: 'select-bank' }]);
-    wireCollapsibleNewCategory('rc', () => draw());
+    wireQuickAddButtons([{ key: 'rc-categoria', type: 'select-category', catTipo: 'receita' }, { key: 'rc-banco', type: 'select-bank' }]);
+    wireCollapsibleNewCategory('rc', () => draw(), { catTipo: 'receita' });
     wirePeriodControl('rc', period, draw);
 
     container.querySelectorAll('[data-action="edit-receb"]').forEach((b) => b.onclick = () => { editingRecebId = b.dataset.id; recebTipo = Store.get('recebimentos', b.dataset.id).tipo || 'unico'; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
@@ -1161,7 +1517,7 @@ function pageRecebimentos(container) {
     container.querySelectorAll('[data-action="delete-receb"]').forEach((b) => b.onclick = () => {
       confirmModal({
         title: 'Excluir recebimento', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
-        onConfirm: () => { Store.remove('recebimentos', b.dataset.id); toast('Recebimento excluído', 'success'); draw(); },
+        onConfirm: () => { deleteRecebimento(b.dataset.id); toast('Recebimento excluído', 'success'); draw(); },
       });
     });
   };
@@ -1204,6 +1560,7 @@ function pageCofrinhos(container) {
     const items = Store.state.cofrinhos;
     const editing = editingCofrinhoId ? Store.get('cofrinhos', editingCofrinhoId) : null;
     if (editing) { novoCofrinhoIcone = editing.icone || COFRINHO_ICONS[0]; novoCofrinhoCor = editing.cor || COFRINHO_CORES[0]; }
+    const autoChecked = !!(editing && editing.aporteAutomatico);
 
     container.innerHTML = `
       <div class="panel-header" style="margin-bottom:16px">
@@ -1215,7 +1572,7 @@ function pageCofrinhos(container) {
         <div class="panel-header"><h3>${editing ? 'Editar cofrinho' : 'Novo cofrinho'}</h3><button class="btn btn-ghost btn-sm" id="cf-cancel">Cancelar</button></div>
         <div class="field"><label>Nome</label><input type="text" id="cf-nome" placeholder='Ex.: Viagem para Bariloche' value="${editing ? editing.nome : ''}" /></div>
         <div class="field-row">
-          <div class="field"><label>Valor objetivo</label><input type="number" step="0.01" id="cf-meta" placeholder="0,00" value="${editing ? editing.meta : ''}" /></div>
+          <div class="field"><label>Valor objetivo</label>${moneyInputHTML('cf-meta', editing ? editing.meta : '')}</div>
           <div class="field"><label>Prazo (opcional)</label><input type="date" id="cf-prazo" value="${editing ? (editing.prazo || '') : ''}" /></div>
         </div>
         <div class="field">
@@ -1232,8 +1589,13 @@ function pageCofrinhos(container) {
         </div>
         <div class="field"><label>Observação</label><textarea id="cf-obs" placeholder="Opcional">${editing ? (editing.observacao || '') : ''}</textarea></div>
         <div class="field checkbox-row" style="align-items:flex-start;gap:10px">
-          <input type="checkbox" id="cf-auto" ${editing && editing.aporteAutomatico ? 'checked' : ''} style="margin-top:3px" />
+          <input type="checkbox" id="cf-auto" ${autoChecked ? 'checked' : ''} style="margin-top:3px" />
           <label for="cf-auto" style="cursor:pointer"><strong style="display:block;color:var(--text)">Aporte automático mensal</strong><span class="row-sub">O sistema transfere automaticamente da conta no dia escolhido.</span></label>
+        </div>
+        <div class="field-row-3" id="cf-auto-fields" style="display:${autoChecked ? 'grid' : 'none'}">
+          <div class="field"><label>Valor do aporte</label>${moneyInputHTML('cf-aporte-valor', editing ? editing.valorAporte : '')}</div>
+          <div class="field"><label>Dia (1-28)</label><input type="number" min="1" max="28" id="cf-aporte-dia" value="${editing && editing.diaAporte ? editing.diaAporte : 5}" /></div>
+          <div class="field"><label>Conta de origem</label><select id="cf-aporte-banco">${bankOptions(editing ? editing.contaOrigemId : '')}</select></div>
         </div>
         <button class="btn btn-primary btn-block" id="cf-save">${editing ? 'Salvar alterações' : 'Criar cofrinho'}</button>
       </div>
@@ -1261,18 +1623,29 @@ function pageCofrinhos(container) {
         novoCofrinhoCor = b.dataset.cor;
         corBtns.forEach((x) => x.style.border = x === b ? '2px solid var(--text)' : '2px solid transparent');
       });
+      document.getElementById('cf-auto').onchange = (e) => {
+        document.getElementById('cf-auto-fields').style.display = e.target.checked ? 'grid' : 'none';
+      };
       document.getElementById('cf-save').onclick = () => {
         const nome = document.getElementById('cf-nome').value.trim();
-        const meta = parseFloat(document.getElementById('cf-meta').value) || 0;
+        const meta = moneyValue('cf-meta');
+        const auto = document.getElementById('cf-auto').checked;
+        const valorAporte = moneyValue('cf-aporte-valor');
+        const contaOrigemId = document.getElementById('cf-aporte-banco').value;
         if (!nome) { toast('Dê um nome para o cofrinho', 'danger'); return; }
         if (!meta) { toast('Informe o valor objetivo', 'danger'); return; }
+        if (auto && !valorAporte) { toast('Informe o valor do aporte automático', 'danger'); return; }
+        if (auto && !contaOrigemId) { toast('Selecione a conta de origem do aporte', 'danger'); return; }
         const payload = {
           nome, meta,
           prazo: document.getElementById('cf-prazo').value || null,
           icone: novoCofrinhoIcone,
           cor: novoCofrinhoCor,
           observacao: document.getElementById('cf-obs').value,
-          aporteAutomatico: document.getElementById('cf-auto').checked,
+          aporteAutomatico: auto,
+          valorAporte: auto ? valorAporte : 0,
+          diaAporte: Math.min(28, Math.max(1, parseInt(document.getElementById('cf-aporte-dia').value, 10) || 5)),
+          contaOrigemId: auto ? contaOrigemId : '',
         };
         if (editing) { Store.update('cofrinhos', editing.id, payload); toast('Cofrinho atualizado', 'success'); }
         else { Store.add('cofrinhos', Object.assign({ atual: 0 }, payload)); toast('Cofrinho criado', 'success'); }
@@ -1293,7 +1666,7 @@ function pageCofrinhos(container) {
       overlay.innerHTML = `
         <div class="modal-box">
           <h3>Depositar no cofrinho</h3>
-          <div class="field"><label>Valor</label><input type="number" step="0.01" id="dep-valor" placeholder="0,00" /></div>
+          <div class="field"><label>Valor</label>${moneyInputHTML('dep-valor', '')}</div>
           <div class="modal-actions">
             <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
             <button class="btn btn-primary btn-sm" id="modal-confirm">Depositar</button>
@@ -1302,7 +1675,7 @@ function pageCofrinhos(container) {
       overlay.classList.add('open');
       overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
       overlay.querySelector('#modal-confirm').onclick = () => {
-        const valor = parseFloat(document.getElementById('dep-valor').value) || 0;
+        const valor = moneyValue('dep-valor');
         if (valor > 0) {
           const c = Store.get('cofrinhos', b.dataset.id);
           Store.update('cofrinhos', b.dataset.id, { atual: (c.atual || 0) + valor });
@@ -1330,7 +1703,7 @@ function cofrinhosFullList(items) {
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><strong>${formatCurrency(c.atual)}</strong><span class="row-sub">de ${formatCurrency(c.meta)} · ${pct}%</span></div>
         <div class="progress-track"><div class="progress-fill" style="width:${pct}%;background:${c.cor || 'var(--primary)'}"></div></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-          <span class="row-sub">${c.prazo ? 'Prazo: ' + formatDateBR(c.prazo) : (c.aporteAutomatico ? 'Aporte automático ativo' : '')}</span>
+          <span class="row-sub">${c.prazo ? 'Prazo: ' + formatDateBR(c.prazo) : ''}${c.prazo && c.aporteAutomatico ? ' · ' : ''}${c.aporteAutomatico ? `Aporte de ${formatCurrency(c.valorAporte || 0)} todo dia ${c.diaAporte}` : ''}</span>
           <button class="btn btn-ghost btn-sm" data-action="depositar-cofrinho" data-id="${c.id}">${icon('plus')} Depositar</button>
         </div>
       </div>`;
@@ -1344,13 +1717,14 @@ let selectedCartaoId = null;
 let selectedFaturaMonth = null;
 let novoCartaoOpen = false;
 let compraTipo = 'avista';
+let novoCartaoCor = BANK_CORES[0];
 
 function divisaoRowHTML(nome, valor) {
   return `
     <div class="field-row" data-divisao-row style="margin-bottom:8px">
       <div class="field" style="margin-bottom:0"><input type="text" placeholder="Nome (ex.: João)" class="cp-div-nome" value="${nome || ''}" /></div>
       <div class="field" style="margin-bottom:0;display:flex;gap:6px">
-        <input type="number" step="0.01" placeholder="0,00" class="cp-div-valor" value="${valor || ''}" style="flex:1" />
+        ${moneyInputHTML('', valor, null, { extraClass: 'cp-div-valor', wrapAttrs: ' style="flex:1"' })}
         <button type="button" class="btn-icon" data-remove-divisao title="Remover">${icon('trash')}</button>
       </div>
     </div>
@@ -1360,7 +1734,7 @@ function readDivisoesRows() {
   const rows = document.querySelectorAll('#cp-divisoes-rows [data-divisao-row]');
   return [...rows].map((row) => ({
     nome: row.querySelector('.cp-div-nome').value.trim() || 'Sem nome',
-    valor: parseFloat(row.querySelector('.cp-div-valor').value) || 0,
+    valor: moneyValueFromEl(row.querySelector('.cp-div-valor')),
   })).filter((d) => d.valor > 0);
 }
 
@@ -1370,6 +1744,7 @@ function pageCartoes(container) {
     if (!selectedCartaoId || !cartoes.find((c) => c.id === selectedCartaoId)) selectedCartaoId = cartoes[0] ? cartoes[0].id : null;
     if (!selectedFaturaMonth) selectedFaturaMonth = currentMonthStr();
     const editingCartao = editingCartaoId ? Store.get('cartoes', editingCartaoId) : null;
+    if (editingCartao) novoCartaoCor = editingCartao.cor || BANK_CORES[0];
     const editingCompra = editingCompraId ? Store.get('cartaoCompras', editingCompraId) : null;
     const mAtual = currentMonthStr();
 
@@ -1382,6 +1757,7 @@ function pageCartoes(container) {
     const faturaTotal = faturaItens.reduce((s, x) => s + x.occurrence.valor, 0);
     const faturaCustoReal = faturaItens.reduce((s, x) => s + x.occurrence.valorMeu, 0);
     const faturaPaga = selected && isCartaoFaturaPaga(selected.id, selectedFaturaMonth);
+    const limiteUsado = selected ? cartaoLimiteUsado(selected.id) : 0;
     const faturaCatTotals = {};
     faturaItens.forEach((x) => { const k = x.compra.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.occurrence.valor; });
     const faturaCatEntries = Object.entries(faturaCatTotals).sort((a, b) => b[1] - a[1]);
@@ -1394,15 +1770,21 @@ function pageCartoes(container) {
         <div>
           <div class="panel">
             <button type="button" class="btn btn-ghost btn-block" id="cc-toggle-novocartao" style="justify-content:space-between">
-              <span>${icon('card')} Novo cartão</span>${icon('chevronDown')}
+              <span class="btn-toggle-label">${icon('card')} Novo cartão</span>${icon('chevronDown')}
             </button>
             <div id="cc-novocartao-box" style="display:${novoCartaoOpen ? 'block' : 'none'};margin-top:14px">
               <h3 style="margin-bottom:14px;font-size:14px">${editingCartao ? 'Editar cartão' : 'Cadastrar cartão'}</h3>
               <div class="field"><label>Nome do cartão</label><input type="text" id="cc-nome" placeholder="Ex.: Nubank Ultravioleta" value="${editingCartao ? editingCartao.nome : ''}" /></div>
               <div class="field"><label>Banco</label><input type="text" id="cc-banco" placeholder="Ex.: Nubank" value="${editingCartao ? editingCartao.banco || '' : ''}" /></div>
+              <div class="field"><label>Banco vinculado (paga a fatura) <span class="req">*</span></label>${fieldHTML({ key: 'cc-vinculo', type: 'select-bank' }, editingCartao ? editingCartao.bankId : '')}</div>
               <div class="field-row">
-                <div class="field"><label>Limite</label><input type="number" step="0.01" id="cc-limite" placeholder="0,00" value="${editingCartao ? editingCartao.limite : ''}" /></div>
-                <div class="field"><label>Cor</label><input type="text" id="cc-cor" value="${editingCartao ? editingCartao.cor || '#3866ff' : '#3866ff'}" /></div>
+                <div class="field"><label>Limite</label>${moneyInputHTML('cc-limite', editingCartao ? editingCartao.limite : '')}</div>
+                <div class="field">
+                  <label>Cor</label>
+                  <div class="chip-row" id="cc-cor-group">
+                    ${BANK_CORES.map((c) => `<button type="button" data-cor="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${c === novoCartaoCor ? 'var(--primary)' : 'var(--border)'};box-shadow:${c === novoCartaoCor ? '0 0 0 2px var(--primary-soft)' : 'none'};cursor:pointer"></button>`).join('')}
+                  </div>
+                </div>
               </div>
               <div class="field-row">
                 <div class="field"><label>Dia de fechamento</label><input type="number" min="1" max="31" id="cc-fechamento" placeholder="Ex.: 3" value="${editingCartao ? editingCartao.diaFechamento : ''}" /></div>
@@ -1418,11 +1800,11 @@ function pageCartoes(container) {
             ${cartoes.length === 0 ? `<div class="row-sub" style="margin-bottom:10px">Cadastre um cartão acima antes de lançar compras.</div>` : ''}
             <div class="field"><label>Nome da compra</label><input type="text" id="cp-nome" placeholder="Ex.: Mercado" value="${editingCompra ? editingCompra.descricao : ''}" /></div>
             <div class="field-row">
-              <div class="field"><label>Valor</label><input type="number" step="0.01" id="cp-valor" placeholder="0,00" value="${editingCompra ? editingCompra.valorTotal : ''}" /></div>
+              <div class="field"><label>Valor</label>${moneyInputHTML('cp-valor', editingCompra ? editingCompra.valorTotal : '')}</div>
               <div class="field"><label>Data</label><input type="date" id="cp-data" value="${editingCompra ? editingCompra.data : todayISO()}" /></div>
             </div>
             <div class="field"><label>Cartão</label><select id="cp-cartao">${cartoes.length === 0 ? '<option value="">Nenhum cartão cadastrado</option>' : cartoes.map((c) => `<option value="${c.id}" ${c.id === (editingCompra ? editingCompra.cartaoId : selectedCartaoId) ? 'selected' : ''}>${c.nome}${c.banco ? ' — ' + c.banco : ''}</option>`).join('')}</select></div>
-            <div class="field"><label>Categoria</label>${fieldHTML({ key: 'cp-categoria', type: 'select-category' }, editingCompra ? editingCompra.categoryId : '')}</div>
+            <div class="field"><label>Categoria</label>${fieldHTML({ key: 'cp-categoria', type: 'select-category', catTipo: 'despesa' }, editingCompra ? editingCompra.categoryId : '')}</div>
             <div class="field">
               <label>Tipo de compra</label>
               <div class="pill-group" id="cp-tipo-group">
@@ -1445,7 +1827,7 @@ function pageCartoes(container) {
             </div>
             <button class="btn btn-primary btn-block" id="cp-save" ${cartoes.length === 0 ? 'disabled' : ''}>${editingCompra ? 'Salvar alterações' : 'Adicionar compra'}</button>
             ${editingCompra ? `<button class="btn btn-ghost btn-block" id="cp-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
-            <div style="margin-top:14px">${collapsibleNewCategory('cp')}</div>
+            <div style="margin-top:14px">${collapsibleNewCategory('cp', { catTipo: 'despesa' })}</div>
           </div>
         </div>
 
@@ -1464,7 +1846,8 @@ function pageCartoes(container) {
                 <tbody>
                   ${cartoes.map((c) => {
                     const fatura = cartaoFaturaForMonth(c.id, mAtual);
-                    const pct = c.limite > 0 ? Math.min(100, Math.round((fatura / c.limite) * 100)) : 0;
+                    const limiteUsadoRow = cartaoLimiteUsado(c.id);
+                    const pct = c.limite > 0 ? Math.min(100, Math.round((limiteUsadoRow / c.limite) * 100)) : 0;
                     return `<tr style="cursor:pointer;${c.id === selectedCartaoId ? 'background:var(--primary-soft)' : ''}" data-action="select-cartao" data-id="${c.id}">
                       <td><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:4px;background:${c.cor || 'var(--primary)'};display:inline-block"></span><strong>${c.nome}</strong></div></td>
                       <td>${c.banco || '—'}</td>
@@ -1503,8 +1886,8 @@ function pageCartoes(container) {
             </div>
             <div class="stat-grid">
               ${statCard({ label: 'Limite total', value: formatCurrency(selected.limite), tone: 'blue', iconName: 'card' })}
-              ${statCard({ label: 'Limite usado', value: formatCurrency(faturaTotal), tone: 'red', iconName: 'arrowDownCircle' })}
-              ${statCard({ label: 'Limite disponível', value: formatCurrency(Math.max(0, selected.limite - faturaTotal)), tone: 'green', iconName: 'checkCircle' })}
+              ${statCard({ label: 'Limite usado', value: formatCurrency(limiteUsado), sub: 'Faturas em aberto (todas)', tone: 'red', iconName: 'arrowDownCircle' })}
+              ${statCard({ label: 'Limite disponível', value: formatCurrency(Math.max(0, selected.limite - limiteUsado)), tone: 'green', iconName: 'checkCircle' })}
               ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
               ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
@@ -1537,16 +1920,28 @@ function pageCartoes(container) {
     `;
 
     document.getElementById('cc-toggle-novocartao').onclick = () => { novoCartaoOpen = !novoCartaoOpen; draw(); };
+    if (document.getElementById('cc-cor-group')) {
+      const corBtns = document.getElementById('cc-cor-group').querySelectorAll('[data-cor]');
+      corBtns.forEach((b) => b.onclick = () => {
+        novoCartaoCor = b.dataset.cor;
+        corBtns.forEach((x) => {
+          x.style.border = x === b ? '2px solid var(--primary)' : '2px solid var(--border)';
+          x.style.boxShadow = x === b ? '0 0 0 2px var(--primary-soft)' : 'none';
+        });
+      });
+    }
     if (document.getElementById('cc-save-cartao')) {
       document.getElementById('cc-save-cartao').onclick = () => {
         const nome = document.getElementById('cc-nome').value.trim();
-        const limite = parseFloat(document.getElementById('cc-limite').value) || 0;
+        const limite = moneyValue('cc-limite');
+        const bankId = document.getElementById('f-cc-vinculo').value;
         if (!nome) { toast('Informe o nome do cartão', 'danger'); return; }
         if (!limite) { toast('Informe o limite do cartão', 'danger'); return; }
+        if (!bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
         const payload = {
-          nome, limite,
+          nome, limite, bankId,
           banco: document.getElementById('cc-banco').value,
-          cor: document.getElementById('cc-cor').value || '#3866ff',
+          cor: novoCartaoCor,
           diaFechamento: parseInt(document.getElementById('cc-fechamento').value, 10) || null,
           diaVencimento: parseInt(document.getElementById('cc-vencimento').value, 10) || null,
         };
@@ -1564,11 +1959,11 @@ function pageCartoes(container) {
       document.getElementById('cp-parcelas-field').style.display = compraTipo === 'parcelado' ? 'block' : 'none';
     });
 
-    wireQuickAddButtons([{ key: 'cp-categoria', type: 'select-category' }]);
-    wireCollapsibleNewCategory('cp', () => draw());
+    wireQuickAddButtons([{ key: 'cp-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'cc-vinculo', type: 'select-bank' }]);
+    wireCollapsibleNewCategory('cp', () => draw(), { catTipo: 'despesa' });
 
     const atualizarSuaParte = () => {
-      const total = parseFloat(document.getElementById('cp-valor').value) || 0;
+      const total = moneyValue('cp-valor');
       const dividido = readDivisoesRows().reduce((s, d) => s + d.valor, 0);
       const el = document.getElementById('cp-sua-parte');
       if (!el) return;
@@ -1597,17 +1992,19 @@ function pageCartoes(container) {
     if (document.getElementById('cp-save')) {
       document.getElementById('cp-save').onclick = () => {
         const descricao = document.getElementById('cp-nome').value.trim();
-        const valorTotal = parseFloat(document.getElementById('cp-valor').value) || 0;
+        const valorTotal = moneyValue('cp-valor');
         const cartaoId = document.getElementById('cp-cartao').value;
+        const categoryId = document.getElementById('f-cp-categoria').value;
         if (!descricao) { toast('Informe o nome da compra', 'danger'); return; }
         if (!valorTotal) { toast('Informe um valor', 'danger'); return; }
         if (!cartaoId) { toast('Selecione um cartão', 'danger'); return; }
+        if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
         const divisoes = document.getElementById('cp-dividir').checked ? readDivisoesRows() : [];
         if (divisoes.reduce((s, d) => s + d.valor, 0) > valorTotal) { toast('A soma das divisões não pode passar do valor total', 'danger'); return; }
         const payload = {
           descricao, valorTotal, cartaoId, divisoes,
           data: document.getElementById('cp-data').value,
-          categoryId: document.getElementById('f-cp-categoria').value,
+          categoryId,
           tipo: compraTipo,
           parcelas: compraTipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('cp-parcelas').value, 10) || 2) : 1,
         };
@@ -1646,7 +2043,17 @@ function pageCartoes(container) {
       });
     });
     if (document.getElementById('cc-fatura-mes')) document.getElementById('cc-fatura-mes').onchange = (e) => { selectedFaturaMonth = e.target.value; draw(); };
-    if (document.getElementById('cc-pagar-fatura')) document.getElementById('cc-pagar-fatura').onclick = () => { toggleCartaoFaturaPaga(selected.id, selectedFaturaMonth); draw(); };
+    if (document.getElementById('cc-pagar-fatura')) document.getElementById('cc-pagar-fatura').onclick = () => {
+      if (faturaPaga) {
+        reopenCartaoFatura(selected.id, selectedFaturaMonth);
+        toast('Fatura reaberta', 'success');
+      } else {
+        if (!selected.bankId) { toast('Edite o cartão e defina o banco vinculado antes de pagar a fatura', 'danger'); return; }
+        payCartaoFatura(selected.id, selectedFaturaMonth, { bankId: selected.bankId, valor: faturaTotal });
+        toast('Fatura paga', 'success');
+      }
+      draw();
+    };
   };
   draw();
 }
@@ -1684,8 +2091,8 @@ function pageInvestimentos(container) {
           <div class="field"><label>Data de início</label><input type="date" id="iv-data" value="${editing ? editing.data : todayISO()}" /></div>
         </div>
         <div class="field-row" style="grid-template-columns:1fr 1fr 1fr">
-          <div class="field"><label>Capital inicial</label><input type="number" step="0.01" id="iv-capital" placeholder="0,00" value="${editing ? editing.capitalInicial : ''}" /></div>
-          <div class="field"><label>Aporte mensal</label><input type="number" step="0.01" id="iv-aporte" placeholder="0,00" value="${editing ? editing.aporteMensal || '' : ''}" /></div>
+          <div class="field"><label>Capital inicial</label>${moneyInputHTML('iv-capital', editing ? editing.capitalInicial : '')}</div>
+          <div class="field"><label>Aporte mensal</label>${moneyInputHTML('iv-aporte', editing ? editing.aporteMensal : '')}</div>
           <div class="field"><label>Rentabilidade anual (%)</label><input type="number" step="0.01" id="iv-rentab" placeholder="0,00" value="${editing ? editing.rentabilidade || '' : ''}" /></div>
         </div>
         <div class="field-row">
@@ -1721,7 +2128,7 @@ function pageInvestimentos(container) {
     if (document.getElementById('iv-save')) {
       document.getElementById('iv-save').onclick = () => {
         const nome = document.getElementById('iv-nome').value.trim();
-        const capitalInicial = parseFloat(document.getElementById('iv-capital').value) || 0;
+        const capitalInicial = moneyValue('iv-capital');
         if (!nome) { toast('Informe o nome do investimento', 'danger'); return; }
         if (!capitalInicial) { toast('Informe o capital inicial', 'danger'); return; }
         const payload = {
@@ -1729,7 +2136,7 @@ function pageInvestimentos(container) {
           instituicao: document.getElementById('iv-instituicao').value,
           tipo: document.getElementById('iv-tipo').value,
           data: document.getElementById('iv-data').value,
-          aporteMensal: parseFloat(document.getElementById('iv-aporte').value) || 0,
+          aporteMensal: moneyValue('iv-aporte'),
           rentabilidade: parseFloat(document.getElementById('iv-rentab').value) || 0,
           taxa: parseFloat(document.getElementById('iv-taxa').value) || 0,
           prazoMeses: parseInt(document.getElementById('iv-prazo').value, 10) || null,
@@ -2041,15 +2448,24 @@ function realizadoCategoria(categoryId, mes) {
   const variaveis = Store.state.gastosVariaveis.filter((g) => g.categoryId === categoryId && isSameMonth(g.data, mes)).reduce((s, g) => s + g.valor, 0);
   return fixos + variaveis;
 }
+function removeMetaCategoria(categoryId, mes) {
+  Store.state.metasCategoria = Store.state.metasCategoria.filter((x) => !(x.categoryId === categoryId && x.mes === mes));
+  Store.save();
+}
+
+let planejamentoNovaMetaOpen = false;
 
 function pagePlanejamento(container) {
   const draw = () => {
     const mes = planejamentoMes;
-    let categorias = Store.state.categories;
-    if (planejamentoBusca) categorias = categorias.filter((c) => c.name.toLowerCase().includes(planejamentoBusca.toLowerCase()));
+    const categoriasDespesa = Store.state.categories.filter((c) => (c.tipo || 'despesa') === 'despesa');
+    const comMetaIds = new Set(Store.state.metasCategoria.filter((x) => x.mes === mes && x.valor > 0).map((x) => x.categoryId));
+    const categoriasSemMeta = categoriasDespesa.filter((c) => !comMetaIds.has(c.id));
+    let categoriasComMeta = categoriasDespesa.filter((c) => comMetaIds.has(c.id));
+    if (planejamentoBusca) categoriasComMeta = categoriasComMeta.filter((c) => c.name.toLowerCase().includes(planejamentoBusca.toLowerCase()));
 
-    const totalPlanejado = Store.state.categories.reduce((s, c) => s + metaCategoria(c.id, mes), 0);
-    const totalRealizado = Store.state.categories.reduce((s, c) => s + realizadoCategoria(c.id, mes), 0);
+    const totalPlanejado = categoriasDespesa.reduce((s, c) => s + metaCategoria(c.id, mes), 0);
+    const totalRealizado = categoriasDespesa.reduce((s, c) => s + realizadoCategoria(c.id, mes), 0);
 
     container.innerHTML = `
       <div class="panel">
@@ -2067,8 +2483,23 @@ function pagePlanejamento(container) {
       </div>
 
       <div class="panel">
-        <div class="panel-header"><h3>Categorias</h3><input type="text" id="pl-busca" placeholder="Buscar categoria..." style="max-width:280px" value="${planejamentoBusca}" /></div>
-        ${categorias.map((c) => {
+        <button type="button" class="btn btn-ghost btn-block" id="pl-toggle-nova" style="justify-content:space-between">
+          <span class="btn-toggle-label">${icon('plus')} Nova meta</span>${icon('chevronDown')}
+        </button>
+        <div id="pl-nova-box" style="display:${planejamentoNovaMetaOpen ? 'block' : 'none'};margin-top:14px">
+          ${categoriasSemMeta.length === 0 ? `<div class="row-sub">Todas as categorias de despesa já têm meta definida neste mês.</div>` : `
+            <div class="field-row">
+              <div class="field"><label>Categoria</label><select id="pl-nova-cat">${categoriasSemMeta.map((c) => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('')}</select></div>
+              <div class="field"><label>Valor planejado</label>${moneyInputHTML('pl-nova-valor', '')}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" id="pl-nova-salvar">Salvar meta</button>
+          `}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h3>Categorias com meta</h3><input type="text" id="pl-busca" placeholder="Buscar categoria..." style="max-width:280px" value="${planejamentoBusca}" /></div>
+        ${categoriasComMeta.length === 0 ? emptyState({ iconName: 'target', title: 'Nenhuma meta definida ainda', text: 'Use "Nova meta" acima para planejar o quanto quer gastar em cada categoria.' }) : categoriasComMeta.map((c) => {
           const planejado = metaCategoria(c.id, mes);
           const realizado = realizadoCategoria(c.id, mes);
           const pct = planejado > 0 ? Math.min(100, Math.round((realizado / planejado) * 100)) : 0;
@@ -2078,9 +2509,12 @@ function pagePlanejamento(container) {
             <div style="flex:1">
               <strong>${c.name}</strong>
               <div class="row-sub">Planejado: ${formatCurrency(planejado)} · Realizado: ${formatCurrency(realizado)}</div>
-              ${planejado > 0 ? `<div class="progress-track" style="margin-top:6px;max-width:280px"><div class="progress-fill" style="width:${pct}%;background:${pct > 100 ? 'var(--danger)' : c.color}"></div></div>` : ''}
+              <div class="progress-track" style="margin-top:6px;max-width:280px"><div class="progress-fill" style="width:${pct}%;background:${pct > 100 ? 'var(--danger)' : c.color}"></div></div>
             </div>
-            <button class="btn btn-ghost btn-sm" data-action="definir-meta" data-id="${c.id}">${icon('plus')} Definir meta</button>
+            <div class="row-actions">
+              <button class="btn-icon" data-action="editar-meta" data-id="${c.id}">${icon('edit')}</button>
+              <button class="btn-icon" data-action="remover-meta" data-id="${c.id}">${icon('trash')}</button>
+            </div>
           </div>`;
         }).join('')}
       </div>
@@ -2088,14 +2522,26 @@ function pagePlanejamento(container) {
 
     document.getElementById('pl-mes').onchange = (e) => { planejamentoMes = e.target.value; draw(); };
     document.getElementById('pl-busca').oninput = (e) => { planejamentoBusca = e.target.value; draw(); };
-    container.querySelectorAll('[data-action="definir-meta"]').forEach((b) => b.onclick = () => {
+    document.getElementById('pl-toggle-nova').onclick = () => { planejamentoNovaMetaOpen = !planejamentoNovaMetaOpen; draw(); };
+    if (document.getElementById('pl-nova-salvar')) {
+      document.getElementById('pl-nova-salvar').onclick = () => {
+        const categoryId = document.getElementById('pl-nova-cat').value;
+        const valor = moneyValue('pl-nova-valor');
+        if (!valor) { toast('Informe um valor', 'danger'); return; }
+        setMetaCategoria(categoryId, mes, valor);
+        toast('Meta salva', 'success');
+        planejamentoNovaMetaOpen = false;
+        draw();
+      };
+    }
+    container.querySelectorAll('[data-action="editar-meta"]').forEach((b) => b.onclick = () => {
       const cat = Store.categoryById(b.dataset.id);
       const overlay = document.getElementById('modal-overlay');
       overlay.innerHTML = `
         <div class="modal-box">
           <h3>Meta de ${cat.name}</h3>
           <p>Defina o valor planejado para ${monthLabel(Number(mes.slice(5, 7)) - 1)} de ${mes.slice(2, 4)}.</p>
-          <div class="field"><label>Valor planejado</label><input type="number" step="0.01" id="meta-valor" value="${metaCategoria(b.dataset.id, mes) || ''}" placeholder="0,00" /></div>
+          <div class="field"><label>Valor planejado</label>${moneyInputHTML('meta-valor', metaCategoria(b.dataset.id, mes))}</div>
           <div class="modal-actions">
             <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
             <button class="btn btn-primary btn-sm" id="modal-confirm">Salvar</button>
@@ -2104,11 +2550,17 @@ function pagePlanejamento(container) {
       overlay.classList.add('open');
       overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
       overlay.querySelector('#modal-confirm').onclick = () => {
-        setMetaCategoria(b.dataset.id, mes, parseFloat(document.getElementById('meta-valor').value) || 0);
+        setMetaCategoria(b.dataset.id, mes, moneyValue('meta-valor'));
         overlay.classList.remove('open');
         toast('Meta salva', 'success');
         draw();
       };
+    });
+    container.querySelectorAll('[data-action="remover-meta"]').forEach((b) => b.onclick = () => {
+      confirmModal({
+        title: 'Remover meta', text: 'Isso remove a meta desta categoria neste mês. Deseja continuar?', confirmLabel: 'Remover', danger: true,
+        onConfirm: () => { removeMetaCategoria(b.dataset.id, mes); toast('Meta removida', 'success'); draw(); },
+      });
     });
   };
   draw();
@@ -2233,7 +2685,7 @@ function openParcelamentoModal(editing, onSaved) {
         </select></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Categoria (opcional)</label>${fieldHTML({ key: 'pz-categoria', type: 'select-category' }, editing ? editing.categoryId : '')}</div>
+        <div class="field"><label>Categoria (opcional)</label>${fieldHTML({ key: 'pz-categoria', type: 'select-category', optional: true, catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
         <div class="field"><label>Banco (origem do recurso)</label>${fieldHTML({ key: 'pz-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
       </div>
       <div class="field-row">
@@ -2241,7 +2693,7 @@ function openParcelamentoModal(editing, onSaved) {
         <div class="field"><label>Primeira parcela</label><input type="date" id="pz-primeira-parcela" value="${editing ? editing.primeiraParcela || '' : ''}" /></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Valor principal</label><input type="number" step="0.01" id="pz-valor" placeholder="0,00" value="${editing ? editing.valorPrincipal : ''}" /></div>
+        <div class="field"><label>Valor principal</label>${moneyInputHTML('pz-valor', editing ? editing.valorPrincipal : '')}</div>
         <div class="field"><label>Quantidade de parcelas</label><input type="number" min="1" id="pz-parcelas" value="${editing ? editing.numParcelas : ''}" /></div>
       </div>
       <div class="field"><label>Taxa de juros mensal (%)</label><input type="number" step="0.01" id="pz-taxa" value="${editing ? editing.taxaJurosMensal : '0'}" /></div>
@@ -2253,11 +2705,11 @@ function openParcelamentoModal(editing, onSaved) {
     </div>
   `;
   overlay.classList.add('open');
-  wireQuickAddButtons([{ key: 'pz-categoria', type: 'select-category' }, { key: 'pz-banco', type: 'select-bank' }]);
+  wireQuickAddButtons([{ key: 'pz-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'pz-banco', type: 'select-bank' }]);
   overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
   overlay.querySelector('#modal-confirm').onclick = () => {
     const nome = document.getElementById('pz-nome').value.trim();
-    const valorPrincipal = parseFloat(document.getElementById('pz-valor').value) || 0;
+    const valorPrincipal = moneyValue('pz-valor');
     const numParcelas = parseInt(document.getElementById('pz-parcelas').value, 10) || 0;
     if (!nome) { toast('Informe o nome do contrato', 'danger'); return; }
     if (!valorPrincipal) { toast('Informe o valor principal', 'danger'); return; }
@@ -2369,6 +2821,47 @@ function pageAssistente(container) {
 /* =========================================================================
    CONFIGURAÇÕES
    ========================================================================= */
+let editingCategoriaCfg = { despesa: null, receita: null };
+function categoriasManagerHTML(tipo, title) {
+  const editing = editingCategoriaCfg[tipo] ? Store.categoryById(editingCategoriaCfg[tipo]) : null;
+  return `
+    <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-input)">
+      <div class="row-sub" style="text-transform:uppercase;letter-spacing:0.05em;font-weight:700;color:var(--text-muted);margin-bottom:10px">${title}</div>
+      <div class="field-row">
+        <div class="field"><label>Nome</label><input type="text" id="cfg-cat-${tipo}-name" placeholder="Ex.: Pet" value="${editing ? editing.name : ''}" /></div>
+        <div class="field"><label>Emoji</label>${renderEmojiPicker(`cfg-cat-${tipo}-emoji`, editing ? editing.emoji : '🏷️')}</div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm btn-block" id="cfg-cat-${tipo}-save">${editing ? 'Salvar alterações' : 'Criar categoria'}</button>
+      ${categoryListHTML(tipo)}
+    </div>
+  `;
+}
+function wireCategoriasManagerPanel(tipo, onChange) {
+  wireEmojiPicker(`cfg-cat-${tipo}-emoji`);
+  document.getElementById(`cfg-cat-${tipo}-save`).onclick = () => {
+    const name = document.getElementById(`cfg-cat-${tipo}-name`).value.trim();
+    if (!name) { toast('Dê um nome para a categoria', 'danger'); return; }
+    const emoji = document.getElementById(`cfg-cat-${tipo}-emoji`).value || '🏷️';
+    if (editingCategoriaCfg[tipo]) {
+      Store.update('categories', editingCategoriaCfg[tipo], { name, emoji });
+      toast('Categoria atualizada', 'success');
+      editingCategoriaCfg[tipo] = null;
+    } else {
+      Store.add('categories', { name, emoji, color: nextCategoryColor(), tipo });
+      toast('Categoria criada', 'success');
+    }
+    onChange();
+  };
+  document.querySelectorAll(`#cfg-cat-panel-${tipo} [data-action="edit-cat"]`).forEach((b) => b.onclick = () => { editingCategoriaCfg[tipo] = b.dataset.id; onChange(); });
+  document.querySelectorAll(`#cfg-cat-panel-${tipo} [data-action="delete-cat"]`).forEach((b) => b.onclick = () => {
+    confirmModal({
+      title: 'Excluir categoria', text: 'Lançamentos que já usam essa categoria ficarão sem categoria. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+      onConfirm: () => { Store.remove('categories', b.dataset.id); toast('Categoria excluída', 'success'); onChange(); },
+    });
+  });
+  wireCategoryDragDrop(document.getElementById(`cfg-cat-panel-${tipo}`), onChange);
+}
+
 function pageConfiguracoes(container) {
   const draw = () => {
     const p = Store.state.profile;
@@ -2414,6 +2907,15 @@ function pageConfiguracoes(container) {
       </div>
 
       <div class="panel">
+        <h3 style="margin-bottom:6px">${icon('bag')} Categorias</h3>
+        <p class="row-sub" style="margin-bottom:14px">Cadastre, edite e exclua as categorias usadas nos seus lançamentos — tudo em um só lugar.</p>
+        <div class="grid-2">
+          <div id="cfg-cat-panel-despesa">${categoriasManagerHTML('despesa', 'Categorias de despesa')}</div>
+          <div id="cfg-cat-panel-receita">${categoriasManagerHTML('receita', 'Categorias de receita')}</div>
+        </div>
+      </div>
+
+      <div class="panel">
         <h3 style="margin-bottom:10px">${icon('card')} Gastos do cartão no orçamento</h3>
         <p class="row-sub" style="margin-bottom:14px">A <strong style="color:var(--text)">fatura do cartão</strong> (em Cartões de crédito) sempre segue o ciclo real de fechamento — é o valor exato que você paga ao banco. Já o <strong style="color:var(--text)">Total de gastos</strong> do Dashboard pode contar essas compras de dois jeitos:</p>
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
@@ -2451,6 +2953,9 @@ function pageConfiguracoes(container) {
         <button class="btn btn-danger-ghost btn-sm" id="cfg-reset">${icon('trash')} Começar do zero</button>
       </div>
     `;
+
+    wireCategoriasManagerPanel('despesa', draw);
+    wireCategoriasManagerPanel('receita', draw);
 
     document.getElementById('cfg-avatar-btn').onclick = () => toast('Upload de foto chega em breve', 'info');
     document.getElementById('cfg-save-nome').onclick = () => {
