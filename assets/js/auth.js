@@ -92,7 +92,7 @@ function renderAuthScreen(mode) {
 
   screen.innerHTML = `
     <div class="auth-card">
-      <div class="auth-logo">${icon('logo')}</div>
+      <div class="auth-logo">${ICONS.logo}</div>
       <div class="auth-brand"><strong>Fin</strong>360<sup>°</sup></div>
       <p class="auth-tagline">Sua organização financeira pessoal</p>
 

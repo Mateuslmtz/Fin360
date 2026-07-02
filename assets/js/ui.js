@@ -6,17 +6,17 @@ const NAV_ITEMS = [
   { route: 'recebimentos', label: 'Recebimentos', icon: 'download', subtitle: 'Entradas previstas e recebidas' },
   { route: 'gastos-variaveis', label: 'Gastos variáveis', icon: 'bag', subtitle: 'Criar, editar, excluir e filtrar lançamentos em tempo real' },
   { route: 'gastos-fixos', label: 'Gastos fixos', icon: 'repeat', subtitle: 'Cadastre custos recorrentes e acompanhe vencimentos' },
-  { route: 'cofrinhos', label: 'Cofrinhos', icon: 'piggy', subtitle: 'Reserva de emergência e metas de poupança' },
   { route: 'cartoes', label: 'Cartões de crédito', icon: 'card', subtitle: 'Limite, fatura e vencimento dos seus cartões' },
   { route: 'parcelamentos', label: 'Parcelamentos', icon: 'layers', subtitle: 'Compras parceladas em acompanhamento' },
-  { route: 'bancos', label: 'Bancos', icon: 'bank', subtitle: 'Contas e saldos vinculados' },
-  { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Espelha o Dashboard com os mesmos filtros e regras' },
+  { route: 'cofrinhos', label: 'Cofrinhos', icon: 'piggy', subtitle: 'Reserva de emergência e metas de poupança' },
   { route: 'investimentos', label: 'Investimentos', icon: 'trendUp', subtitle: 'Carteira ativa, aportes e rentabilidade' },
   { route: 'conciliacao', label: 'Conciliação', icon: 'checkCircle', subtitle: 'Confira lançamentos com seu extrato bancário' },
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
+  { route: 'bancos', label: 'Bancos', icon: 'bank', subtitle: 'Contas e saldos vinculados' },
+  { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Espelha o Dashboard com os mesmos filtros e regras' },
   { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'O Assistente IA lê seu PDF e cadastra tudo automaticamente', ia: true },
   { route: 'assistente', label: 'Assistente IA', icon: 'sparkles', subtitle: 'Converse, peça relatórios em PDF e gere análises com seus dados reais', ia: true },
-  { route: 'configuracoes', label: 'Configurações', icon: 'settings', subtitle: 'Gerencie sua conta e preferências', hidden: true },
+  { route: 'configuracoes', label: 'Configurações', icon: 'settings', subtitle: 'Gerencie sua conta e preferências' },
 ];
 
 function navItemByRoute(route) {
@@ -26,7 +26,7 @@ function navItemByRoute(route) {
 function renderSidebar(activeRoute) {
   const logoEl = document.getElementById('brand-logo');
   if (logoEl && !logoEl.dataset.filled) {
-    logoEl.innerHTML = icon('logo');
+    logoEl.innerHTML = ICONS.logo;
     logoEl.dataset.filled = '1';
   }
 
@@ -127,8 +127,10 @@ function emptyState({ iconName, title, text, actionLabel, actionId }) {
 }
 
 /* ============ Category / bank select options ============ */
-function categoryOptions(selected) {
-  return Store.state.categories.map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('');
+function categoryOptions(selected, tipo) {
+  const list = tipo ? Store.state.categories.filter((c) => (c.tipo || 'despesa') === tipo) : Store.state.categories;
+  return `<option value="" ${!selected ? 'selected' : ''}>Informar categoria...</option>` +
+    list.map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('');
 }
 function bankOptions(selected) {
   if (!Store.state.banks.length) return `<option value="">Nenhum banco cadastrado</option>`;
@@ -137,13 +139,12 @@ function bankOptions(selected) {
 function categoryTag(catId) {
   const cat = Store.categoryById(catId);
   if (!cat) return `<span class="category-tag" style="background:var(--bg-input);color:var(--text-muted)">Sem categoria</span>`;
-  return `<span class="category-tag" style="background:${hexToSoft(cat.color)};color:${cat.color}">${cat.emoji} ${cat.name}</span>`;
+  return `<span class="category-tag" style="background:var(--bg-input);color:var(--text)">${cat.emoji} ${cat.name}</span>`;
 }
 function categoryAvatar(catId) {
   const cat = Store.categoryById(catId);
-  const bg = cat ? hexToSoft(cat.color) : 'var(--bg-input)';
   const emoji = cat ? cat.emoji : '📦';
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:${bg};font-size:16px;flex-shrink:0">${emoji}</span>`;
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--bg-input);font-size:16px;flex-shrink:0">${emoji}</span>`;
 }
 function hexToSoft(hex) {
   const c = hex.replace('#', '');
@@ -187,15 +188,62 @@ function toast(message, type) {
   }, 2600);
 }
 
+/* ============ Emoji picker (dropdown com opções curadas, sem depender do picker do SO) ============ */
+const CATEGORY_EMOJIS = [
+  '🏷️', '🍽️', '🛒', '☕', '🍺', '🍕',
+  '🏠', '💡', '💧', '🔥', '📶', '🛠️',
+  '🚗', '⛽', '🚌', '🚕', '🚲', '🅿️',
+  '💊', '🏥', '🦷', '🧴', '💇', '🏋️',
+  '🎓', '📚', '🖥️', '🎮', '🎬', '🎵',
+  '🛍️', '👕', '👟', '📱', '💳', '🏦',
+  '✈️', '🏖️', '🧳', '🎁', '💐', '🐶',
+  '🐱', '👶', '🧹', '📺', '💰', '📦',
+];
+const CATEGORY_COLOR_PALETTE = ['#3866ff', '#22c55e', '#a855f7', '#f5a623', '#f04848', '#22d3ee', '#ec4899', '#eab308', '#14b8a6', '#8b93ac'];
+function nextCategoryColor() {
+  return CATEGORY_COLOR_PALETTE[Store.state.categories.length % CATEGORY_COLOR_PALETTE.length];
+}
+function renderEmojiPicker(id, value) {
+  const val = value || '🏷️';
+  return `
+    <div class="dropdown emoji-dropdown" id="${id}-dd">
+      <button type="button" class="dropdown-trigger emoji-trigger">
+        <span class="emoji-preview">${val}</span>${icon('chevronDown', 'chevron')}
+      </button>
+      <div class="dropdown-panel emoji-panel">
+        <div class="emoji-grid">
+          ${CATEGORY_EMOJIS.map((e) => `<button type="button" class="emoji-cell ${e === val ? 'active' : ''}" data-emoji="${e}">${e}</button>`).join('')}
+        </div>
+      </div>
+    </div>
+    <input type="hidden" id="${id}" value="${val}" />
+  `;
+}
+function wireEmojiPicker(id) {
+  const dd = document.getElementById(`${id}-dd`);
+  if (!dd) return;
+  wireDropdownToggle(dd);
+  const hiddenInput = document.getElementById(id);
+  dd.querySelectorAll('.emoji-cell').forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      hiddenInput.value = btn.dataset.emoji;
+      dd.querySelector('.emoji-preview').textContent = btn.dataset.emoji;
+      dd.querySelectorAll('.emoji-cell').forEach((c) => c.classList.remove('active'));
+      btn.classList.add('active');
+      dd.classList.remove('open');
+    };
+  });
+}
+
 /* ============ Prompt simples para criar categoria/banco inline ============ */
-function quickAddCategory(onAdded) {
+function quickAddCategory(onAdded, tipo) {
   const overlay = document.getElementById('modal-overlay');
   overlay.innerHTML = `
     <div class="modal-box">
       <h3>Nova categoria</h3>
       <div class="field"><label>Nome</label><input type="text" id="qc-name" placeholder="Ex.: Pet" /></div>
-      <div class="field"><label>Cor</label><input type="text" id="qc-color" value="#3866ff" /></div>
-      <div class="field"><label>Emoji</label><input type="text" id="qc-emoji" value="🏷️" maxlength="2" /></div>
+      <div class="field"><label>Emoji</label>${renderEmojiPicker('qc-emoji', '🏷️')}</div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
         <button class="btn btn-primary btn-sm" id="modal-confirm">Adicionar</button>
@@ -203,11 +251,12 @@ function quickAddCategory(onAdded) {
     </div>
   `;
   overlay.classList.add('open');
+  wireEmojiPicker('qc-emoji');
   overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
   overlay.querySelector('#modal-confirm').onclick = () => {
     const name = document.getElementById('qc-name').value.trim();
     if (!name) { toast('Dê um nome para a categoria', 'danger'); return; }
-    const cat = Store.add('categories', { name, color: document.getElementById('qc-color').value || '#3866ff', emoji: document.getElementById('qc-emoji').value || '🏷️' });
+    const cat = Store.add('categories', { name, color: nextCategoryColor(), emoji: document.getElementById('qc-emoji').value || '🏷️', tipo: tipo || 'despesa' });
     overlay.classList.remove('open');
     toast('Categoria adicionada', 'success');
     onAdded && onAdded(cat.id);

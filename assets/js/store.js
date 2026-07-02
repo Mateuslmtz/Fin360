@@ -24,33 +24,41 @@ function defaultState() {
     collapsed: false,
     profile: { name: 'Mateus', email: 'mateusgiacomollilemmertz@gmail.com', currency: 'BRL', gastoCartaoPorCompra: true },
     categories: [
-      { id: 'cat-alimentacao', name: 'Alimentação', color: '#22c55e', emoji: '🍽️' },
-      { id: 'cat-assinaturas', name: 'Assinaturas', color: '#a855f7', emoji: '📺' },
-      { id: 'cat-cofrinho', name: 'Cofrinho', color: '#22d3ee', emoji: '🐷' },
-      { id: 'cat-educacao', name: 'Educação', color: '#3866ff', emoji: '🎓' },
-      { id: 'cat-lazer', name: 'Lazer', color: '#f5a623', emoji: '🎮' },
-      { id: 'cat-moradia', name: 'Moradia', color: '#f04848', emoji: '🏠' },
-      { id: 'cat-saude', name: 'Saúde', color: '#22c55e', emoji: '💊' },
-      { id: 'cat-transporte', name: 'Transporte', color: '#3866ff', emoji: '🚗' },
-      { id: 'cat-outros', name: 'Outros', color: '#8b93ac', emoji: '📦' },
+      { id: 'cat-alimentacao', name: 'Alimentação', color: '#22c55e', emoji: '🍽️', tipo: 'despesa' },
+      { id: 'cat-assinaturas', name: 'Assinaturas', color: '#a855f7', emoji: '📺', tipo: 'despesa' },
+      { id: 'cat-cofrinho', name: 'Cofrinho', color: '#22d3ee', emoji: '🐷', tipo: 'despesa' },
+      { id: 'cat-educacao', name: 'Educação', color: '#3866ff', emoji: '🎓', tipo: 'despesa' },
+      { id: 'cat-lazer', name: 'Lazer', color: '#f5a623', emoji: '🎮', tipo: 'despesa' },
+      { id: 'cat-moradia', name: 'Moradia', color: '#f04848', emoji: '🏠', tipo: 'despesa' },
+      { id: 'cat-saude', name: 'Saúde', color: '#22c55e', emoji: '💊', tipo: 'despesa' },
+      { id: 'cat-transporte', name: 'Transporte', color: '#3866ff', emoji: '🚗', tipo: 'despesa' },
+      { id: 'cat-outros', name: 'Outros', color: '#8b93ac', emoji: '📦', tipo: 'despesa' },
+      { id: 'cat-salario', name: 'Salário', color: '#3866ff', emoji: '💼', tipo: 'receita' },
+      { id: 'cat-freelancer', name: 'Freelancer', color: '#22c55e', emoji: '💻', tipo: 'receita' },
+      { id: 'cat-comissao', name: 'Comissão', color: '#a855f7', emoji: '🤝', tipo: 'receita' },
+      { id: 'cat-renda-extra', name: 'Renda Extra', color: '#f5a623', emoji: '✨', tipo: 'receita' },
+      { id: 'cat-reembolso', name: 'Reembolso', color: '#22d3ee', emoji: '🔄', tipo: 'receita' },
+      { id: 'cat-outros-receita', name: 'Outros', color: '#8b93ac', emoji: '📦', tipo: 'receita' },
     ],
     banks: [],
-    // gastosFixos: {id,nome,valor,diaVencimento(1-31),categoryId,bankId,ativo,observacao,createdAt}
+    // gastosFixos: {id,nome,valor,diaVencimento(1-31),categoryId,bankId,ativo,inicioMes(opcional),fimMes(opcional, exclusivo),observacao,createdAt,
+    //   historico:[{id,mes:'YYYY-MM',valor,diaVencimento}] (valor/dia vigentes a partir de cada mês — ver gastoFixoConfigParaMes)}
     // recorrentes — "pago/pendente" é controlado por mês em gastosFixosPagamentos
     gastosFixos: [],
-    gastosFixosPagamentos: [], // {id, gastoFixoId, mes:'YYYY-MM'}
+    gastosFixosPagamentos: [], // {id, gastoFixoId, mes:'YYYY-MM', bankId, data, valor}
+    gastosFixosMesesOcultos: [], // {id, gastoFixoId, mes:'YYYY-MM'} — ocorrência excluída só naquele mês ("Apenas este mês")
     gastosVariaveis: [],
-    // recebimentos: {id,descricao,valor,data,categoryId,bankId,tipo:'unico'|'recorrente'|'parcelado',parcelas,observacao,createdAt}
+    // recebimentos: {id,descricao,valor,data,categoryId,bankId,tipo:'unico'|'recorrente'|'parcelado',parcelas,dataFinal(recorrente, opcional),observacao,createdAt}
     recebimentos: [],
     recebimentosRecebidos: [], // {id, recebimentoId, mes:'YYYY-MM'}
-    // cofrinhos: {id,nome,meta,atual,icone,cor,prazo,observacao,aporteAutomatico,diaAporte,createdAt}
+    // cofrinhos: {id,nome,meta,atual,icone,cor,prazo,observacao,aporteAutomatico,diaAporte,valorAporte,contaOrigemId,ultimoAporteMes,createdAt}
     cofrinhos: [],
     transferencias: [], // {id,deId,paraId,valor,data,observacao,createdAt}
-    // cartoes: {id,nome,banco,limite,diaFechamento,diaVencimento,cor}
+    // cartoes: {id,nome,banco,bankId,limite,diaFechamento,diaVencimento,cor}
     cartoes: [],
     // cartaoCompras: {id,cartaoId,descricao,categoryId,valorTotal,data,tipo:'avista'|'parcelado'|'recorrente',parcelas}
     cartaoCompras: [],
-    cartaoFaturasPagas: [], // {id, cartaoId, mes:'YYYY-MM'}
+    cartaoFaturasPagas: [], // {id, cartaoId, mes:'YYYY-MM', bankId, valor, ledgerApplied}
     investimentos: [],
     conciliacoes: [], // array de chaves de transação (ex: 'gf:id:2026-06') marcadas como conciliadas
     metasCategoria: [], // {id, categoryId, mes:'YYYY-MM', valor}
@@ -73,32 +81,101 @@ function gastoFixoVencimentoISO(gf, mStr) {
   return `${mStr}-${String(day).padStart(2, '0')}`;
 }
 function gastoFixoCreatedMonth(gf) {
+  if (gf.inicioMes) return gf.inicioMes;
   const d = new Date(gf.createdAt || Date.now());
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+function isGastoFixoMesOculto(gastoFixoId, mStr) {
+  return Store.state.gastosFixosMesesOcultos.some((p) => p.gastoFixoId === gastoFixoId && p.mes === mStr);
+}
 function gastoFixoAppliesToMonth(gf, mStr) {
-  return gf.ativo !== false && mStr >= gastoFixoCreatedMonth(gf);
+  return gf.ativo !== false && mStr >= gastoFixoCreatedMonth(gf) && (!gf.fimMes || mStr < gf.fimMes) && !isGastoFixoMesOculto(gf.id, mStr);
+}
+function gastoFixoPagamento(gastoFixoId, mStr) {
+  return Store.state.gastosFixosPagamentos.find((p) => p.gastoFixoId === gastoFixoId && p.mes === mStr) || null;
 }
 function isGastoFixoPago(gastoFixoId, mStr) {
-  return Store.state.gastosFixosPagamentos.some((p) => p.gastoFixoId === gastoFixoId && p.mes === mStr);
+  return !!gastoFixoPagamento(gastoFixoId, mStr);
 }
-function toggleGastoFixoPago(gastoFixoId, mStr) {
+// registra (ou substitui) a baixa de um mês específico: banco usado, data e valor efetivamente pago.
+// o valor base do gasto fixo (recorrência) não é alterado — só afeta esta competência.
+function payGastoFixo(gastoFixoId, mStr, { bankId, data, valor }) {
   const list = Store.state.gastosFixosPagamentos;
   const idx = list.findIndex((p) => p.gastoFixoId === gastoFixoId && p.mes === mStr);
-  if (idx > -1) list.splice(idx, 1);
-  else list.push({ id: uid(), gastoFixoId, mes: mStr });
+  if (idx > -1) Store.applyBankDelta(list[idx].bankId, list[idx].valor); // desfaz a baixa anterior, se houver
+  const record = { id: idx > -1 ? list[idx].id : uid(), gastoFixoId, mes: mStr, bankId, data, valor, ledgerApplied: true };
+  if (idx > -1) list[idx] = record; else list.push(record);
+  Store.applyBankDelta(bankId, -valor);
   Store.save();
+}
+function reopenGastoFixo(gastoFixoId, mStr) {
+  const list = Store.state.gastosFixosPagamentos;
+  const idx = list.findIndex((p) => p.gastoFixoId === gastoFixoId && p.mes === mStr);
+  if (idx > -1) {
+    Store.applyBankDelta(list[idx].bankId, list[idx].valor);
+    list.splice(idx, 1);
+  }
+  Store.save();
+}
+// esconde só esta ocorrência (mês) — o gasto fixo continua normal nos demais meses; desfaz a baixa deste mês, se houver
+function deleteGastoFixoMes(gastoFixoId, mStr) {
+  const pagamento = gastoFixoPagamento(gastoFixoId, mStr);
+  if (pagamento) {
+    Store.applyBankDelta(pagamento.bankId, pagamento.valor);
+    Store.state.gastosFixosPagamentos = Store.state.gastosFixosPagamentos.filter((p) => p.id !== pagamento.id);
+  }
+  Store.state.gastosFixosMesesOcultos.push({ id: uid(), gastoFixoId, mes: mStr });
+  Store.save();
+}
+// encerra a recorrência a partir deste mês (inclusive) — meses anteriores ficam intactos, histórico preservado
+function endGastoFixoFromMonth(gastoFixoId, mStr) {
+  const afetados = Store.state.gastosFixosPagamentos.filter((p) => p.gastoFixoId === gastoFixoId && p.mes >= mStr);
+  afetados.forEach((p) => Store.applyBankDelta(p.bankId, p.valor));
+  Store.state.gastosFixosPagamentos = Store.state.gastosFixosPagamentos.filter((p) => !(p.gastoFixoId === gastoFixoId && p.mes >= mStr));
+  Store.update('gastosFixos', gastoFixoId, { fimMes: mStr });
+}
+// valor de fato pago nesta competência (pode diferir do valor base recorrente); cai pro valor base se ainda não foi pago
+function gastoFixoValorEfetivo(g) {
+  return g.pago && g.pagamento ? g.pagamento.valor : g.valor;
+}
+// valor/dia de vencimento vigentes num mês específico — respeita alterações aplicadas só "deste mês em diante"
+function gastoFixoConfigParaMes(gf, mStr) {
+  const hist = (gf.historico || []).filter((h) => h.mes <= mStr);
+  if (!hist.length) return { valor: gf.valor, diaVencimento: gf.diaVencimento };
+  return hist.reduce((latest, h) => (h.mes > latest.mes ? h : latest));
 }
 function gastosFixosForMonth(mStr) {
   return Store.state.gastosFixos
     .filter((gf) => gastoFixoAppliesToMonth(gf, mStr))
-    .map((gf) => ({ ...gf, vencimentoISO: gastoFixoVencimentoISO(gf, mStr), pago: isGastoFixoPago(gf.id, mStr), mesRef: mStr }));
+    .map((gf) => {
+      const cfg = gastoFixoConfigParaMes(gf, mStr);
+      const pagamento = gastoFixoPagamento(gf.id, mStr);
+      return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, vencimentoISO: gastoFixoVencimentoISO(cfg, mStr), pago: !!pagamento, pagamento, mesRef: mStr };
+    });
 }
 // igual gastosFixosForMonth, mas inclui os inativos (pra tela de listagem não "sumir" com o botão de reativar)
 function gastosFixosForMonthAll(mStr) {
   return Store.state.gastosFixos
-    .filter((gf) => mStr >= gastoFixoCreatedMonth(gf))
-    .map((gf) => ({ ...gf, vencimentoISO: gastoFixoVencimentoISO(gf, mStr), pago: isGastoFixoPago(gf.id, mStr), mesRef: mStr }));
+    .filter((gf) => mStr >= gastoFixoCreatedMonth(gf) && (!gf.fimMes || mStr < gf.fimMes) && !isGastoFixoMesOculto(gf.id, mStr))
+    .map((gf) => {
+      const cfg = gastoFixoConfigParaMes(gf, mStr);
+      const pagamento = gastoFixoPagamento(gf.id, mStr);
+      return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, vencimentoISO: gastoFixoVencimentoISO(cfg, mStr), pago: !!pagamento, pagamento, mesRef: mStr };
+    });
+}
+// aplica uma alteração de valor/dia de vencimento — 'deste-mes' preserva o histórico anterior a partir do mês de
+// referência; 'historico' reescreve tudo (afeta só competências ainda não pagas, já que a baixa já feita é imutável)
+function updateGastoFixoComHistorico(gastoFixoId, mStrReferencia, payload, modo) {
+  const gf = Store.get('gastosFixos', gastoFixoId);
+  const base = (gf.historico && gf.historico.length) ? gf.historico : [{ id: uid(), mes: gastoFixoCreatedMonth(gf), valor: gf.valor, diaVencimento: gf.diaVencimento }];
+  let historico;
+  if (modo === 'historico') {
+    historico = [{ id: uid(), mes: gastoFixoCreatedMonth(gf), valor: payload.valor, diaVencimento: payload.diaVencimento }];
+  } else {
+    historico = base.filter((h) => h.mes !== mStrReferencia);
+    historico.push({ id: uid(), mes: mStrReferencia, valor: payload.valor, diaVencimento: payload.diaVencimento });
+  }
+  Store.update('gastosFixos', gastoFixoId, Object.assign({}, payload, { historico }));
 }
 
 /* ============ Recorrência: compras de cartão (à vista / parcelado / recorrente) ============ */
@@ -178,11 +255,36 @@ function cartaoComprasCustoRealForMonth(cartaoId, mStr) {
 function cartaoCustoRealForMonth(cartaoId, mStr) {
   return cartaoComprasCustoRealForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valorMeu, 0);
 }
-function allCartoesCustoRealForMonth(mStr) {
-  return Store.state.cartoes.reduce((s, c) => s + cartaoCustoRealForMonth(c.id, mStr), 0);
-}
 function allCartoesFaturaForMonth(mStr) {
   return Store.state.cartoes.reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
+}
+// custo real (sua parte) sempre no regime "caixa" — usado pra marcar como "pago" quando a fatura é quitada,
+// independente do regime de exibição escolhido em Configurações (competência x caixa)
+function cartaoCustoRealCaixaForMonth(cartaoId, mStr) {
+  const cartao = Store.get('cartoes', cartaoId);
+  return Store.state.cartaoCompras
+    .filter((c) => c.cartaoId === cartaoId)
+    .map((c) => ({ compra: c, occurrence: compraOccurrenceInMonth(c, mStr, cartao, 'caixa') }))
+    .filter((x) => x.occurrence)
+    .reduce((s, x) => s + x.occurrence.valorMeu, 0);
+}
+// limite realmente comprometido: soma as faturas de todo mês (do primeiro lançamento até o mês atual) que
+// ainda não foram pagas — pagar uma fatura libera esse limite de volta, igual um cartão de verdade
+function cartaoLimiteUsado(cartaoId) {
+  const compras = Store.state.cartaoCompras.filter((c) => c.cartaoId === cartaoId);
+  if (!compras.length) return 0;
+  let inicio = compras[0].data.slice(0, 7);
+  compras.forEach((c) => { const m = c.data.slice(0, 7); if (m < inicio) inicio = m; });
+  const fim = currentMonthStr();
+  let usado = 0;
+  let mStr = inicio;
+  let guard = 0;
+  while (mStr <= fim && guard < 600) {
+    if (!isCartaoFaturaPaga(cartaoId, mStr)) usado += cartaoFaturaForMonth(cartaoId, mStr);
+    mStr = monthAddStr(mStr, 1);
+    guard++;
+  }
+  return usado;
 }
 /* ============ Recorrência: recebimentos (único / recorrente / parcelado) ============ */
 function recebimentoOccurrenceInMonth(receb, mStr) {
@@ -198,8 +300,9 @@ function recebimentoOccurrenceInMonth(receb, mStr) {
     return null;
   }
   if (receb.tipo === 'recorrente') {
-    if (mStr >= recebMonth) return { valor: receb.valor, parcelaLabel: '—' };
-    return null;
+    if (mStr < recebMonth) return null;
+    if (receb.dataFinal && mStr > receb.dataFinal.slice(0, 7)) return null;
+    return { valor: receb.valor, parcelaLabel: '—' };
   }
   // único
   if (mStr === recebMonth) return { valor: receb.valor, parcelaLabel: '1/1' };
@@ -211,9 +314,75 @@ function isRecebimentoRecebido(recebimentoId, mStr) {
 function toggleRecebimentoRecebido(recebimentoId, mStr) {
   const list = Store.state.recebimentosRecebidos;
   const idx = list.findIndex((p) => p.recebimentoId === recebimentoId && p.mes === mStr);
-  if (idx > -1) list.splice(idx, 1);
-  else list.push({ id: uid(), recebimentoId, mes: mStr });
+  const receb = Store.get('recebimentos', recebimentoId);
+  const occ = receb && recebimentoOccurrenceInMonth(receb, mStr);
+  const valor = occ ? occ.valor : 0;
+  if (idx > -1) {
+    list.splice(idx, 1);
+    if (receb) Store.applyBankDelta(receb.bankId, -valor);
+  } else {
+    list.push({ id: uid(), recebimentoId, mes: mStr, ledgerApplied: true });
+    if (receb) Store.applyBankDelta(receb.bankId, valor);
+  }
   Store.save();
+}
+// reconcilia o saldo dos bancos ao editar um recebimento cujos meses já foram marcados como recebidos
+function updateRecebimento(id, payload) {
+  const old = Store.get('recebimentos', id);
+  const affected = Store.state.recebimentosRecebidos.filter((p) => p.recebimentoId === id);
+  affected.forEach((p) => {
+    const occ = old && recebimentoOccurrenceInMonth(old, p.mes);
+    if (occ) Store.applyBankDelta(old.bankId, -occ.valor);
+  });
+  Store.update('recebimentos', id, payload);
+  const updated = Store.get('recebimentos', id);
+  affected.forEach((p) => {
+    const occ = updated && recebimentoOccurrenceInMonth(updated, p.mes);
+    if (occ) Store.applyBankDelta(updated.bankId, occ.valor);
+  });
+}
+function deleteRecebimento(id) {
+  const receb = Store.get('recebimentos', id);
+  const affected = Store.state.recebimentosRecebidos.filter((p) => p.recebimentoId === id);
+  affected.forEach((p) => {
+    const occ = receb && recebimentoOccurrenceInMonth(receb, p.mes);
+    if (occ) Store.applyBankDelta(receb.bankId, -occ.valor);
+  });
+  Store.state.recebimentosRecebidos = Store.state.recebimentosRecebidos.filter((p) => p.recebimentoId !== id);
+  Store.remove('recebimentos', id);
+}
+
+/* ============ Gastos variáveis: status pago/pendente também move o saldo do banco ============ */
+function addGastoVariavel(payload) {
+  const autoPago = payload.data <= todayISO();
+  const item = Store.add('gastosVariaveis', Object.assign({ status: autoPago ? 'pago' : 'pendente' }, payload, autoPago ? { ledgerApplied: true } : {}));
+  if (autoPago) Store.applyBankDelta(payload.bankId, -payload.valor);
+  return item;
+}
+function updateGastoVariavel(id, payload) {
+  const old = Store.get('gastosVariaveis', id);
+  if (old && old.status === 'pago') {
+    Store.applyBankDelta(old.bankId, old.valor);
+    Store.applyBankDelta(payload.bankId, -payload.valor);
+  }
+  Store.update('gastosVariaveis', id, payload);
+}
+function payGastoVariavel(id) {
+  const g = Store.get('gastosVariaveis', id);
+  if (!g || g.status === 'pago') return;
+  Store.update('gastosVariaveis', id, { status: 'pago', ledgerApplied: true });
+  Store.applyBankDelta(g.bankId, -g.valor);
+}
+function reopenGastoVariavel(id) {
+  const g = Store.get('gastosVariaveis', id);
+  if (!g || g.status !== 'pago') return;
+  Store.update('gastosVariaveis', id, { status: 'pendente' });
+  Store.applyBankDelta(g.bankId, g.valor);
+}
+function deleteGastoVariavel(id) {
+  const g = Store.get('gastosVariaveis', id);
+  if (g && g.status === 'pago') Store.applyBankDelta(g.bankId, g.valor);
+  Store.remove('gastosVariaveis', id);
 }
 function recebimentosForMonth(mStr) {
   return Store.state.recebimentos
@@ -227,6 +396,33 @@ function recebimentosForMonth(mStr) {
       recebido: isRecebimentoRecebido(x.receb.id, mStr),
       dataOcorrencia: `${mStr}-${x.receb.data.slice(8, 10)}`,
     }));
+}
+
+// entradas - saídas realizadas naquele mês (recebimentos + gastos fixos + variáveis + fatura de cartão)
+function fluxoLiquidoDoMes(mStr, bankId) {
+  const ganhos = recebimentosForMonth(mStr).filter((r) => !bankId || r.bankId === bankId).reduce((s, r) => s + r.valor, 0);
+  const fixos = gastosFixosForMonth(mStr).filter((g) => !bankId || g.bankId === bankId).reduce((s, g) => s + g.valor, 0);
+  const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr) && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+  const cartao = bankId
+    ? Store.state.cartoes.filter((c) => c.bankId === bankId).reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0)
+    : allCartoesFaturaForMonth(mStr);
+  return ganhos - fixos - variaveis - cartao;
+}
+// reconstrói o saldo bancário no FIM de um mês a partir do saldo real de hoje — assim o "sobrou" de um mês
+// sempre carrega certinho pro mês seguinte, sem precisar guardar um snapshot histórico por mês.
+function saldoBancosNoFimDoMes(mStr, bankId) {
+  const saldoAtual = bankId ? ((Store.bankById(bankId) || {}).balance || 0) : Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
+  const mesAtual = currentMonthStr();
+  if (mStr === mesAtual) return saldoAtual;
+  let acc = saldoAtual;
+  if (mStr < mesAtual) {
+    let cursor = mesAtual;
+    while (cursor > mStr) { acc -= fluxoLiquidoDoMes(cursor, bankId); cursor = monthAddStr(cursor, -1); }
+  } else {
+    let cursor = monthAddStr(mesAtual, 1);
+    while (cursor <= mStr) { acc += fluxoLiquidoDoMes(cursor, bankId); cursor = monthAddStr(cursor, 1); }
+  }
+  return acc;
 }
 
 /* ============ Motor de transações unificado (Extrato / Conciliação) ============ */
@@ -243,7 +439,8 @@ function buildTransacoes(start, end) {
   const txs = [
     ...months.flatMap((m) => gastosFixosForMonth(m)).map((g) => ({
       key: `gf:${g.id}:${g.mesRef}`, data: g.vencimentoISO, descricao: g.nome, tipo: 'Gasto fixo',
-      bankId: g.bankId, categoryId: g.categoryId, status: g.pago ? 'pago' : 'pendente', valor: g.valor, sinal: -1,
+      bankId: g.pago && g.pagamento ? g.pagamento.bankId : g.bankId, categoryId: g.categoryId,
+      status: g.pago ? 'pago' : 'pendente', valor: g.pago && g.pagamento ? g.pagamento.valor : g.valor, sinal: -1,
     })),
     ...Store.state.gastosVariaveis.map((g) => ({
       key: `gv:${g.id}`, data: g.data, descricao: g.descricao, tipo: 'Gasto variável',
@@ -326,11 +523,23 @@ function proximaParcelaPendente(p) {
 function isCartaoFaturaPaga(cartaoId, mStr) {
   return Store.state.cartaoFaturasPagas.some((p) => p.cartaoId === cartaoId && p.mes === mStr);
 }
-function toggleCartaoFaturaPaga(cartaoId, mStr) {
+// paga a fatura de verdade: debita o valor total (fatura, não só "sua parte") do banco vinculado ao cartão
+function payCartaoFatura(cartaoId, mStr, { bankId, valor }) {
   const list = Store.state.cartaoFaturasPagas;
   const idx = list.findIndex((p) => p.cartaoId === cartaoId && p.mes === mStr);
-  if (idx > -1) list.splice(idx, 1);
-  else list.push({ id: uid(), cartaoId, mes: mStr });
+  if (idx > -1) Store.applyBankDelta(list[idx].bankId, list[idx].valor); // desfaz a baixa anterior, se houver
+  const record = { id: idx > -1 ? list[idx].id : uid(), cartaoId, mes: mStr, bankId, valor, ledgerApplied: true };
+  if (idx > -1) list[idx] = record; else list.push(record);
+  Store.applyBankDelta(bankId, -valor);
+  Store.save();
+}
+function reopenCartaoFatura(cartaoId, mStr) {
+  const list = Store.state.cartaoFaturasPagas;
+  const idx = list.findIndex((p) => p.cartaoId === cartaoId && p.mes === mStr);
+  if (idx > -1) {
+    Store.applyBankDelta(list[idx].bankId, list[idx].valor);
+    list.splice(idx, 1);
+  }
   Store.save();
 }
 function parcelasAtivasCount(cartaoId) {
@@ -349,7 +558,58 @@ const Store = {
     } catch (e) {
       this.state = defaultState();
     }
+    this.migrateCategorias();
+    this.reconcileLegacyLedger();
     return this.state;
+  },
+
+  // contas já existentes antes da separação despesa/receita não tinham "tipo" nem categorias de receita
+  migrateCategorias() {
+    let changed = false;
+    this.state.categories.forEach((c) => { if (!c.tipo) { c.tipo = 'despesa'; changed = true; } });
+    if (!this.state.categories.some((c) => c.tipo === 'receita')) {
+      this.state.categories.push(...defaultState().categories.filter((c) => c.tipo === 'receita'));
+      changed = true;
+    }
+    if (changed) this.save();
+  },
+
+  // baixas/recebimentos marcados ANTES do saldo do banco virar um livro-razão de verdade (applyBankDelta)
+  // nunca chegaram a mexer no saldo. Aplica o valor deles uma única vez (marca ledgerApplied pra nunca repetir).
+  reconcileLegacyLedger() {
+    let changed = false;
+    this.state.gastosFixosPagamentos.forEach((p) => {
+      if (p.ledgerApplied) return;
+      this.applyBankDelta(p.bankId, -p.valor);
+      p.ledgerApplied = true;
+      changed = true;
+    });
+    this.state.recebimentosRecebidos.forEach((p) => {
+      if (p.ledgerApplied) return;
+      const receb = this.get('recebimentos', p.recebimentoId);
+      const occ = receb && recebimentoOccurrenceInMonth(receb, p.mes);
+      if (occ) this.applyBankDelta(receb.bankId, occ.valor);
+      p.ledgerApplied = true;
+      changed = true;
+    });
+    this.state.gastosVariaveis.forEach((g) => {
+      if (g.status !== 'pago' || g.ledgerApplied) return;
+      this.applyBankDelta(g.bankId, -g.valor);
+      g.ledgerApplied = true;
+      changed = true;
+    });
+    this.state.cartaoFaturasPagas.forEach((p) => {
+      if (p.ledgerApplied) return;
+      const cartao = this.get('cartoes', p.cartaoId);
+      if (!cartao || !cartao.bankId) return; // sem banco vinculado ainda — tenta de novo no próximo load
+      const valor = p.valor != null ? p.valor : cartaoFaturaForMonth(p.cartaoId, p.mes);
+      this.applyBankDelta(cartao.bankId, -valor);
+      p.valor = valor;
+      p.bankId = cartao.bankId;
+      p.ledgerApplied = true;
+      changed = true;
+    });
+    if (changed) this.save();
   },
 
   save() {
@@ -358,6 +618,18 @@ const Store = {
 
   reset() {
     this.state = defaultState();
+    this.save();
+  },
+
+  // move a categoria arrastada pra posição da categoria alvo — define a ordem usada em todas as listas suspensas
+  reorderCategories(draggedId, targetId) {
+    const list = this.state.categories;
+    const fromIdx = list.findIndex((c) => c.id === draggedId);
+    let toIdx = list.findIndex((c) => c.id === targetId);
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+    const [item] = list.splice(fromIdx, 1);
+    if (fromIdx < toIdx) toIdx -= 1;
+    list.splice(toIdx, 0, item);
     this.save();
   },
 
@@ -408,6 +680,32 @@ const Store = {
   bankById(id) {
     return this.state.banks.find((b) => b.id === id) || null;
   },
+
+  // saldo de banco é um livro-razão de verdade: toda baixa/recebimento/transferência move o saldo na hora.
+  // isso garante que o saldo de um mês carrega corretamente pro mês seguinte, sem recomputar do zero por período.
+  applyBankDelta(bankId, delta) {
+    if (!bankId || !delta) return;
+    const bank = this.bankById(bankId);
+    if (!bank) return;
+    this.update('banks', bankId, { balance: (bank.balance || 0) + delta });
+  },
+
+  // aplica os aportes automáticos de cofrinhos ainda não feitos neste mês (dia do aporte já chegou)
+  processAportesAutomaticos() {
+    const mAtual = currentMonthStr();
+    const diaHoje = parseInt(todayISO().slice(8, 10), 10);
+    const aplicados = [];
+    this.state.cofrinhos.forEach((c) => {
+      if (!c.aporteAutomatico || !c.valorAporte || !c.diaAporte || !c.contaOrigemId) return;
+      if (c.ultimoAporteMes === mAtual || diaHoje < c.diaAporte) return;
+      const banco = this.bankById(c.contaOrigemId);
+      if (!banco) return;
+      this.update('banks', banco.id, { balance: (banco.balance || 0) - c.valorAporte });
+      this.update('cofrinhos', c.id, { atual: (c.atual || 0) + c.valorAporte, ultimoAporteMes: mAtual });
+      aplicados.push({ nome: c.nome, valor: c.valorAporte });
+    });
+    return aplicados;
+  },
 };
 
 /* ============ Format helpers ============ */
@@ -424,6 +722,47 @@ function formatCurrency(value) {
   if (Store.state && Store.state.hideValues) return `${cfg.symbol} •••••`;
   return v.toLocaleString(cfg.locale, { style: 'currency', currency: code });
 }
+
+/* ============ Campos de valor com máscara (digita só números, vírgula/decimal automático) ============ */
+function moneyLocale() {
+  const code = (Store.state && Store.state.profile.currency) || 'BRL';
+  return (CURRENCIES[code] || CURRENCIES.BRL).locale;
+}
+function moneySymbol() {
+  const code = (Store.state && Store.state.profile.currency) || 'BRL';
+  return (CURRENCIES[code] || CURRENCIES.BRL).symbol;
+}
+function moneyDisplay(value) {
+  const v = Number(value) || 0;
+  if (!v) return '';
+  return v.toLocaleString(moneyLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+// sempre mostra o símbolo da moeda fixo à esquerda (ver .money-input-wrap), pra não digitar "às cegas"
+function moneyInputHTML(id, value, placeholder, opts) {
+  opts = opts || {};
+  const cents = Math.round((Number(value) || 0) * 100);
+  const idAttr = id ? `id="${id}"` : '';
+  const cls = `money-input${opts.extraClass ? ' ' + opts.extraClass : ''}`;
+  const input = `<input type="text" inputmode="decimal" class="${cls}" ${idAttr} data-cents="${cents}" placeholder="${placeholder || '0,00'}" value="${cents ? moneyDisplay(value) : ''}" ${opts.attrs || ''} />`;
+  return `<div class="money-input-wrap"${opts.wrapAttrs || ''}><span class="money-prefix">${moneySymbol()}</span>${input}</div>`;
+}
+function moneyValueFromEl(el) {
+  if (!el) return 0;
+  return (parseInt(el.dataset.cents || '0', 10) || 0) / 100;
+}
+function moneyValue(id) {
+  return moneyValueFromEl(document.getElementById(id));
+}
+function moneyInputMask(el) {
+  const digits = el.value.replace(/\D/g, '');
+  const cents = digits ? parseInt(digits, 10) : 0;
+  el.dataset.cents = cents;
+  el.value = cents ? moneyDisplay(cents / 100) : '';
+}
+// fase de captura: garante que a máscara já rodou antes de qualquer listener local (ex.: cálculo de "sua parte" ao vivo)
+document.addEventListener('input', (e) => {
+  if (e.target.classList && e.target.classList.contains('money-input')) moneyInputMask(e.target);
+}, true);
 
 function formatDateBR(iso) {
   if (!iso) return '—';

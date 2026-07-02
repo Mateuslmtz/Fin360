@@ -44,6 +44,11 @@ function bootApp() {
   applyShellState();
   if (!location.hash) location.hash = '#/dashboard';
   render();
+  const aportes = Store.processAportesAutomaticos();
+  if (aportes.length) {
+    aportes.forEach((a) => toast(`Aporte automático de ${formatCurrency(a.valor)} feito em "${a.nome}"`, 'success'));
+    render();
+  }
 }
 
 window.addEventListener('hashchange', render);
