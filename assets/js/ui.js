@@ -24,12 +24,6 @@ function navItemByRoute(route) {
 }
 
 function renderSidebar(activeRoute) {
-  const logoEl = document.getElementById('brand-logo');
-  if (logoEl && !logoEl.dataset.filled) {
-    logoEl.innerHTML = ICONS.logo;
-    logoEl.dataset.filled = '1';
-  }
-
   const nav = document.getElementById('nav');
   nav.innerHTML = NAV_ITEMS.filter((item) => !item.hidden).map((item, idx, arr) => `
     ${item.ia && (idx === 0 || !arr[idx - 1].ia) ? `<div class="nav-divider"><span>Inteligência artificial</span></div>` : ''}

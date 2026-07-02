@@ -92,9 +92,7 @@ function renderAuthScreen(mode) {
 
   screen.innerHTML = `
     <div class="auth-card">
-      <div class="auth-logo">${ICONS.logo}</div>
-      <div class="auth-brand"><strong>Fin</strong>360<sup>°</sup></div>
-      <p class="auth-tagline">Sua organização financeira pessoal</p>
+      <img class="auth-logo-full" src="assets/img/logo-completa.jpg" alt="Fin360° — Sua vida financeira em 360°" />
 
       <div class="auth-tabs">
         <button class="auth-tab ${isLogin ? 'active' : ''}" data-mode="login">Entrar</button>
