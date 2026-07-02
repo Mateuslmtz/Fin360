@@ -654,7 +654,7 @@ function cardsMini(cartoes) {
     return `
     <div style="background:var(--bg-input);border:1px solid var(--border-soft);border-radius:12px;padding:14px">
       <div style="display:flex;justify-content:space-between"><strong>${c.nome}</strong></div>
-      <div class="row-sub" style="margin-bottom:8px">${c.banco || ''}</div>
+      <div class="row-sub" style="margin-bottom:8px">${(Store.bankById(c.bankId) || {}).name || ''}</div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
         <strong style="font-size:17px">${formatCurrency(fatura)}</strong><span class="row-sub">de ${formatCurrency(c.limite)}</span>
       </div>
@@ -1775,7 +1775,6 @@ function pageCartoes(container) {
             <div id="cc-novocartao-box" style="display:${novoCartaoOpen ? 'block' : 'none'};margin-top:14px">
               <h3 style="margin-bottom:14px;font-size:14px">${editingCartao ? 'Editar cartão' : 'Cadastrar cartão'}</h3>
               <div class="field"><label>Nome do cartão</label><input type="text" id="cc-nome" placeholder="Ex.: Nubank Ultravioleta" value="${editingCartao ? editingCartao.nome : ''}" /></div>
-              <div class="field"><label>Banco</label><input type="text" id="cc-banco" placeholder="Ex.: Nubank" value="${editingCartao ? editingCartao.banco || '' : ''}" /></div>
               <div class="field"><label>Banco vinculado (paga a fatura) <span class="req">*</span></label>${fieldHTML({ key: 'cc-vinculo', type: 'select-bank' }, editingCartao ? editingCartao.bankId : '')}</div>
               <div class="field-row">
                 <div class="field"><label>Limite</label>${moneyInputHTML('cc-limite', editingCartao ? editingCartao.limite : '')}</div>
@@ -1803,7 +1802,7 @@ function pageCartoes(container) {
               <div class="field"><label>Valor</label>${moneyInputHTML('cp-valor', editingCompra ? editingCompra.valorTotal : '')}</div>
               <div class="field"><label>Data</label><input type="date" id="cp-data" value="${editingCompra ? editingCompra.data : todayISO()}" /></div>
             </div>
-            <div class="field"><label>Cartão</label><select id="cp-cartao">${cartoes.length === 0 ? '<option value="">Nenhum cartão cadastrado</option>' : cartoes.map((c) => `<option value="${c.id}" ${c.id === (editingCompra ? editingCompra.cartaoId : selectedCartaoId) ? 'selected' : ''}>${c.nome}${c.banco ? ' — ' + c.banco : ''}</option>`).join('')}</select></div>
+            <div class="field"><label>Cartão</label><select id="cp-cartao">${cartoes.length === 0 ? '<option value="">Nenhum cartão cadastrado</option>' : cartoes.map((c) => `<option value="${c.id}" ${c.id === (editingCompra ? editingCompra.cartaoId : selectedCartaoId) ? 'selected' : ''}>${c.nome}${(Store.bankById(c.bankId) || {}).name ? ' — ' + Store.bankById(c.bankId).name : ''}</option>`).join('')}</select></div>
             <div class="field"><label>Categoria</label>${fieldHTML({ key: 'cp-categoria', type: 'select-category', catTipo: 'despesa' }, editingCompra ? editingCompra.categoryId : '')}</div>
             <div class="field">
               <label>Tipo de compra</label>
@@ -1850,7 +1849,7 @@ function pageCartoes(container) {
                     const pct = c.limite > 0 ? Math.min(100, Math.round((limiteUsadoRow / c.limite) * 100)) : 0;
                     return `<tr style="cursor:pointer;${c.id === selectedCartaoId ? 'background:var(--primary-soft)' : ''}" data-action="select-cartao" data-id="${c.id}">
                       <td><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:4px;background:${c.cor || 'var(--primary)'};display:inline-block"></span><strong>${c.nome}</strong></div></td>
-                      <td>${c.banco || '—'}</td>
+                      <td>${(Store.bankById(c.bankId) || {}).name || '—'}</td>
                       <td>${monthLabel(Number(mAtual.slice(5,7))-1).slice(0,3).toLowerCase()}. de ${mAtual.slice(2,4)}</td>
                       <td>dia ${c.diaVencimento || '—'}</td>
                       <td>${parcelasAtivasCount(c.id)}</td>
@@ -1940,7 +1939,6 @@ function pageCartoes(container) {
         if (!bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
         const payload = {
           nome, limite, bankId,
-          banco: document.getElementById('cc-banco').value,
           cor: novoCartaoCor,
           diaFechamento: parseInt(document.getElementById('cc-fechamento').value, 10) || null,
           diaVencimento: parseInt(document.getElementById('cc-vencimento').value, 10) || null,
