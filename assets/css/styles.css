@@ -119,8 +119,8 @@ a { color: inherit; }
 
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 18px; }
 .brand { display: flex; align-items: center; overflow: hidden; }
-.brand-logo-img { width: 156px; border-radius: 14px; display: block; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
-.brand-logo-mini { display: none; width: 44px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+.brand-logo-img { width: 156px; display: block; filter: drop-shadow(0 3px 8px rgba(0,0,0,0.35)); }
+.brand-logo-mini { display: none; width: 40px; filter: drop-shadow(0 3px 8px rgba(0,0,0,0.35)); }
 .app-shell.collapsed .brand-logo-img { display: none; }
 .app-shell.collapsed .brand-logo-mini { display: block; }
 
@@ -531,7 +531,9 @@ textarea { resize: vertical; min-height: 60px; }
   border-radius: 18px; padding: 26px 28px 34px; box-shadow: 0 24px 60px rgba(0,0,0,0.45);
   margin: auto;
 }
-.auth-logo-full { display: block; width: 78%; max-width: 260px; margin: 0 auto 18px; border-radius: 14px; }
+.auth-logo-full { display: block; width: 82%; max-width: 270px; margin: 0 auto 18px; }
+[data-theme='light'] .auth-logo-escuro { display: none; }
+html:not([data-theme='light']) .auth-logo-claro { display: none; }
 .auth-tabs { display: flex; background: var(--bg-input); border-radius: 10px; padding: 4px; margin-bottom: 20px; }
 .auth-tab { flex: 1; border: none; background: transparent; color: var(--text-muted); padding: 9px; border-radius: 7px; font-size: 13px; font-weight: 700; }
 .auth-tab.active { background: var(--primary); color: #fff; }
