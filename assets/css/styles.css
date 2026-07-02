@@ -118,9 +118,11 @@ a { color: inherit; }
 .app-shell.collapsed .collapse-btn { transform: rotate(180deg); }
 
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 18px; }
-.brand { display: flex; align-items: center; gap: 12px; color: #fff; font-size: 20px; letter-spacing: 0.2px; white-space: nowrap; overflow: hidden; }
-.brand-logo { width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
-.brand-text sup { font-size: 11px; color: #aebcff; }
+.brand { display: flex; align-items: center; overflow: hidden; }
+.brand-logo-img { width: 156px; border-radius: 14px; display: block; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+.brand-logo-mini { display: none; width: 44px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+.app-shell.collapsed .brand-logo-img { display: none; }
+.app-shell.collapsed .brand-logo-mini { display: block; }
 
 .collapse-btn {
   background: rgba(255,255,255,0.12);
@@ -521,16 +523,15 @@ textarea { resize: vertical; min-height: 60px; }
   display: flex; align-items: center; justify-content: center;
   background: radial-gradient(circle at 30% 20%, var(--sidebar-start), var(--sidebar-end) 70%);
   padding: 24px;
+  overflow-y: auto;
 }
 .auth-card {
   width: 100%; max-width: 380px; text-align: center;
   background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 18px; padding: 34px 28px; box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  border-radius: 18px; padding: 26px 28px 34px; box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  margin: auto;
 }
-.auth-logo { width: 64px; height: 64px; margin: 0 auto 14px; }
-.auth-brand { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: 0.2px; }
-.auth-brand sup { font-size: 13px; color: var(--text-muted); }
-.auth-tagline { font-size: 13px; color: var(--text-muted); margin: 4px 0 22px; }
+.auth-logo-full { display: block; width: 78%; max-width: 260px; margin: 0 auto 18px; border-radius: 14px; }
 .auth-tabs { display: flex; background: var(--bg-input); border-radius: 10px; padding: 4px; margin-bottom: 20px; }
 .auth-tab { flex: 1; border: none; background: transparent; color: var(--text-muted); padding: 9px; border-radius: 7px; font-size: 13px; font-weight: 700; }
 .auth-tab.active { background: var(--primary); color: #fff; }
