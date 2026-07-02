@@ -54,7 +54,7 @@ function defaultState() {
     // cofrinhos: {id,nome,meta,atual,icone,cor,prazo,observacao,aporteAutomatico,diaAporte,valorAporte,contaOrigemId,ultimoAporteMes,createdAt}
     cofrinhos: [],
     transferencias: [], // {id,deId,paraId,valor,data,observacao,createdAt}
-    // cartoes: {id,nome,banco,bankId,limite,diaFechamento,diaVencimento,cor}
+    // cartoes: {id,nome,bankId,limite,diaFechamento,diaVencimento,cor}
     cartoes: [],
     // cartaoCompras: {id,cartaoId,descricao,categoryId,valorTotal,data,tipo:'avista'|'parcelado'|'recorrente',parcelas}
     cartaoCompras: [],
