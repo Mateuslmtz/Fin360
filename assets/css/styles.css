@@ -417,6 +417,8 @@ input[type="text"], input[type="number"], input[type="date"], input[type="month"
   border-radius: 10px; padding: 10px 12px; font-size: 13.5px; outline: none;
   transition: border-color 0.12s;
 }
+/* espaço reservado pra seta nativa não sobrepor o texto quando a opção é longa */
+select { padding-right: 30px; text-overflow: ellipsis; }
 input::placeholder, textarea::placeholder { color: var(--text-faint); }
 input:focus, select:focus, textarea:focus { border-color: var(--primary); }
 textarea { resize: vertical; min-height: 60px; }
