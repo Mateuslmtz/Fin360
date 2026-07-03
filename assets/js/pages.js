@@ -107,12 +107,17 @@ function renderPeriodControl(prefix, period) {
 }
 /* ============ Mini filtro de ordenação (data/valor, crescente/decrescente) — reutilizado em várias abas ============ */
 function sortSelectHTML(id, current) {
-  return `<select id="${id}" style="max-width:150px">
-    <option value="data-desc" ${current === 'data-desc' ? 'selected' : ''}>Data ↓</option>
-    <option value="data-asc" ${current === 'data-asc' ? 'selected' : ''}>Data ↑</option>
-    <option value="valor-desc" ${current === 'valor-desc' ? 'selected' : ''}>Valor ↓</option>
-    <option value="valor-asc" ${current === 'valor-asc' ? 'selected' : ''}>Valor ↑</option>
-  </select>`;
+  return `
+    <div style="display:inline-flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:6px 10px 6px 12px">
+      ${icon('repeat')}
+      <span style="font-size:11px;letter-spacing:0.06em;color:var(--text-muted);font-weight:700;text-transform:uppercase;white-space:nowrap">Ordenar por</span>
+      <select id="${id}" style="max-width:120px;border:none;background:transparent;padding:2px 22px 2px 4px;font-weight:700">
+        <option value="data-desc" ${current === 'data-desc' ? 'selected' : ''}>Data ↓</option>
+        <option value="data-asc" ${current === 'data-asc' ? 'selected' : ''}>Data ↑</option>
+        <option value="valor-desc" ${current === 'valor-desc' ? 'selected' : ''}>Valor ↓</option>
+        <option value="valor-asc" ${current === 'valor-asc' ? 'selected' : ''}>Valor ↑</option>
+      </select>
+    </div>`;
 }
 function sortList(list, sortKey, getDate, getValor) {
   const [campo, dir] = (sortKey || 'data-desc').split('-');
