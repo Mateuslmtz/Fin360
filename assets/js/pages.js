@@ -443,7 +443,9 @@ function pageDashboard(container) {
     const custoRealCartoesPago = months.reduce((s, m) => s + cartoesFiltrados.filter((c) => isCartaoFaturaPaga(c.id, m)).reduce((s2, c) => s2 + cartaoCustoRealCaixaForMonth(c.id, m), 0), 0);
 
     const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes;
-    const totalRecebimentos = receb.reduce((s, r) => s + r.valor, 0);
+    // só o que de fato entrou — assim o card bate com o saldo disponível; o previsto vira legenda
+    const totalRecebimentosLancado = receb.reduce((s, r) => s + r.valor, 0);
+    const totalRecebimentos = receb.filter((r) => r.recebido).reduce((s, r) => s + r.valor, 0);
     const totalAReceber = receb.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
     const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0) + custoRealCartoesPago;
     const faltaPagar = totalGastos - totalPago;
@@ -485,7 +487,7 @@ function pageDashboard(container) {
 
       <div class="stat-grid">
         ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: bankFilterOn ? `Fixos + variáveis (cartão não é filtrado por banco, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})` : `Fixos + variáveis + cartão (sua parte, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})`, tone: 'red', iconName: 'arrowDownCircle' })}
-        ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: 'Entradas no período', tone: 'green', iconName: 'arrowUpCircle' })}
+        ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: `Já recebidos — de ${formatCurrency(totalRecebimentosLancado)} lançados`, tone: 'green', iconName: 'arrowUpCircle' })}
         ${statCard({ label: 'Total a receber', value: formatCurrency(totalAReceber), sub: 'Recebimentos futuros', tone: 'blue', iconName: 'download' })}
         ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
         ${statCard({ label: 'Falta pagar', value: formatCurrency(faltaPagar), sub: 'Pendentes + fatura', tone: 'orange', iconName: 'alertTriangle' })}
