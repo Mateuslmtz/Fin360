@@ -440,6 +440,9 @@ textarea { resize: vertical; min-height: 60px; }
 /* ============ Table / list ============ */
 .list-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .list-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); padding: 0 12px 10px; font-weight: 700; }
+.sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
+.sortable-th:hover { color: var(--text); }
+.sortable-th .svg-icon { width: 12px; height: 12px; margin-left: 3px; vertical-align: -1px; transition: transform 0.15s ease, opacity 0.15s ease; }
 .list-table td { padding: 12px; border-top: 1px solid var(--border-soft); vertical-align: middle; }
 .list-table tr:hover td { background: var(--bg-card-hover); }
 .row-title { font-weight: 700; }

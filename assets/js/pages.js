@@ -105,19 +105,22 @@ function renderPeriodControl(prefix, period) {
     </div>
   `;
 }
-/* ============ Mini filtro de ordenação (data/valor, crescente/decrescente) — reutilizado em várias abas ============ */
-function sortSelectHTML(id, current) {
-  return `
-    <div style="display:inline-flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:6px 10px 6px 12px">
-      ${icon('repeat')}
-      <span style="font-size:11px;letter-spacing:0.06em;color:var(--text-muted);font-weight:700;text-transform:uppercase;white-space:nowrap">Ordenar por</span>
-      <select id="${id}" style="max-width:120px;border:none;background:transparent;padding:2px 22px 2px 4px;font-weight:700">
-        <option value="data-desc" ${current === 'data-desc' ? 'selected' : ''}>Data ↓</option>
-        <option value="data-asc" ${current === 'data-asc' ? 'selected' : ''}>Data ↑</option>
-        <option value="valor-desc" ${current === 'valor-desc' ? 'selected' : ''}>Valor ↓</option>
-        <option value="valor-asc" ${current === 'valor-asc' ? 'selected' : ''}>Valor ↑</option>
-      </select>
-    </div>`;
+/* ============ Mini filtro de ordenação (data/valor, crescente/decrescente) — seta clicável no cabeçalho da coluna ============ */
+function sortableThHTML(label, field, currentSort, extraStyle) {
+  const [campo, dir] = (currentSort || '').split('-');
+  const active = campo === field;
+  const rotate = active && dir === 'asc' ? 180 : 0;
+  return `<th class="sortable-th" data-sort-field="${field}"${extraStyle ? ` style="${extraStyle}"` : ''}>${label}<span style="display:inline-block;transform:rotate(${rotate}deg);opacity:${active ? 1 : 0.35}">${icon('chevronDown')}</span></th>`;
+}
+function wireSortableHeaders(container, getSort, setSort, redraw) {
+  container.querySelectorAll('.sortable-th').forEach((th) => {
+    th.onclick = () => {
+      const field = th.dataset.sortField;
+      const [campo, dir] = (getSort() || '').split('-');
+      setSort(campo === field ? `${field}-${dir === 'asc' ? 'desc' : 'asc'}` : `${field}-desc`);
+      redraw();
+    };
+  });
 }
 function sortList(list, sortKey, getDate, getValor) {
   const [campo, dir] = (sortKey || 'data-desc').split('-');
@@ -1028,7 +1031,6 @@ function pageGastosFixos(container) {
               <div><h3>Lista de gastos fixos</h3><div class="panel-sub">Recorrentes — voltam como pendentes a cada mês.</div></div>
               ${renderPeriodControl('gf', period)}
             </div>
-            <div style="display:flex;justify-content:flex-end;margin-bottom:10px">${sortSelectHTML('gf-sort', gfSort)}</div>
             <div class="stat-grid stat-grid-tight">
               ${statCard({ label: 'Total do mês', value: formatCurrency(totalMes), tone: 'blue', iconName: 'wallet' })}
               ${statCard({ label: 'Cadastrados', value: inPeriodList.length, sub: `${all.length} no total`, tone: 'purple', iconName: 'repeat' })}
@@ -1036,7 +1038,7 @@ function pageGastosFixos(container) {
               ${statCard({ label: 'Pendente', value: formatCurrency(pendenteMes), tone: 'orange', iconName: 'alertTriangle' })}
               ${statCard({ label: 'Desativados', value: formatCurrency(desativados.reduce((s, g) => s + g.valor, 0)), sub: `${desativados.length} contas`, tone: 'red', iconName: 'trash' })}
             </div>
-            ${displayList.length === 0 ? emptyState({ iconName: 'repeat', title: 'Nenhum gasto fixo cadastrado.' }) : gastosFixosTable(displayList, listMonth)}
+            ${displayList.length === 0 ? emptyState({ iconName: 'repeat', title: 'Nenhum gasto fixo cadastrado.' }) : gastosFixosTable(displayList, listMonth, gfSort)}
           </div>
         </div>
       </div>
@@ -1088,7 +1090,7 @@ function pageGastosFixos(container) {
     wireQuickAddButtons([{ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'ff-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('ff', () => draw(), { catTipo: 'despesa' });
     wirePeriodControl('gf', period, draw);
-    document.getElementById('gf-sort').onchange = (e) => { gfSort = e.target.value; draw(); };
+    wireSortableHeaders(container, () => gfSort, (v) => { gfSort = v; }, draw);
 
     container.querySelectorAll('[data-action="edit-fixo"]').forEach((b) => b.onclick = () => { editingFixoId = b.dataset.id; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="toggle-ativo-fixo"]').forEach((b) => b.onclick = () => {
@@ -1104,10 +1106,10 @@ function pageGastosFixos(container) {
   draw();
 }
 
-function gastosFixosTable(list, mStr) {
+function gastosFixosTable(list, mStr, sort) {
   return `
     <table class="list-table">
-      <thead><tr><th>Nome</th><th>Categoria</th><th>Vencimento</th><th>Pagamento</th><th>Banco</th><th>Valor</th><th style="text-align:center">Status</th><th></th></tr></thead>
+      <thead><tr><th>Nome</th><th>Categoria</th>${sortableThHTML('Vencimento', 'data', sort)}<th>Pagamento</th><th>Banco</th>${sortableThHTML('Valor', 'valor', sort)}<th style="text-align:center">Status</th><th></th></tr></thead>
       <tbody>
         ${list.map((g) => `
           <tr>
@@ -1195,7 +1197,6 @@ function pageGastosVariaveis(container) {
                 <option value="todos">Todas categorias</option>
                 ${Store.state.categories.filter((c) => (c.tipo || 'despesa') === 'despesa').map((c) => `<option value="${c.id}" ${gvFilters.category === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('')}
               </select>
-              ${sortSelectHTML('gv-filter-sort', gvFilters.sort)}
             </div>
             <div class="field" style="max-width:480px">
               <input type="text" id="gv-search" placeholder="Buscar por descrição, categoria ou observação..." value="${gvFilters.search}" />
@@ -1213,7 +1214,7 @@ function pageGastosVariaveis(container) {
               ${statCard({ label: 'Pago', value: formatCurrency(pago), tone: 'green', iconName: 'checkCircle' })}
               ${statCard({ label: 'Pendente', value: formatCurrency(pendente), tone: 'orange', iconName: 'alertTriangle' })}
             </div>
-            ${list.length === 0 ? emptyState({ iconName: 'search', title: 'Nenhum lançamento encontrado com os filtros aplicados.' }) : gastosVariaveisTable(list)}
+            ${list.length === 0 ? emptyState({ iconName: 'search', title: 'Nenhum lançamento encontrado com os filtros aplicados.' }) : gastosVariaveisTable(list, gvFilters.sort)}
           </div>
         </div>
       </div>
@@ -1246,7 +1247,7 @@ function pageGastosVariaveis(container) {
 
     document.getElementById('gv-filter-status').onchange = (e) => { gvFilters.status = e.target.value; draw(); };
     document.getElementById('gv-filter-cat').onchange = (e) => { gvFilters.category = e.target.value; draw(); };
-    document.getElementById('gv-filter-sort').onchange = (e) => { gvFilters.sort = e.target.value; draw(); };
+    wireSortableHeaders(container, () => gvFilters.sort, (v) => { gvFilters.sort = v; }, draw);
     document.getElementById('gv-search').oninput = (e) => { gvFilters.search = e.target.value; draw(); };
     container.querySelectorAll('[data-pill]').forEach((b) => b.onclick = () => { gvFilters.pill = b.dataset.pill; draw(); });
 
@@ -1266,10 +1267,10 @@ function pageGastosVariaveis(container) {
   draw();
 }
 
-function gastosVariaveisTable(list) {
+function gastosVariaveisTable(list, sort) {
   return `
     <table class="list-table">
-      <thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Banco</th><th>Valor</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Descrição</th><th>Categoria</th>${sortableThHTML('Data', 'data', sort)}<th>Banco</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
       <tbody>
         ${list.map((g) => `
           <tr>
@@ -1548,14 +1549,13 @@ function pageRecebimentos(container) {
               <div><h3>Recebimentos</h3><div class="panel-sub">Entradas no período selecionado.</div></div>
               ${renderPeriodControl('rc', period)}
             </div>
-            <div style="display:flex;justify-content:flex-end;margin-bottom:10px">${sortSelectHTML('rc-sort', rcSort)}</div>
             <div class="stat-grid">
               ${statCard({ label: 'Total recebido', value: formatCurrency(total - previsto), tone: 'green', iconName: 'checkCircle' })}
               ${statCard({ label: 'Previsto', value: formatCurrency(previsto), sub: `${items.filter((r) => !r.recebido).length} registro(s)`, tone: 'orange', iconName: 'alertTriangle' })}
               ${statCard({ label: 'Maior recebimento', value: formatCurrency(maior), tone: 'blue', iconName: 'trendUp' })}
               ${statCard({ label: 'Ticket médio', value: formatCurrency(ticketMedio), tone: 'purple', iconName: 'wallet' })}
             </div>
-            ${items.length === 0 ? emptyState({ iconName: 'download', title: 'Nenhum recebimento nesse período.' }) : recebimentosTable(items)}
+            ${items.length === 0 ? emptyState({ iconName: 'download', title: 'Nenhum recebimento nesse período.' }) : recebimentosTable(items, rcSort)}
           </div>
         </div>
       </div>
@@ -1604,7 +1604,7 @@ function pageRecebimentos(container) {
     wireQuickAddButtons([{ key: 'rc-categoria', type: 'select-category', catTipo: 'receita' }, { key: 'rc-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('rc', () => draw(), { catTipo: 'receita' });
     wirePeriodControl('rc', period, draw);
-    document.getElementById('rc-sort').onchange = (e) => { rcSort = e.target.value; draw(); };
+    wireSortableHeaders(container, () => rcSort, (v) => { rcSort = v; }, draw);
 
     container.querySelectorAll('[data-action="edit-receb"]').forEach((b) => b.onclick = () => { editingRecebId = b.dataset.id; recebTipo = Store.get('recebimentos', b.dataset.id).tipo || 'unico'; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="toggle-receb"]').forEach((b) => b.onclick = () => { toggleRecebimentoRecebido(b.dataset.id, b.dataset.mes); draw(); });
@@ -1618,10 +1618,10 @@ function pageRecebimentos(container) {
   draw();
 }
 
-function recebimentosTable(items) {
+function recebimentosTable(items, sort) {
   return `
     <table class="list-table">
-      <thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Parcela</th><th>Valor</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Descrição</th><th>Categoria</th>${sortableThHTML('Data', 'data', sort)}<th>Parcela</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
       <tbody>
         ${items.map((r) => `
           <tr>
@@ -1986,10 +1986,9 @@ function pageCartoes(container) {
               ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
               ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
-            ${faturaItens.length === 0 ? '' : `<div style="display:flex;justify-content:flex-end;margin-bottom:10px">${sortSelectHTML('cc-fatura-sort', ccFaturaSort)}</div>`}
             ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.' }) : `
               <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th><th>Compra</th><th>Vencimento</th><th>Parcela</th><th>Valor da fatura</th><th>Sua parte</th><th></th></tr></thead>
+                <thead><tr><th>Descrição</th><th>Categoria</th>${sortableThHTML('Compra', 'data', ccFaturaSort)}<th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
                 <tbody>
                   ${faturaItens.map(({ compra, occurrence }) => {
                     const dividido = compraValorDividido(compra);
@@ -2139,7 +2138,7 @@ function pageCartoes(container) {
       });
     });
     if (document.getElementById('cc-fatura-mes')) document.getElementById('cc-fatura-mes').onchange = (e) => { selectedFaturaMonth = e.target.value; draw(); };
-    if (document.getElementById('cc-fatura-sort')) document.getElementById('cc-fatura-sort').onchange = (e) => { ccFaturaSort = e.target.value; draw(); };
+    wireSortableHeaders(container, () => ccFaturaSort, (v) => { ccFaturaSort = v; }, draw);
     if (document.getElementById('cc-pagar-fatura')) document.getElementById('cc-pagar-fatura').onclick = () => {
       if (faturaPaga) {
         reopenCartaoFatura(selected.id, selectedFaturaMonth);
