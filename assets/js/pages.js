@@ -776,8 +776,9 @@ function badgeStatus(status) {
 function yearTable(year) {
   const now = new Date();
   const months = Array.from({ length: 12 }, (_, i) => i);
-  let runningBalance = 0;
-  let totalGanhos = 0, totalFixos = 0, totalVar = 0, totalCartao = 0, totalParcelas = 0;
+  // ponto de partida real (saldo dos bancos antes de janeiro) — cada mês depois disso soma o próprio "Saldo do mês"
+  let runningBalance = saldoBancosNoFimDoMes(monthAddStr(`${year}-01`, -1));
+  let totalGanhos = 0, totalFixos = 0, totalVar = 0, totalCartao = 0, totalParcelas = 0, totalSaldoMes = 0;
   const rows = months.map((m) => {
     const mStr = `${year}-${String(m + 1).padStart(2, '0')}`;
     const ganhos = recebimentosForMonth(mStr).reduce((s, r) => s + r.valor, 0);
@@ -785,9 +786,10 @@ function yearTable(year) {
     const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr)).reduce((s, g) => s + g.valor, 0);
     const cartao = allCartoesFaturaForMonth(mStr);
     const parcelas = parcelamentoParcelasForMonth(mStr);
-    totalGanhos += ganhos; totalFixos += fixos; totalVar += variaveis; totalCartao += cartao; totalParcelas += parcelas;
-    // reconstrói o saldo real no fim de cada mês a partir do saldo atual dos bancos — carrega certinho mês a mês.
-    runningBalance = saldoBancosNoFimDoMes(mStr);
+    const saldoMes = ganhos - fixos - variaveis - cartao - parcelas;
+    totalGanhos += ganhos; totalFixos += fixos; totalVar += variaveis; totalCartao += cartao; totalParcelas += parcelas; totalSaldoMes += saldoMes;
+    // balanço = balanço do mês anterior + saldo deste mês — sempre rastreável pelas colunas ao lado
+    runningBalance += saldoMes;
     let status = 'PROJETADO', cls = 'badge-warning';
     if (year < now.getFullYear() || (year === now.getFullYear() && m < now.getMonth())) { status = 'REALIZADO'; cls = 'badge-success'; }
     else if (year === now.getFullYear() && m === now.getMonth()) { status = 'ATUAL'; cls = 'badge-primary'; }
@@ -800,6 +802,7 @@ function yearTable(year) {
       <td>${formatCurrency(variaveis)}</td>
       <td>${formatCurrency(cartao)}</td>
       <td>${formatCurrency(parcelas)}</td>
+      <td class="${saldoMes >= 0 ? 'amount-pos' : 'amount-neg'}">${formatCurrency(saldoMes)}</td>
       <td><strong>${formatCurrency(runningBalance)}</strong></td>
     </tr>`;
   }).join('');
@@ -807,9 +810,9 @@ function yearTable(year) {
   return `
     <div class="month-table-wrap">
       <table class="month-table">
-        <thead><tr><th>Mês</th><th>Status</th><th>Ganhos</th><th>Gastos fixos</th><th>Gastos variáveis</th><th>Cartão de crédito</th><th>Parcelamentos</th><th>Balanço</th></tr></thead>
+        <thead><tr><th>Mês</th><th>Status</th><th>Ganhos</th><th>Gastos fixos</th><th>Gastos variáveis</th><th>Cartão de crédito</th><th>Parcelamentos</th><th>Saldo do mês</th><th>Balanço</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="2">Total do ano</td><td class="amount-pos">${formatCurrency(totalGanhos)}</td><td>${formatCurrency(totalFixos)}</td><td>${formatCurrency(totalVar)}</td><td>${formatCurrency(totalCartao)}</td><td>${formatCurrency(totalParcelas)}</td><td>${formatCurrency(runningBalance)}</td></tr></tfoot>
+        <tfoot><tr><td colspan="2">Total do ano</td><td class="amount-pos">${formatCurrency(totalGanhos)}</td><td>${formatCurrency(totalFixos)}</td><td>${formatCurrency(totalVar)}</td><td>${formatCurrency(totalCartao)}</td><td>${formatCurrency(totalParcelas)}</td><td class="${totalSaldoMes >= 0 ? 'amount-pos' : 'amount-neg'}">${formatCurrency(totalSaldoMes)}</td><td>${formatCurrency(runningBalance)}</td></tr></tfoot>
       </table>
     </div>
   `;
