@@ -455,6 +455,8 @@ function pageDashboard(container) {
     // saldo do banco já é atualizado na hora (pagar/receber/reabrir), então "disponível" é sempre o valor real agora —
     // sem somar de novo os fluxos do período, senão conta em dobro e o saldo de um mês não carrega certinho pro seguinte.
     const saldoDisponivel = saldoBancos;
+    // balanço já considerando as provisões (tudo que ainda falta receber/pagar até o fim do período selecionado)
+    const saldoProjetado = saldoBancosNoFimDoMes(months[months.length - 1], bankFilterOn ? dashBank : null);
 
     const allTx = [
       ...fixos.map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'gasto' })),
@@ -494,11 +496,12 @@ function pageDashboard(container) {
         ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
         ${statCard({ label: 'Falta pagar', value: formatCurrency(faltaPagar), sub: 'Pendentes + fatura', tone: 'orange', iconName: 'alertTriangle' })}
         ${statCard({ label: 'Saldo disponível', value: formatCurrency(saldoDisponivel), sub: saldoDisponivel >= 0 ? 'Positivo' : 'Negativo', tone: 'cyan', iconName: 'wallet' })}
+        ${statCard({ label: 'Balanço projetado', value: formatCurrency(saldoProjetado), sub: saldoProjetado >= 0 ? 'Após receber e pagar tudo do período' : 'Ficará negativo se nada mudar', tone: saldoProjetado >= 0 ? 'blue' : 'red', iconName: 'trendUp' })}
       </div>
 
       <div class="panel">
         <div class="panel-header"><div><h3>Evolução do saldo</h3><div class="panel-sub">Acumulado no período selecionado</div></div></div>
-        ${period.type === 'month' ? areaChartHTML(period.value, saldoBancosNoFimDoMes(monthAddStr(period.value, -1), bankFilterOn ? dashBank : null)) : emptyState({ iconName: 'trendUp', title: 'Selecione "Este mês" ou "Escolher mês" para ver a evolução diária.' })}
+        ${period.type === 'month' ? areaChartHTML(period.value, saldoBancosNoFimDoMes(monthAddStr(period.value, -1), bankFilterOn ? dashBank : null), bankFilterOn ? dashBank : null) : emptyState({ iconName: 'trendUp', title: 'Selecione "Este mês" ou "Escolher mês" para ver a evolução diária.' })}
       </div>
 
       <div class="panel">
@@ -565,16 +568,28 @@ function pageDashboard(container) {
   draw();
 }
 
-function areaChartHTML(mStr, saldoInicial) {
+function areaChartHTML(mStr, saldoInicial, bankId) {
   const [y, m] = mStr.split('-').map(Number);
   const nDays = daysInMonth(y, m - 1);
   const days = Array.from({ length: nDays }, (_, i) => `${mStr}-${String(i + 1).padStart(2, '0')}`);
-  const fixosMes = gastosFixosForMonth(mStr);
-  const despesasDia = days.map((d) =>
-    Store.state.gastosVariaveis.filter((g) => g.data === d).reduce((s, g) => s + g.valor, 0) +
-    fixosMes.filter((g) => g.vencimentoISO === d).reduce((s, g) => s + g.valor, 0));
-  const recebMes = recebimentosForMonth(mStr);
-  const receitasDia = days.map((d) => recebMes.filter((r) => r.dataOcorrencia === d).reduce((s, r) => s + r.valor, 0));
+  const despesasDia = new Array(nDays).fill(0);
+  const receitasDia = new Array(nDays).fill(0);
+  const add = (arr, iso, valor) => { const idx = days.indexOf(iso); if (idx > -1) arr[idx] += valor; };
+
+  gastosFixosForMonth(mStr).filter((g) => !bankId || g.bankId === bankId).forEach((g) => add(despesasDia, g.vencimentoISO, g.valor));
+  Store.state.gastosVariaveis.filter((g) => g.data.slice(0, 7) === mStr && (!bankId || g.bankId === bankId)).forEach((g) => add(despesasDia, g.data, g.valor));
+  Store.state.cartoes.filter((c) => !bankId || c.bankId === bankId).forEach((c) => {
+    const fatura = cartaoFaturaForMonth(c.id, mStr);
+    if (fatura > 0) add(despesasDia, `${mStr}-${String(clampDayToMonth(mStr, c.diaVencimento)).padStart(2, '0')}`, fatura);
+  });
+  Store.state.parcelamentos.filter((p) => !bankId || p.bankId === bankId).forEach((p) => {
+    parcelamentoSchedule(p).forEach((s) => {
+      const venc = parcelamentoVencimento(p, s.numero);
+      if (venc.slice(0, 7) === mStr) add(despesasDia, venc, s.valor);
+    });
+  });
+  recebimentosForMonth(mStr).filter((r) => !bankId || r.bankId === bankId).forEach((r) => add(receitasDia, r.dataOcorrencia, r.valor));
+
   let acc = saldoInicial;
   const saldoDia = despesasDia.map((despesa, i) => { acc += receitasDia[i] - despesa; return acc; });
 
@@ -582,37 +597,65 @@ function areaChartHTML(mStr, saldoInicial) {
     return emptyState({ iconName: 'trendUp', title: 'Sem movimentações no período.' });
   }
 
-  const w = 1000, h = 280, padL = 56, padB = 26, padT = 14;
-  const maxVal = Math.max(...saldoDia, ...despesasDia, ...receitasDia, 1);
+  const w = 1000, h = 300, padL = 56, padR = 10, padB = 26, padT = 14, barsH = 40, gapMid = 16;
+  const mainBottom = h - padB - barsH - gapMid;
+  const barsTop = mainBottom + gapMid;
+  const barsBottom = h - padB;
+
+  const maxVal = Math.max(...saldoDia, 0);
   const minVal = Math.min(...saldoDia, 0);
   const range = maxVal - minVal || 1;
-  const x = (i) => padL + (i / (nDays - 1 || 1)) * (w - padL - 10);
-  const y0 = (v) => padT + (1 - (v - minVal) / range) * (h - padT - padB);
-  const toPath = (arr) => arr.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y0(v).toFixed(1)}`).join(' ');
-  const saldoPath = toPath(saldoDia);
+  const x = (i) => padL + (i / (nDays - 1 || 1)) * (w - padL - padR);
+  const y0 = (v) => padT + (1 - (v - minVal) / range) * (mainBottom - padT);
+  const toPathRange = (arr, startIdx, endIdxExcl) => {
+    const pts = [];
+    for (let i = startIdx; i < endIdxExcl; i++) pts.push(`${i === startIdx ? 'M' : 'L'}${x(i).toFixed(1)},${y0(arr[i]).toFixed(1)}`);
+    return pts.join(' ');
+  };
+  const saldoPath = toPathRange(saldoDia, 0, nDays);
   const areaPath = `${saldoPath} L${x(nDays - 1).toFixed(1)},${y0(minVal).toFixed(1)} L${x(0).toFixed(1)},${y0(minVal).toFixed(1)} Z`;
   const yTicks = [minVal, minVal + range / 2, maxVal];
 
+  // hoje divide o mês em "realizado" (linha sólida) e "projetado" (linha tracejada) — só existe divisão
+  // quando o mês exibido é o mês atual; meses passados ficam 100% sólidos, futuros 100% tracejados
+  const hoje = todayISO();
+  const todayIdx = days.indexOf(hoje);
+  const realizadoEndIdx = todayIdx >= 0 ? todayIdx : (mStr < currentMonthStr() ? nDays - 1 : -1);
+  const hasRealizado = realizadoEndIdx >= 0;
+  const hasProjetado = realizadoEndIdx < nDays - 1;
+  const realizadoPath = hasRealizado ? toPathRange(saldoDia, 0, realizadoEndIdx + 1) : '';
+  const projetadoPath = hasProjetado ? toPathRange(saldoDia, Math.max(realizadoEndIdx, 0), nDays) : '';
+
+  const maxBar = Math.max(...despesasDia, ...receitasDia, 1);
+  const barW = Math.max(2, Math.min(9, ((w - padL - padR) / nDays) * 0.42));
+  const barY = (v) => barsBottom - (v / maxBar) * barsH;
+
   return `
-    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:240px">
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:260px">
       <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.35"/>
         <stop offset="100%" stop-color="var(--primary)" stop-opacity="0"/>
       </linearGradient></defs>
-      ${yTicks.map((t) => `<line x1="${padL}" y1="${y0(t).toFixed(1)}" x2="${w - 10}" y2="${y0(t).toFixed(1)}" stroke="var(--border-soft)" stroke-width="1"/><text x="0" y="${(y0(t) + 4).toFixed(1)}" font-size="16" fill="var(--text-faint)">${formatCurrency(t).replace('R$', '').trim()}</text>`).join('')}
+      ${yTicks.map((t) => `<line x1="${padL}" y1="${y0(t).toFixed(1)}" x2="${w - padR}" y2="${y0(t).toFixed(1)}" stroke="var(--border-soft)" stroke-width="1"/><text x="0" y="${(y0(t) + 4).toFixed(1)}" font-size="16" fill="var(--text-faint)">${formatCurrency(t).replace('R$', '').trim()}</text>`).join('')}
+      ${minVal < 0 && maxVal > 0 ? `<line x1="${padL}" y1="${y0(0).toFixed(1)}" x2="${w - padR}" y2="${y0(0).toFixed(1)}" stroke="var(--text-faint)" stroke-width="1" stroke-dasharray="2 4" opacity="0.6"/>` : ''}
       <path d="${areaPath}" fill="url(#areaGrad)" stroke="none"/>
-      <path d="${toPath(despesasDia)}" fill="none" stroke="var(--danger)" stroke-width="2" opacity="0.7"/>
-      <path d="${toPath(receitasDia)}" fill="none" stroke="var(--success)" stroke-width="2" opacity="0.7"/>
-      <path d="${saldoPath}" fill="none" stroke="var(--primary)" stroke-width="3"/>
+      ${hasRealizado ? `<path d="${realizadoPath}" fill="none" stroke="var(--primary)" stroke-width="3"/>` : ''}
+      ${hasProjetado ? `<path d="${projetadoPath}" fill="none" stroke="var(--primary)" stroke-width="3" stroke-dasharray="7 5" opacity="0.75"/>` : ''}
+      ${saldoDia.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y0(v).toFixed(1)}" r="7" fill="transparent"><title>${formatDateBR(days[i])} — Saldo: ${formatCurrency(v)}</title></circle>`).join('')}
+      ${todayIdx > -1 ? `<line x1="${x(todayIdx).toFixed(1)}" y1="${padT}" x2="${x(todayIdx).toFixed(1)}" y2="${mainBottom}" stroke="var(--text-faint)" stroke-width="1" stroke-dasharray="3 3"/><text x="${x(todayIdx).toFixed(1)}" y="${padT - 3}" font-size="13" fill="var(--text-faint)" text-anchor="middle">Hoje</text>` : ''}
+      <line x1="${padL}" y1="${barsBottom.toFixed(1)}" x2="${w - padR}" y2="${barsBottom.toFixed(1)}" stroke="var(--border-soft)" stroke-width="1"/>
+      ${despesasDia.map((v, i) => v > 0 ? `<rect x="${(x(i) - barW * 1.05).toFixed(1)}" y="${barY(v).toFixed(1)}" width="${barW.toFixed(1)}" height="${(barsBottom - barY(v)).toFixed(1)}" rx="1.5" fill="var(--danger)" opacity="0.6"><title>${formatDateBR(days[i])} — Despesas: ${formatCurrency(v)}</title></rect>` : '').join('')}
+      ${receitasDia.map((v, i) => v > 0 ? `<rect x="${(x(i) + barW * 0.05).toFixed(1)}" y="${barY(v).toFixed(1)}" width="${barW.toFixed(1)}" height="${(barsBottom - barY(v)).toFixed(1)}" rx="1.5" fill="var(--success)" opacity="0.6"><title>${formatDateBR(days[i])} — Receitas: ${formatCurrency(v)}</title></rect>` : '').join('')}
       ${days.filter((_, i) => i % 4 === 0 || i === nDays - 1).map((d, _, arr) => {
         const i = days.indexOf(d);
         return `<text x="${x(i).toFixed(1)}" y="${h - 4}" font-size="15" fill="var(--text-faint)" text-anchor="middle">${d.slice(8, 10)}/${mStr.slice(5, 7)}</text>`;
       }).join('')}
     </svg>
-    <div style="display:flex;gap:18px;justify-content:center;margin-top:6px;font-size:12px;color:var(--text-muted)">
+    <div style="display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--text-muted)">
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:5px"></span>Despesas</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:5px"></span>Receitas</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--primary);margin-right:5px"></span>Saldo</span>
+      ${hasProjetado ? `<span><span style="display:inline-block;width:14px;height:0;border-top:2px dashed var(--primary);margin-right:5px;vertical-align:middle"></span>Projeção</span>` : ''}
     </div>
   `;
 }
