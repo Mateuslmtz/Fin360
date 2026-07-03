@@ -442,12 +442,14 @@ function pageDashboard(container) {
     // "pago" do cartão sempre pelo ciclo de fatura (caixa), já que é quando o dinheiro de fato sai do banco
     const custoRealCartoesPago = months.reduce((s, m) => s + cartoesFiltrados.filter((c) => isCartaoFaturaPaga(c.id, m)).reduce((s2, c) => s2 + cartaoCustoRealCaixaForMonth(c.id, m), 0), 0);
 
-    const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes;
+    const parcelasMes = months.reduce((s, m) => s + parcelamentoParcelasForMonth(m, bankFilterOn ? dashBank : null), 0);
+    const parcelasPagasMes = months.reduce((s, m) => s + parcelamentoParcelasPagasForMonth(m, bankFilterOn ? dashBank : null), 0);
+    const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes + parcelasMes;
     // só o que de fato entrou — assim o card bate com o saldo disponível; o previsto vira legenda
     const totalRecebimentosLancado = receb.reduce((s, r) => s + r.valor, 0);
     const totalRecebimentos = receb.filter((r) => r.recebido).reduce((s, r) => s + r.valor, 0);
     const totalAReceber = receb.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
-    const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0) + custoRealCartoesPago;
+    const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0) + custoRealCartoesPago + parcelasPagasMes;
     const faltaPagar = totalGastos - totalPago;
     const saldoBancos = bankFilterOn ? ((Store.bankById(dashBank) || {}).balance || 0) : Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
     // saldo do banco já é atualizado na hora (pagar/receber/reabrir), então "disponível" é sempre o valor real agora —
@@ -486,7 +488,7 @@ function pageDashboard(container) {
       </div>
 
       <div class="stat-grid">
-        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: bankFilterOn ? `Fixos + variáveis (cartão não é filtrado por banco, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})` : `Fixos + variáveis + cartão (sua parte, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})`, tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: `Fixos + variáveis + cartão + parcelamentos (cartão: sua parte, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})`, tone: 'red', iconName: 'arrowDownCircle' })}
         ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: `Já recebidos — de ${formatCurrency(totalRecebimentosLancado)} lançados`, tone: 'green', iconName: 'arrowUpCircle' })}
         ${statCard({ label: 'Total a receber', value: formatCurrency(totalAReceber), sub: 'Recebimentos futuros', tone: 'blue', iconName: 'download' })}
         ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
@@ -732,14 +734,15 @@ function yearTable(year) {
   const now = new Date();
   const months = Array.from({ length: 12 }, (_, i) => i);
   let runningBalance = 0;
-  let totalGanhos = 0, totalFixos = 0, totalVar = 0, totalCartao = 0;
+  let totalGanhos = 0, totalFixos = 0, totalVar = 0, totalCartao = 0, totalParcelas = 0;
   const rows = months.map((m) => {
     const mStr = `${year}-${String(m + 1).padStart(2, '0')}`;
     const ganhos = recebimentosForMonth(mStr).reduce((s, r) => s + r.valor, 0);
     const fixos = gastosFixosForMonth(mStr).reduce((s, g) => s + g.valor, 0);
     const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr)).reduce((s, g) => s + g.valor, 0);
     const cartao = allCartoesFaturaForMonth(mStr);
-    totalGanhos += ganhos; totalFixos += fixos; totalVar += variaveis; totalCartao += cartao;
+    const parcelas = parcelamentoParcelasForMonth(mStr);
+    totalGanhos += ganhos; totalFixos += fixos; totalVar += variaveis; totalCartao += cartao; totalParcelas += parcelas;
     // reconstrói o saldo real no fim de cada mês a partir do saldo atual dos bancos — carrega certinho mês a mês.
     runningBalance = saldoBancosNoFimDoMes(mStr);
     let status = 'PROJETADO', cls = 'badge-warning';
@@ -753,7 +756,7 @@ function yearTable(year) {
       <td>${formatCurrency(fixos)}</td>
       <td>${formatCurrency(variaveis)}</td>
       <td>${formatCurrency(cartao)}</td>
-      <td>${formatCurrency(0)}</td>
+      <td>${formatCurrency(parcelas)}</td>
       <td><strong>${formatCurrency(runningBalance)}</strong></td>
     </tr>`;
   }).join('');
@@ -763,7 +766,7 @@ function yearTable(year) {
       <table class="month-table">
         <thead><tr><th>Mês</th><th>Status</th><th>Ganhos</th><th>Gastos fixos</th><th>Gastos variáveis</th><th>Cartão de crédito</th><th>Parcelamentos</th><th>Balanço</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="2">Total do ano</td><td class="amount-pos">${formatCurrency(totalGanhos)}</td><td>${formatCurrency(totalFixos)}</td><td>${formatCurrency(totalVar)}</td><td>${formatCurrency(totalCartao)}</td><td>${formatCurrency(0)}</td><td>${formatCurrency(runningBalance)}</td></tr></tfoot>
+        <tfoot><tr><td colspan="2">Total do ano</td><td class="amount-pos">${formatCurrency(totalGanhos)}</td><td>${formatCurrency(totalFixos)}</td><td>${formatCurrency(totalVar)}</td><td>${formatCurrency(totalCartao)}</td><td>${formatCurrency(totalParcelas)}</td><td>${formatCurrency(runningBalance)}</td></tr></tfoot>
       </table>
     </div>
   `;
@@ -917,7 +920,8 @@ function pageGastosFixos(container) {
     const displayList = gastosFixosForMonthAll(listMonth).sort((a, b) => (a.vencimentoISO < b.vencimentoISO ? -1 : 1));
     const totalMes = inPeriodList.reduce((s, g) => s + g.valor, 0);
     const pagoMes = inPeriodList.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0);
-    const pendenteMes = totalMes - pagoMes;
+    // soma só as contas NÃO pagas — pagar com desconto não pode deixar a diferença como "pendente"
+    const pendenteMes = inPeriodList.filter((g) => !g.pago).reduce((s, g) => s + g.valor, 0);
     const desativados = displayList.filter((g) => g.ativo === false);
 
     container.innerHTML = `
