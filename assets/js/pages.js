@@ -935,6 +935,14 @@ function pageGastosFixos(container) {
           </div>
           <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(period)}" /></div>
           <div class="row-sub" style="margin:-8px 0 14px">Segue o mês escolhido no filtro da lista — mude aqui se quiser lançar/pagar meses passados deste gasto fixo.</div>
+          <div class="field-row">
+            <div class="field"><label>Duração</label><select id="ff-duracao">
+              <option value="sempre" ${editing && editing.fimMes ? '' : 'selected'}>Todo mês (sem fim)</option>
+              <option value="parcelas" ${editing && editing.fimMes ? 'selected' : ''}>Nº de parcelas definido</option>
+            </select></div>
+            <div class="field" id="ff-parcelas-field" style="display:${editing && editing.fimMes ? 'block' : 'none'}"><label>Quantas parcelas?</label><input type="number" min="1" max="480" id="ff-parcelas" placeholder="Ex.: 12" value="${editing && editing.fimMes ? monthsDiffStr(gastoFixoCreatedMonth(editing), editing.fimMes) : ''}" /></div>
+          </div>
+          <div class="row-sub" style="margin:-8px 0 14px">Ex.: 12 parcelas — a conta aparece por 12 meses a partir do "Ativo desde" e para sozinha.</div>
           <div class="field"><label>Categoria</label>${fieldHTML({ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
           <div class="field" style="display:flex;align-items:center;padding-top:4px"><label class="checkbox-row"><input type="checkbox" id="ff-ativo" ${!editing || editing.ativo !== false ? 'checked' : ''} /> Ativo (recorrente todo mês)</label></div>
           <div class="field"><label>Banco vinculado <span class="req">*</span></label>${fieldHTML({ key: 'ff-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
@@ -963,6 +971,9 @@ function pageGastosFixos(container) {
       </div>
     `;
 
+    document.getElementById('ff-duracao').onchange = (e) => {
+      document.getElementById('ff-parcelas-field').style.display = e.target.value === 'parcelas' ? 'block' : 'none';
+    };
     document.getElementById('ff-save').onclick = () => {
       const nome = document.getElementById('ff-nome').value.trim();
       const valor = moneyValue('ff-valor');
@@ -970,13 +981,18 @@ function pageGastosFixos(container) {
       const inicioMes = document.getElementById('ff-inicio').value || currentMonthStr();
       const bankId = document.getElementById('f-ff-banco').value;
       const categoryId = document.getElementById('f-ff-categoria').value;
+      const duracao = document.getElementById('ff-duracao').value;
+      const nParcelas = parseInt(document.getElementById('ff-parcelas').value, 10) || 0;
       if (!nome) { toast('Informe o nome do gasto fixo', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
       if (!bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
       if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
+      if (duracao === 'parcelas' && nParcelas < 1) { toast('Informe o número de parcelas', 'danger'); return; }
       const payload = {
         nome, valor, diaVencimento, inicioMes, bankId,
         categoryId,
+        // fimMes é exclusivo: 12 parcelas a partir de jul/2026 => aparece de jul/2026 a jun/2027
+        fimMes: duracao === 'parcelas' ? monthAddStr(inicioMes, nParcelas) : null,
         ativo: document.getElementById('ff-ativo').checked,
         observacao: document.getElementById('ff-obs').value,
       };
@@ -1023,7 +1039,7 @@ function gastosFixosTable(list, mStr) {
       <tbody>
         ${list.map((g) => `
           <tr>
-            <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
+            <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}${g.fimMes ? `<span class="badge badge-primary" style="margin-left:8px" title="Parcela ${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1} de ${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}">${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}</span>` : ''}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
             <td>${categoryTag(g.categoryId)}</td>
             <td>${formatDateBR(g.vencimentoISO)}</td>
             <td>${g.pagamento ? formatDateBR(g.pagamento.data) : '<span class="row-sub">—</span>'}</td>
