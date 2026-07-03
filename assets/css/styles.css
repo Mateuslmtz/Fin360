@@ -118,9 +118,12 @@ a { color: inherit; }
 .app-shell.collapsed .collapse-btn { transform: rotate(180deg); }
 
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 18px; }
-.brand { display: flex; align-items: center; overflow: hidden; }
+/* margin-left compensa a largura da seta pra logo ficar centralizada na sidebar inteira */
+.brand { display: flex; align-items: center; justify-content: center; overflow: hidden; flex: 1; margin-left: 26px; }
 .brand-logo-img { width: 156px; display: block; filter: drop-shadow(0 3px 8px rgba(0,0,0,0.35)); }
 .brand-logo-mini { display: none; width: 40px; filter: drop-shadow(0 3px 8px rgba(0,0,0,0.35)); }
+.app-shell.collapsed .sidebar-top { flex-direction: column; gap: 10px; }
+.app-shell.collapsed .brand { flex: initial; margin-left: 0; }
 .app-shell.collapsed .brand-logo-img { display: none; }
 .app-shell.collapsed .brand-logo-mini { display: block; }
 
@@ -188,6 +191,9 @@ a { color: inherit; }
 .topbar-left h1 { font-size: 19px; font-weight: 700; }
 .topbar-left p { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+/* no desktop a seta da sidebar já recolhe/expande o menu; o hambúrguer só é útil no celular */
+#menu-btn { display: none; }
 
 .icon-btn {
   width: 38px; height: 38px;
@@ -512,6 +518,7 @@ textarea { resize: vertical; min-height: 60px; }
 @media (max-width: 720px) {
   .sidebar { position: fixed; left: -280px; z-index: 40; box-shadow: 0 0 40px rgba(0,0,0,0.4); transition: left 0.2s; }
   .app-shell.mobile-open .sidebar { left: 0; }
+  #menu-btn { display: flex; }
   .page-content { padding: 18px; }
   .topbar { padding: 0 16px; }
   .field-row-3 { grid-template-columns: 1fr; }
