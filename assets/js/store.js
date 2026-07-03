@@ -64,7 +64,7 @@ function defaultState() {
     metasCategoria: [], // {id, categoryId, mes:'YYYY-MM', valor}
     // parcelamentos: {id,nome,tipo,sistema:'price'|'sac',categoryId,bankId,dataContratacao,primeiraParcela,valorPrincipal,numParcelas,taxaJurosMensal,observacao,createdAt}
     parcelamentos: [],
-    parcelamentosPagamentos: [], // {id, parcelamentoId, numero}
+    parcelamentosPagamentos: [], // {id, parcelamentoId, numero, valor, bankId, data, ledgerApplied}
   };
 }
 
@@ -406,22 +406,94 @@ function fluxoLiquidoDoMes(mStr, bankId) {
   const cartao = bankId
     ? Store.state.cartoes.filter((c) => c.bankId === bankId).reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0)
     : allCartoesFaturaForMonth(mStr);
-  return ganhos - fixos - variaveis - cartao;
+  return ganhos - fixos - variaveis - cartao - parcelamentoParcelasForMonth(mStr, bankId);
 }
-// reconstrói o saldo bancário no FIM de um mês a partir do saldo real de hoje — assim o "sobrou" de um mês
-// sempre carrega certinho pro mês seguinte, sem precisar guardar um snapshot histórico por mês.
+// total das parcelas de parcelamentos com vencimento no mês (todas, pagas ou não)
+function parcelamentoParcelasForMonth(mStr, bankId) {
+  let total = 0;
+  Store.state.parcelamentos.forEach((p) => {
+    if (bankId && p.bankId !== bankId) return;
+    parcelamentoSchedule(p).forEach((s) => { if (parcelamentoVencimento(p, s.numero).slice(0, 7) === mStr) total += s.valor; });
+  });
+  return total;
+}
+// idem, mas só as parcelas já pagas
+function parcelamentoParcelasPagasForMonth(mStr, bankId) {
+  let total = 0;
+  Store.state.parcelamentos.forEach((p) => {
+    if (bankId && p.bankId !== bankId) return;
+    parcelamentoSchedule(p).forEach((s) => {
+      if (isParcelaPaga(p.id, s.numero) && parcelamentoVencimento(p, s.numero).slice(0, 7) === mStr) total += s.valor;
+    });
+  });
+  return total;
+}
+// o que DE FATO entrou/saiu do caixa no mês — só liquidações que mexeram no saldo dos bancos.
+// Espelha cada chamada de applyBankDelta; é a base para reconstruir o saldo de meses passados.
+function fluxoRealizadoDoMes(mStr, bankId) {
+  let total = 0;
+  Store.state.gastosFixosPagamentos.forEach((p) => {
+    const mes = (p.data || `${p.mes}-01`).slice(0, 7);
+    if (mes === mStr && (!bankId || p.bankId === bankId)) total -= p.valor;
+  });
+  Store.state.gastosVariaveis.forEach((g) => {
+    if (g.status === 'pago' && isSameMonth(g.data, mStr) && (!bankId || g.bankId === bankId)) total -= g.valor;
+  });
+  recebimentosForMonth(mStr).forEach((r) => {
+    if (r.recebido && (!bankId || r.bankId === bankId)) total += r.valor;
+  });
+  Store.state.cartaoFaturasPagas.forEach((f) => {
+    if (f.mes !== mStr || !f.ledgerApplied) return;
+    if (!bankId || f.bankId === bankId) total -= (f.valor || 0);
+  });
+  Store.state.parcelamentosPagamentos.forEach((rec) => {
+    if (!rec.ledgerApplied) return;
+    const p = Store.state.parcelamentos.find((x) => x.id === rec.parcelamentoId);
+    const mes = (rec.data || (p ? parcelamentoVencimento(p, rec.numero) : '')).slice(0, 7);
+    if (mes === mStr && (!bankId || rec.bankId === bankId)) total -= (rec.valor || 0);
+  });
+  if (bankId) {
+    Store.state.transferencias.forEach((t) => {
+      if (!isSameMonth(t.data, mStr)) return;
+      if (t.deId === bankId) total -= t.valor;
+      if (t.paraId === bankId) total += t.valor;
+    });
+  }
+  Store.state.cofrinhos.forEach((c) => {
+    if (!c.aporteAutomatico || !c.valorAporte || !c.contaOrigemId || !c.ultimoAporteMes) return;
+    if (bankId && c.contaOrigemId !== bankId) return;
+    const d = new Date(c.createdAt || 0);
+    const inicioMes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (mStr >= inicioMes && mStr <= c.ultimoAporteMes) total -= c.valorAporte;
+  });
+  return total;
+}
+// o que ainda está agendado e NÃO liquidado num mês (usado pra projetar o fim do mês corrente)
+function fluxoPendenteDoMes(mStr, bankId) {
+  const receb = recebimentosForMonth(mStr).filter((r) => !r.recebido && (!bankId || r.bankId === bankId)).reduce((s, r) => s + r.valor, 0);
+  const fixos = gastosFixosForMonth(mStr).filter((g) => !g.pago && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+  const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr) && g.status !== 'pago' && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+  const cartao = Store.state.cartoes
+    .filter((c) => (!bankId || c.bankId === bankId) && !isCartaoFaturaPaga(c.id, mStr))
+    .reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
+  const parcelas = parcelamentoParcelasForMonth(mStr, bankId) - parcelamentoParcelasPagasForMonth(mStr, bankId);
+  return receb - fixos - variaveis - cartao - parcelas;
+}
+// reconstrói o saldo bancário no FIM de um mês. Para trás: desfaz só o que DE FATO aconteceu
+// (fluxo realizado). Mês atual: projeta o fim somando as pendências agendadas. Futuro: acumula
+// os fluxos planejados mês a mês em cima da projeção do mês atual.
 function saldoBancosNoFimDoMes(mStr, bankId) {
   const saldoAtual = bankId ? ((Store.bankById(bankId) || {}).balance || 0) : Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
   const mesAtual = currentMonthStr();
-  if (mStr === mesAtual) return saldoAtual;
-  let acc = saldoAtual;
   if (mStr < mesAtual) {
+    let acc = saldoAtual;
     let cursor = mesAtual;
-    while (cursor > mStr) { acc -= fluxoLiquidoDoMes(cursor, bankId); cursor = monthAddStr(cursor, -1); }
-  } else {
-    let cursor = monthAddStr(mesAtual, 1);
-    while (cursor <= mStr) { acc += fluxoLiquidoDoMes(cursor, bankId); cursor = monthAddStr(cursor, 1); }
+    while (cursor > mStr) { acc -= fluxoRealizadoDoMes(cursor, bankId); cursor = monthAddStr(cursor, -1); }
+    return acc;
   }
+  let acc = saldoAtual + fluxoPendenteDoMes(mesAtual, bankId);
+  let cursor = monthAddStr(mesAtual, 1);
+  while (cursor <= mStr) { acc += fluxoLiquidoDoMes(cursor, bankId); cursor = monthAddStr(cursor, 1); }
   return acc;
 }
 
@@ -506,7 +578,21 @@ function isParcelaPaga(parcelamentoId, numero) {
 function toggleParcelaPaga(parcelamentoId, numero) {
   const list = Store.state.parcelamentosPagamentos;
   const idx = list.findIndex((x) => x.parcelamentoId === parcelamentoId && x.numero === numero);
-  if (idx > -1) list.splice(idx, 1); else list.push({ id: uid(), parcelamentoId, numero });
+  if (idx > -1) {
+    // desfaz a baixa: devolve o dinheiro ao banco se a parcela tinha mexido no saldo
+    const rec = list[idx];
+    if (rec.ledgerApplied) Store.applyBankDelta(rec.bankId, rec.valor);
+    list.splice(idx, 1);
+  } else {
+    const p = Store.get('parcelamentos', parcelamentoId);
+    const item = p ? parcelamentoSchedule(p).find((s) => s.numero === numero) : null;
+    const valor = item ? item.valor : 0;
+    const bankId = p ? p.bankId : null;
+    // com banco de origem definido a parcela debita o saldo na hora; sem banco, fica só o
+    // registro e o reconcileLegacyLedger aplica quando o usuário definir o banco.
+    if (bankId) Store.applyBankDelta(bankId, -valor);
+    list.push({ id: uid(), parcelamentoId, numero, valor, bankId: bankId || null, data: todayISO(), ledgerApplied: !!bankId });
+  }
   Store.save();
 }
 function parcelasPagasCount(parcelamentoId) {
@@ -607,6 +693,19 @@ const Store = {
       p.valor = valor;
       p.bankId = cartao.bankId;
       p.ledgerApplied = true;
+      changed = true;
+    });
+    this.state.parcelamentosPagamentos.forEach((rec) => {
+      if (rec.ledgerApplied) return;
+      const p = this.get('parcelamentos', rec.parcelamentoId);
+      if (!p || !p.bankId) return; // sem banco de origem ainda — tenta de novo no próximo load
+      const item = parcelamentoSchedule(p).find((s) => s.numero === rec.numero);
+      const valor = rec.valor != null ? rec.valor : (item ? item.valor : 0);
+      this.applyBankDelta(p.bankId, -valor);
+      rec.valor = valor;
+      rec.bankId = p.bankId;
+      if (!rec.data) rec.data = parcelamentoVencimento(p, rec.numero);
+      rec.ledgerApplied = true;
       changed = true;
     });
     if (changed) this.save();
