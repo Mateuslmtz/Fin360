@@ -1818,7 +1818,9 @@ function pageCartoes(container) {
     const totalParcelas = cartoes.reduce((s, c) => s + parcelasAtivasCount(c.id), 0);
 
     const selected = cartoes.find((c) => c.id === selectedCartaoId);
-    const faturaItens = selected ? cartaoComprasForMonth(selected.id, selectedFaturaMonth) : [];
+    // mais recente primeiro — mesma data de compra desempata pela ordem de cadastro
+    const faturaItens = selected ? cartaoComprasForMonth(selected.id, selectedFaturaMonth).sort((a, b) => (a.compra.data < b.compra.data ? 1 : -1)) : [];
+    const faturaVencimentoISO = selected ? `${selectedFaturaMonth}-${String(clampDayToMonth(selectedFaturaMonth, selected.diaVencimento)).padStart(2, '0')}` : null;
     const faturaTotal = faturaItens.reduce((s, x) => s + x.occurrence.valor, 0);
     const faturaCustoReal = faturaItens.reduce((s, x) => s + x.occurrence.valorMeu, 0);
     const faturaPaga = selected && isCartaoFaturaPaga(selected.id, selectedFaturaMonth);
@@ -1957,7 +1959,7 @@ function pageCartoes(container) {
             </div>
             ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.' }) : `
               <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th><th>Compra</th><th>Parcela</th><th>Valor da fatura</th><th>Sua parte</th><th></th></tr></thead>
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Compra</th><th>Vencimento</th><th>Parcela</th><th>Valor da fatura</th><th>Sua parte</th><th></th></tr></thead>
                 <tbody>
                   ${faturaItens.map(({ compra, occurrence }) => {
                     const dividido = compraValorDividido(compra);
@@ -1966,6 +1968,7 @@ function pageCartoes(container) {
                       <td class="row-title">${compra.descricao}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${compra.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
                       <td>${categoryTag(compra.categoryId)}</td>
                       <td>${formatDateBR(compra.data)}</td>
+                      <td>${formatDateBR(faturaVencimentoISO)}</td>
                       <td>${occurrence.parcelaLabel}</td>
                       <td><strong>${formatCurrency(occurrence.valor)}</strong></td>
                       <td>${dividido > 0 ? `<span class="amount-pos">${formatCurrency(occurrence.valorMeu)}</span>` : formatCurrency(occurrence.valorMeu)}</td>
