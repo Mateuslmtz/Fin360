@@ -2306,6 +2306,7 @@ function pageExtrato(container) {
             <option value="todos" ${extratoTipo === 'todos' ? 'selected' : ''}>Todos</option>
             <option value="Gasto fixo" ${extratoTipo === 'Gasto fixo' ? 'selected' : ''}>Gasto fixo</option>
             <option value="Gasto variável" ${extratoTipo === 'Gasto variável' ? 'selected' : ''}>Gasto variável</option>
+            <option value="Cartão de crédito" ${extratoTipo === 'Cartão de crédito' ? 'selected' : ''}>Cartão de crédito</option>
             <option value="Recebimento" ${extratoTipo === 'Recebimento' ? 'selected' : ''}>Recebimento</option>
           </select></div>
           <div class="field" style="flex:1"><label>Buscar</label><input type="text" id="ex-search" placeholder="Descrição, categoria..." value="${extratoSearch}" /></div>
@@ -2450,6 +2451,7 @@ function pageConciliacao(container) {
             <option value="todos">Todos</option>
             <option value="Gasto fixo" ${conciliacaoTipo === 'Gasto fixo' ? 'selected' : ''}>Gasto fixo</option>
             <option value="Gasto variável" ${conciliacaoTipo === 'Gasto variável' ? 'selected' : ''}>Gasto variável</option>
+            <option value="Cartão de crédito" ${conciliacaoTipo === 'Cartão de crédito' ? 'selected' : ''}>Cartão de crédito</option>
             <option value="Recebimento" ${conciliacaoTipo === 'Recebimento' ? 'selected' : ''}>Recebimento</option>
           </select></div>
           <div class="field"><label>Status</label><select id="cn-status">

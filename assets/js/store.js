@@ -527,6 +527,17 @@ function buildTransacoes(start, end) {
       key: `rc:${r.id}:${r.mesRef}`, data: r.dataOcorrencia, descricao: r.descricao, tipo: 'Recebimento',
       bankId: r.bankId, categoryId: r.categoryId, status: r.recebido ? 'recebido' : 'pendente', valor: r.valor, sinal: 1,
     })),
+    // fatura do cartão vira 1 lançamento por mês (é o que de fato sai do banco) — as compras individuais
+    // não movem dinheiro sozinhas, só quando a fatura é paga.
+    ...Store.state.cartoes.flatMap((c) => months.map((m) => {
+      const valor = cartaoFaturaForMonth(c.id, m);
+      if (valor <= 0) return null;
+      const dia = clampDayToMonth(m, c.diaVencimento);
+      return {
+        key: `cc:${c.id}:${m}`, data: `${m}-${String(dia).padStart(2, '0')}`, descricao: `Fatura ${c.nome}`, tipo: 'Cartão de crédito',
+        bankId: c.bankId, categoryId: null, status: isCartaoFaturaPaga(c.id, m) ? 'pago' : 'pendente', valor, sinal: -1,
+      };
+    }).filter(Boolean)),
   ];
   return txs.filter((t) => t.data >= start && t.data <= end);
 }
