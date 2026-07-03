@@ -105,6 +105,24 @@ function renderPeriodControl(prefix, period) {
     </div>
   `;
 }
+/* ============ Mini filtro de ordenação (data/valor, crescente/decrescente) — reutilizado em várias abas ============ */
+function sortSelectHTML(id, current) {
+  return `<select id="${id}" style="max-width:150px">
+    <option value="data-desc" ${current === 'data-desc' ? 'selected' : ''}>Data ↓</option>
+    <option value="data-asc" ${current === 'data-asc' ? 'selected' : ''}>Data ↑</option>
+    <option value="valor-desc" ${current === 'valor-desc' ? 'selected' : ''}>Valor ↓</option>
+    <option value="valor-asc" ${current === 'valor-asc' ? 'selected' : ''}>Valor ↑</option>
+  </select>`;
+}
+function sortList(list, sortKey, getDate, getValor) {
+  const [campo, dir] = (sortKey || 'data-desc').split('-');
+  const mul = dir === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    if (campo === 'valor') return (getValor(a) - getValor(b)) * mul;
+    const da = getDate(a), db = getDate(b);
+    return (da < db ? -1 : da > db ? 1 : 0) * mul;
+  });
+}
 function wirePeriodControl(prefix, period, onChange) {
   const group = document.getElementById(`${prefix}-period-group`);
   if (!group) return;
@@ -948,6 +966,7 @@ function resumoLabel(type) {
    ========================================================================= */
 let gfPeriod = { type: 'month', value: currentMonthStr() };
 let editingFixoId = null;
+let gfSort = 'data-asc';
 
 function gfPeriodMonth(period) {
   return period.type === 'year' ? `${period.value}-01` : (period.value || currentMonthStr());
@@ -963,7 +982,7 @@ function pageGastosFixos(container) {
     // para a lista, no modo "ano" mostramos a recorrência consolidada (1 linha por gasto fixo ativo no ano)
     const listMonth = period.type === 'year' ? currentMonthStr() : mStr;
     const inPeriodList = gastosFixosForMonth(listMonth);
-    const displayList = gastosFixosForMonthAll(listMonth).sort((a, b) => (a.vencimentoISO < b.vencimentoISO ? -1 : 1));
+    const displayList = sortList(gastosFixosForMonthAll(listMonth), gfSort, (g) => g.vencimentoISO, (g) => g.valor);
     const totalMes = inPeriodList.reduce((s, g) => s + g.valor, 0);
     const pagoMes = inPeriodList.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0);
     // soma só as contas NÃO pagas — pagar com desconto não pode deixar a diferença como "pendente"
@@ -1004,6 +1023,7 @@ function pageGastosFixos(container) {
               <div><h3>Lista de gastos fixos</h3><div class="panel-sub">Recorrentes — voltam como pendentes a cada mês.</div></div>
               ${renderPeriodControl('gf', period)}
             </div>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:10px">${sortSelectHTML('gf-sort', gfSort)}</div>
             <div class="stat-grid stat-grid-tight">
               ${statCard({ label: 'Total do mês', value: formatCurrency(totalMes), tone: 'blue', iconName: 'wallet' })}
               ${statCard({ label: 'Cadastrados', value: inPeriodList.length, sub: `${all.length} no total`, tone: 'purple', iconName: 'repeat' })}
@@ -1063,6 +1083,7 @@ function pageGastosFixos(container) {
     wireQuickAddButtons([{ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'ff-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('ff', () => draw(), { catTipo: 'despesa' });
     wirePeriodControl('gf', period, draw);
+    document.getElementById('gf-sort').onchange = (e) => { gfSort = e.target.value; draw(); };
 
     container.querySelectorAll('[data-action="edit-fixo"]').forEach((b) => b.onclick = () => { editingFixoId = b.dataset.id; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="toggle-ativo-fixo"]').forEach((b) => b.onclick = () => {
@@ -1107,7 +1128,7 @@ function gastosFixosTable(list, mStr) {
    GASTOS VARIÁVEIS
    ========================================================================= */
 let gvPeriod = { type: 'month', value: currentMonthStr() };
-let gvFilters = { pill: 'todos', status: 'todos', category: 'todos', sort: 'desc', search: '' };
+let gvFilters = { pill: 'todos', status: 'todos', category: 'todos', sort: 'data-desc', search: '' };
 let editingVariavelId = null;
 
 function pageGastosVariaveis(container) {
@@ -1126,7 +1147,7 @@ function pageGastosVariaveis(container) {
       const q = gvFilters.search.toLowerCase();
       list = list.filter((g) => (g.descricao || '').toLowerCase().includes(q) || (g.observacao || '').toLowerCase().includes(q) || (Store.categoryById(g.categoryId) || {}).name?.toLowerCase().includes(q));
     }
-    list = [...list].sort((a, b) => gvFilters.sort === 'asc' ? (a.data < b.data ? -1 : 1) : (a.data < b.data ? 1 : -1));
+    list = sortList(list, gvFilters.sort, (g) => g.data, (g) => g.valor);
 
     const baseForStats = Store.state.gastosVariaveis.filter((g) => inPeriod(g.data, period));
     const total = list.reduce((s, g) => s + g.valor, 0);
@@ -1169,10 +1190,7 @@ function pageGastosVariaveis(container) {
                 <option value="todos">Todas categorias</option>
                 ${Store.state.categories.filter((c) => (c.tipo || 'despesa') === 'despesa').map((c) => `<option value="${c.id}" ${gvFilters.category === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('')}
               </select>
-              <select id="gv-filter-sort" style="max-width:140px">
-                <option value="desc" ${gvFilters.sort === 'desc' ? 'selected' : ''}>Data ↓</option>
-                <option value="asc" ${gvFilters.sort === 'asc' ? 'selected' : ''}>Data ↑</option>
-              </select>
+              ${sortSelectHTML('gv-filter-sort', gvFilters.sort)}
             </div>
             <div class="field" style="max-width:480px">
               <input type="text" id="gv-search" placeholder="Buscar por descrição, categoria ou observação..." value="${gvFilters.search}" />
@@ -1471,6 +1489,7 @@ function transferenciasHTML() {
 let editingRecebId = null;
 let recebTipo = 'unico';
 let recebPeriod = { type: 'month', value: currentMonthStr() };
+let rcSort = 'data-asc';
 
 function pageRecebimentos(container) {
   const draw = () => {
@@ -1478,7 +1497,7 @@ function pageRecebimentos(container) {
     const period = recebPeriod;
     const mStr = period.type === 'year' ? null : (period.value || currentMonthStr());
     const months = period.type === 'year' ? Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`) : [mStr];
-    const items = months.flatMap((m) => recebimentosForMonth(m)).sort((a, b) => (a.dataOcorrencia < b.dataOcorrencia ? -1 : 1));
+    const items = sortList(months.flatMap((m) => recebimentosForMonth(m)), rcSort, (r) => r.dataOcorrencia, (r) => r.valor);
 
     const total = items.reduce((s, r) => s + r.valor, 0);
     const previsto = items.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
@@ -1524,6 +1543,7 @@ function pageRecebimentos(container) {
               <div><h3>Recebimentos</h3><div class="panel-sub">Entradas no período selecionado.</div></div>
               ${renderPeriodControl('rc', period)}
             </div>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:10px">${sortSelectHTML('rc-sort', rcSort)}</div>
             <div class="stat-grid">
               ${statCard({ label: 'Total recebido', value: formatCurrency(total - previsto), tone: 'green', iconName: 'checkCircle' })}
               ${statCard({ label: 'Previsto', value: formatCurrency(previsto), sub: `${items.filter((r) => !r.recebido).length} registro(s)`, tone: 'orange', iconName: 'alertTriangle' })}
@@ -1579,6 +1599,7 @@ function pageRecebimentos(container) {
     wireQuickAddButtons([{ key: 'rc-categoria', type: 'select-category', catTipo: 'receita' }, { key: 'rc-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('rc', () => draw(), { catTipo: 'receita' });
     wirePeriodControl('rc', period, draw);
+    document.getElementById('rc-sort').onchange = (e) => { rcSort = e.target.value; draw(); };
 
     container.querySelectorAll('[data-action="edit-receb"]').forEach((b) => b.onclick = () => { editingRecebId = b.dataset.id; recebTipo = Store.get('recebimentos', b.dataset.id).tipo || 'unico'; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="toggle-receb"]').forEach((b) => b.onclick = () => { toggleRecebimentoRecebido(b.dataset.id, b.dataset.mes); draw(); });
@@ -1784,6 +1805,7 @@ let editingCompraId = null;
 let selectedCartaoId = null;
 let selectedFaturaMonth = null;
 let novoCartaoOpen = false;
+let ccFaturaSort = 'data-desc';
 let compraTipo = 'avista';
 let novoCartaoCor = BANK_CORES[0];
 
@@ -1821,8 +1843,7 @@ function pageCartoes(container) {
     const totalParcelas = cartoes.reduce((s, c) => s + parcelasAtivasCount(c.id), 0);
 
     const selected = cartoes.find((c) => c.id === selectedCartaoId);
-    // mais recente primeiro — mesma data de compra desempata pela ordem de cadastro
-    const faturaItens = selected ? cartaoComprasForMonth(selected.id, selectedFaturaMonth).sort((a, b) => (a.compra.data < b.compra.data ? 1 : -1)) : [];
+    const faturaItens = selected ? sortList(cartaoComprasForMonth(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.compra.data, (x) => x.occurrence.valor) : [];
     const faturaVencimentoISO = selected ? `${selectedFaturaMonth}-${String(clampDayToMonth(selectedFaturaMonth, selected.diaVencimento)).padStart(2, '0')}` : null;
     const faturaTotal = faturaItens.reduce((s, x) => s + x.occurrence.valor, 0);
     const faturaCustoReal = faturaItens.reduce((s, x) => s + x.occurrence.valorMeu, 0);
@@ -1960,6 +1981,7 @@ function pageCartoes(container) {
               ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
               ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
+            ${faturaItens.length === 0 ? '' : `<div style="display:flex;justify-content:flex-end;margin-bottom:10px">${sortSelectHTML('cc-fatura-sort', ccFaturaSort)}</div>`}
             ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.' }) : `
               <table class="list-table">
                 <thead><tr><th>Descrição</th><th>Categoria</th><th>Compra</th><th>Vencimento</th><th>Parcela</th><th>Valor da fatura</th><th>Sua parte</th><th></th></tr></thead>
@@ -2112,6 +2134,7 @@ function pageCartoes(container) {
       });
     });
     if (document.getElementById('cc-fatura-mes')) document.getElementById('cc-fatura-mes').onchange = (e) => { selectedFaturaMonth = e.target.value; draw(); };
+    if (document.getElementById('cc-fatura-sort')) document.getElementById('cc-fatura-sort').onchange = (e) => { ccFaturaSort = e.target.value; draw(); };
     if (document.getElementById('cc-pagar-fatura')) document.getElementById('cc-pagar-fatura').onclick = () => {
       if (faturaPaga) {
         reopenCartaoFatura(selected.id, selectedFaturaMonth);
