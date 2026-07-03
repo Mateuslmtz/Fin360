@@ -935,10 +935,10 @@ function pageGastosFixos(container) {
           </div>
           <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(period)}" /></div>
           <div class="row-sub" style="margin:-8px 0 14px">Segue o mês escolhido no filtro da lista — mude aqui se quiser lançar/pagar meses passados deste gasto fixo.</div>
-          <div class="field-row">
+          <div class="field-row" style="grid-template-columns:1.3fr 1fr">
             <div class="field"><label>Duração</label><select id="ff-duracao">
-              <option value="sempre" ${editing && editing.fimMes ? '' : 'selected'}>Todo mês (sem fim)</option>
-              <option value="parcelas" ${editing && editing.fimMes ? 'selected' : ''}>Nº de parcelas definido</option>
+              <option value="sempre" ${editing && editing.fimMes ? '' : 'selected'}>Recorrente</option>
+              <option value="parcelas" ${editing && editing.fimMes ? 'selected' : ''}>Parcelas (nº fixo)</option>
             </select></div>
             <div class="field" id="ff-parcelas-field" style="display:${editing && editing.fimMes ? 'block' : 'none'}"><label>Quantas parcelas?</label><input type="number" min="1" max="480" id="ff-parcelas" placeholder="Ex.: 12" value="${editing && editing.fimMes ? monthsDiffStr(gastoFixoCreatedMonth(editing), editing.fimMes) : ''}" /></div>
           </div>
