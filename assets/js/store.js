@@ -184,6 +184,11 @@ function monthAddStr(mStr, n) {
   const d = new Date(y, m - 1 + n, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+function monthsDiffStr(a, b) {
+  const [ya, ma] = a.split('-').map(Number);
+  const [yb, mb] = b.split('-').map(Number);
+  return (yb - ya) * 12 + (mb - ma);
+}
 /* ---- Racha / divisão de compras de cartão com outras pessoas ---- */
 function compraValorDividido(compra) {
   return (compra.divisoes || []).reduce((s, d) => s + (d.valor || 0), 0);
