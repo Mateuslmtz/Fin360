@@ -468,14 +468,12 @@ function pageDashboard(container) {
     // "pago" do cartão sempre pelo ciclo de fatura (caixa), já que é quando o dinheiro de fato sai do banco
     const custoRealCartoesPago = months.reduce((s, m) => s + cartoesFiltrados.filter((c) => isCartaoFaturaPaga(c.id, m)).reduce((s2, c) => s2 + cartaoCustoRealCaixaForMonth(c.id, m), 0), 0);
 
-    const parcelasMes = months.reduce((s, m) => s + parcelamentoParcelasForMonth(m, bankFilterOn ? dashBank : null), 0);
-    const parcelasPagasMes = months.reduce((s, m) => s + parcelamentoParcelasPagasForMonth(m, bankFilterOn ? dashBank : null), 0);
-    const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes + parcelasMes;
+    const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes;
     // só o que de fato entrou — assim o card bate com o saldo disponível; o previsto vira legenda
     const totalRecebimentosLancado = receb.reduce((s, r) => s + r.valor, 0);
     const totalRecebimentos = receb.filter((r) => r.recebido).reduce((s, r) => s + r.valor, 0);
     const totalAReceber = receb.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
-    const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0) + custoRealCartoesPago + parcelasPagasMes;
+    const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0) + custoRealCartoesPago;
     const faltaPagar = totalGastos - totalPago;
     const saldoBancos = bankFilterOn ? ((Store.bankById(dashBank) || {}).balance || 0) : Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
     // saldo do banco já é atualizado na hora (pagar/receber/reabrir), então "disponível" é sempre o valor real agora —
@@ -516,7 +514,7 @@ function pageDashboard(container) {
       </div>
 
       <div class="stat-grid">
-        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: 'Fixos + variáveis + cartão (sua parte) + parcelamentos', tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: 'Fixos + variáveis + cartão (sua parte)', tone: 'red', iconName: 'arrowDownCircle' })}
         ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: `Já recebidos — de ${formatCurrency(totalRecebimentosLancado)} lançados`, tone: 'green', iconName: 'arrowUpCircle' })}
         ${statCard({ label: 'Total a receber', value: formatCurrency(totalAReceber), sub: 'Recebimentos futuros', tone: 'blue', iconName: 'download' })}
         ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
@@ -557,11 +555,6 @@ function pageDashboard(container) {
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-header"><h3>${icon('trendUp')} Seus investimentos</h3><button class="btn btn-ghost btn-sm" id="dash-go-investimentos">Gerenciar</button></div>
-        ${Store.state.investimentos.length === 0 ? emptyState({ iconName: 'trendUp', title: 'Você ainda não tem investimentos cadastrados', actionLabel: 'Adicionar investimento', actionId: 'dash-add-investimento' }) : investMini(Store.state.investimentos)}
-      </div>
-
       <div class="grid-2">
         <div class="panel">
           <div class="panel-header"><div><h3>Distribuição por categoria</h3><div class="panel-sub">Como seus gastos se dividem</div></div></div>
@@ -588,7 +581,6 @@ function pageDashboard(container) {
     const go = (id, route) => { const el = document.getElementById(id); if (el) el.onclick = () => goRoute(route); };
     go('dash-add-fixo', 'gastos-fixos'); go('dash-go-cartoes', 'cartoes'); go('dash-add-cartao', 'cartoes');
     go('dash-go-cofrinhos', 'cofrinhos'); go('dash-add-cofrinho', 'cofrinhos');
-    go('dash-go-investimentos', 'investimentos'); go('dash-add-investimento', 'investimentos');
     wirePagoFixoActions(container, draw);
   };
   draw();
@@ -607,12 +599,6 @@ function areaChartHTML(mStr, saldoInicial, bankId) {
   Store.state.cartoes.filter((c) => !bankId || c.bankId === bankId).forEach((c) => {
     const fatura = cartaoFaturaForMonth(c.id, mStr);
     if (fatura > 0) add(despesasDia, `${mStr}-${String(clampDayToMonth(mStr, c.diaVencimento)).padStart(2, '0')}`, fatura);
-  });
-  Store.state.parcelamentos.filter((p) => !bankId || p.bankId === bankId).forEach((p) => {
-    parcelamentoSchedule(p).forEach((s) => {
-      const venc = parcelamentoVencimento(p, s.numero);
-      if (venc.slice(0, 7) === mStr) add(despesasDia, venc, s.valor);
-    });
   });
   recebimentosForMonth(mStr).filter((r) => !bankId || r.bankId === bankId).forEach((r) => add(receitasDia, r.dataOcorrencia, r.valor));
 
@@ -756,11 +742,6 @@ function cofrinhosMini(list) {
       </div>`;
   }).join('');
 }
-function investMini(list) {
-  return `<table class="list-table"><tbody>${list.map((i) => `
-    <tr><td><div class="row-title">${i.nome}</div><div class="row-sub">${i.tipo}</div></td>
-    <td style="text-align:right">${formatCurrency(i.capitalInicial)}</td></tr>`).join('')}</tbody></table>`;
-}
 function categoryDonut(entries, sum) {
   const colors = entries.map(([catId]) => (Store.categoryById(catId) || {}).color || 'var(--text-faint)');
   let acc = 0;
@@ -808,16 +789,15 @@ function yearTable(year) {
   const months = Array.from({ length: 12 }, (_, i) => i);
   // ponto de partida real (saldo dos bancos antes de janeiro) — cada mês depois disso soma o próprio "Saldo do mês"
   let runningBalance = saldoBancosNoFimDoMes(monthAddStr(`${year}-01`, -1));
-  let totalGanhos = 0, totalFixos = 0, totalVar = 0, totalCartao = 0, totalParcelas = 0, totalSaldoMes = 0;
+  let totalGanhos = 0, totalFixos = 0, totalVar = 0, totalCartao = 0, totalSaldoMes = 0;
   const rows = months.map((m) => {
     const mStr = `${year}-${String(m + 1).padStart(2, '0')}`;
     const ganhos = recebimentosForMonth(mStr).reduce((s, r) => s + r.valor, 0);
     const fixos = gastosFixosForMonth(mStr).filter((g) => !g.cartaoId).reduce((s, g) => s + g.valor, 0);
     const variaveis = gastosVariaveisForMonth(mStr).filter((g) => !g.cartaoId).reduce((s, g) => s + g.valor, 0);
     const cartao = allCartoesFaturaForMonth(mStr);
-    const parcelas = parcelamentoParcelasForMonth(mStr);
-    const saldoMes = ganhos - fixos - variaveis - cartao - parcelas;
-    totalGanhos += ganhos; totalFixos += fixos; totalVar += variaveis; totalCartao += cartao; totalParcelas += parcelas; totalSaldoMes += saldoMes;
+    const saldoMes = ganhos - fixos - variaveis - cartao;
+    totalGanhos += ganhos; totalFixos += fixos; totalVar += variaveis; totalCartao += cartao; totalSaldoMes += saldoMes;
     // balanço = balanço do mês anterior + saldo deste mês — sempre rastreável pelas colunas ao lado
     runningBalance += saldoMes;
     let status = 'PROJETADO', cls = 'badge-warning';
@@ -831,7 +811,6 @@ function yearTable(year) {
       <td>${formatCurrency(fixos)}</td>
       <td>${formatCurrency(variaveis)}</td>
       <td>${formatCurrency(cartao)}</td>
-      <td>${formatCurrency(parcelas)}</td>
       <td class="${saldoMes >= 0 ? 'amount-pos' : 'amount-neg'}">${formatCurrency(saldoMes)}</td>
       <td><strong>${formatCurrency(runningBalance)}</strong></td>
     </tr>`;
@@ -840,9 +819,9 @@ function yearTable(year) {
   return `
     <div class="month-table-wrap">
       <table class="month-table">
-        <thead><tr><th>Mês</th><th>Status</th><th>Ganhos</th><th>Gastos fixos</th><th>Gastos variáveis</th><th>Cartão de crédito</th><th>Parcelamentos</th><th>Saldo do mês</th><th>Balanço</th></tr></thead>
+        <thead><tr><th>Mês</th><th>Status</th><th>Ganhos</th><th>Gastos fixos</th><th>Gastos variáveis</th><th>Cartão de crédito</th><th>Saldo do mês</th><th>Balanço</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="2">Total do ano</td><td class="amount-pos">${formatCurrency(totalGanhos)}</td><td>${formatCurrency(totalFixos)}</td><td>${formatCurrency(totalVar)}</td><td>${formatCurrency(totalCartao)}</td><td>${formatCurrency(totalParcelas)}</td><td class="${totalSaldoMes >= 0 ? 'amount-pos' : 'amount-neg'}">${formatCurrency(totalSaldoMes)}</td><td>${formatCurrency(runningBalance)}</td></tr></tfoot>
+        <tfoot><tr><td colspan="2">Total do ano</td><td class="amount-pos">${formatCurrency(totalGanhos)}</td><td>${formatCurrency(totalFixos)}</td><td>${formatCurrency(totalVar)}</td><td>${formatCurrency(totalCartao)}</td><td class="${totalSaldoMes >= 0 ? 'amount-pos' : 'amount-neg'}">${formatCurrency(totalSaldoMes)}</td><td>${formatCurrency(runningBalance)}</td></tr></tfoot>
       </table>
     </div>
   `;
@@ -1475,8 +1454,8 @@ function gastosVariaveisTable(list, sort) {
 }
 
 /* =========================================================================
-   MOTOR GENÉRICO DE CRUD — usado por Bancos, Recebimentos, Cofrinhos,
-   Cartões e Investimentos (mesmo padrão visual: formulário + lista)
+   MOTOR GENÉRICO DE CRUD — usado por Bancos, Recebimentos, Cofrinhos
+   e Cartões (mesmo padrão visual: formulário + lista)
    ========================================================================= */
 function genericCrudPage(container, cfg) {
   let editingId = null;
@@ -2228,107 +2207,6 @@ function pageCartoes(container) {
   draw();
 }
 
-/* ---- Investimentos ---- */
-const INVEST_TIPOS = ['CDB', 'Tesouro Direto', 'LCI/LCA', 'Fundos', 'Ações', 'FIIs', 'Cripto', 'Poupança', 'Outro'];
-let investFormOpen = false;
-let editingInvestId = null;
-
-function pageInvestimentos(container) {
-  const draw = () => {
-    const items = Store.state.investimentos;
-    const editing = editingInvestId ? Store.get('investimentos', editingInvestId) : null;
-    const capitalAplicado = items.reduce((s, i) => s + (i.capitalInicial || 0), 0);
-    const aporteMensal = items.reduce((s, i) => s + (i.aporteMensal || 0), 0);
-
-    container.innerHTML = `
-      <div class="stat-grid">
-        ${statCard({ label: 'Investimentos ativos', value: items.length, tone: 'blue', iconName: 'trendUp' })}
-        ${statCard({ label: 'Capital aplicado', value: formatCurrency(capitalAplicado), tone: 'purple', iconName: 'wallet' })}
-        ${statCard({ label: 'Aporte mensal', value: formatCurrency(aporteMensal), tone: 'green', iconName: 'checkCircle' })}
-      </div>
-
-      <div class="panel-header" style="margin-bottom:16px">
-        <div class="row-sub">Sua carteira completa</div>
-        <button class="btn btn-primary btn-sm" id="iv-toggle-form">${icon('plus')} Novo investimento</button>
-      </div>
-
-      <div class="panel" id="iv-form-panel" style="display:${investFormOpen ? 'block' : 'none'}">
-        <div class="panel-header"><h3>${editing ? 'Editar investimento' : 'Novo investimento'}</h3><button class="btn btn-ghost btn-sm" id="iv-cancel">Cancelar</button></div>
-        <div class="field"><label>Nome</label><input type="text" id="iv-nome" placeholder="Ex.: CDB Banco Inter 110% CDI" value="${editing ? editing.nome : ''}" /></div>
-        <div class="field-row" style="grid-template-columns:1fr 1fr 1fr">
-          <div class="field"><label>Instituição</label><input type="text" id="iv-instituicao" placeholder="Ex.: XP, Inter, Nubank" value="${editing ? editing.instituicao || '' : ''}" /></div>
-          <div class="field"><label>Tipo</label><select id="iv-tipo">${INVEST_TIPOS.map((t) => `<option value="${t}" ${editing && editing.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-          <div class="field"><label>Data de início</label><input type="date" id="iv-data" value="${editing ? editing.data : todayISO()}" /></div>
-        </div>
-        <div class="field-row" style="grid-template-columns:1fr 1fr 1fr">
-          <div class="field"><label>Capital inicial</label>${moneyInputHTML('iv-capital', editing ? editing.capitalInicial : '')}</div>
-          <div class="field"><label>Aporte mensal</label>${moneyInputHTML('iv-aporte', editing ? editing.aporteMensal : '')}</div>
-          <div class="field"><label>Rentabilidade anual (%)</label><input type="number" step="0.01" id="iv-rentab" placeholder="0,00" value="${editing ? editing.rentabilidade || '' : ''}" /></div>
-        </div>
-        <div class="field-row">
-          <div class="field"><label>Taxa aplicada (%)</label><input type="number" step="0.01" id="iv-taxa" placeholder="0,00" value="${editing ? editing.taxa || '' : ''}" /></div>
-          <div class="field"><label>Prazo (meses)</label><input type="number" id="iv-prazo" placeholder="Opcional" value="${editing ? editing.prazoMeses || '' : ''}" /></div>
-        </div>
-        <div class="field"><label>Observação</label><textarea id="iv-obs" placeholder="Opcional">${editing ? (editing.observacao || '') : ''}</textarea></div>
-        <button class="btn btn-primary btn-block" id="iv-save">${editing ? 'Salvar alterações' : 'Criar investimento'}</button>
-      </div>
-
-      ${items.length === 0 && !investFormOpen ? `<div class="panel">${emptyState({ iconName: 'trendUp', title: 'Nenhum investimento cadastrado', text: 'Adicione seus investimentos (CDB, Tesouro, FIIs, ações) para acompanhar rentabilidade e evolução em um só lugar.', actionLabel: 'Cadastrar primeiro', actionId: 'iv-empty-create' })}</div>` : ''}
-      ${items.length > 0 ? `
-        <div class="panel">
-          <table class="list-table">
-            <thead><tr><th>Ativo</th><th>Instituição</th><th>Tipo</th><th>Capital</th><th>Aporte mensal</th><th>Rentab. anual</th><th></th></tr></thead>
-            <tbody>${items.map((i) => `
-              <tr>
-                <td class="row-title">${i.nome}</td>
-                <td>${i.instituicao || '—'}</td>
-                <td><span class="badge badge-primary">${i.tipo}</span></td>
-                <td><strong>${formatCurrency(i.capitalInicial)}</strong></td>
-                <td>${formatCurrency(i.aporteMensal || 0)}</td>
-                <td>${i.rentabilidade ? i.rentabilidade + '% a.a.' : '—'}</td>
-                <td><div class="row-actions"><button class="btn-icon" data-action="edit-invest" data-id="${i.id}">${icon('edit')}</button><button class="btn-icon" data-action="delete-invest" data-id="${i.id}">${icon('trash')}</button></div></td>
-              </tr>`).join('')}</tbody>
-          </table>
-        </div>` : ''}
-    `;
-
-    document.getElementById('iv-toggle-form').onclick = () => { investFormOpen = !investFormOpen; if (!investFormOpen) editingInvestId = null; draw(); };
-    if (document.getElementById('iv-cancel')) document.getElementById('iv-cancel').onclick = () => { investFormOpen = false; editingInvestId = null; draw(); };
-    if (document.getElementById('iv-empty-create')) document.getElementById('iv-empty-create').onclick = () => { investFormOpen = true; draw(); };
-    if (document.getElementById('iv-save')) {
-      document.getElementById('iv-save').onclick = () => {
-        const nome = document.getElementById('iv-nome').value.trim();
-        const capitalInicial = moneyValue('iv-capital');
-        if (!nome) { toast('Informe o nome do investimento', 'danger'); return; }
-        if (!capitalInicial) { toast('Informe o capital inicial', 'danger'); return; }
-        const payload = {
-          nome, capitalInicial,
-          instituicao: document.getElementById('iv-instituicao').value,
-          tipo: document.getElementById('iv-tipo').value,
-          data: document.getElementById('iv-data').value,
-          aporteMensal: moneyValue('iv-aporte'),
-          rentabilidade: parseFloat(document.getElementById('iv-rentab').value) || 0,
-          taxa: parseFloat(document.getElementById('iv-taxa').value) || 0,
-          prazoMeses: parseInt(document.getElementById('iv-prazo').value, 10) || null,
-          observacao: document.getElementById('iv-obs').value,
-        };
-        if (editing) { Store.update('investimentos', editing.id, payload); toast('Investimento atualizado', 'success'); }
-        else { Store.add('investimentos', payload); toast('Investimento cadastrado', 'success'); }
-        investFormOpen = false; editingInvestId = null;
-        draw();
-      };
-    }
-    container.querySelectorAll('[data-action="edit-invest"]').forEach((b) => b.onclick = () => { editingInvestId = b.dataset.id; investFormOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
-    container.querySelectorAll('[data-action="delete-invest"]').forEach((b) => b.onclick = () => {
-      confirmModal({
-        title: 'Excluir investimento', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
-        onConfirm: () => { Store.remove('investimentos', b.dataset.id); toast('Investimento excluído', 'success'); draw(); },
-      });
-    });
-  };
-  draw();
-}
-
 /* =========================================================================
    EXTRATO — livro-razão unificado (gastos fixos + variáveis + recebimentos)
    ========================================================================= */
@@ -2411,7 +2289,6 @@ function pageExtrato(container) {
             <option value="Gasto fixo" ${extratoTipo === 'Gasto fixo' ? 'selected' : ''}>Gasto fixo</option>
             <option value="Gasto variável" ${extratoTipo === 'Gasto variável' ? 'selected' : ''}>Gasto variável</option>
             <option value="Cartão de crédito" ${extratoTipo === 'Cartão de crédito' ? 'selected' : ''}>Cartão de crédito</option>
-            <option value="Parcelamento" ${extratoTipo === 'Parcelamento' ? 'selected' : ''}>Parcelamento</option>
             <option value="Recebimento" ${extratoTipo === 'Recebimento' ? 'selected' : ''}>Recebimento</option>
           </select></div>
           <div class="field" style="flex:1"><label>Buscar</label><input type="text" id="ex-search" placeholder="Descrição, categoria..." value="${extratoSearch}" /></div>
@@ -2557,7 +2434,6 @@ function pageConciliacao(container) {
             <option value="Gasto fixo" ${conciliacaoTipo === 'Gasto fixo' ? 'selected' : ''}>Gasto fixo</option>
             <option value="Gasto variável" ${conciliacaoTipo === 'Gasto variável' ? 'selected' : ''}>Gasto variável</option>
             <option value="Cartão de crédito" ${conciliacaoTipo === 'Cartão de crédito' ? 'selected' : ''}>Cartão de crédito</option>
-            <option value="Parcelamento" ${conciliacaoTipo === 'Parcelamento' ? 'selected' : ''}>Parcelamento</option>
             <option value="Recebimento" ${conciliacaoTipo === 'Recebimento' ? 'selected' : ''}>Recebimento</option>
           </select></div>
           <div class="field"><label>Status</label><select id="cn-status">
@@ -2738,172 +2614,6 @@ function pagePlanejamento(container) {
     });
   };
   draw();
-}
-
-/* =========================================================================
-   PARCELAMENTOS — financiamentos e empréstimos com amortização Price/SAC
-   ========================================================================= */
-const PARCELAMENTO_TIPOS = ['Financiamento', 'Empréstimo Pessoal', 'Consórcio', 'Outro'];
-let parcelamentosTab = 'ativos';
-let editingParcelamentoId = null;
-let expandedParcelamentoId = null;
-
-function pageParcelamentos(container) {
-  const draw = () => {
-    const all = Store.state.parcelamentos;
-    const ativos = all.filter((p) => !parcelamentoQuitado(p));
-    const quitados = all.filter((p) => parcelamentoQuitado(p));
-    const list = parcelamentosTab === 'ativos' ? ativos : quitados;
-
-    const valorFinanciado = ativos.reduce((s, p) => s + p.valorPrincipal, 0);
-    const jaPago = all.reduce((s, p) => s + parcelamentoSchedule(p).filter((x) => isParcelaPaga(p.id, x.numero)).reduce((s2, x) => s2 + x.valor, 0), 0);
-
-    container.innerHTML = `
-      <div class="stat-grid">
-        ${statCard({ label: 'Contratos ativos', value: ativos.length, tone: 'blue', iconName: 'layers' })}
-        ${statCard({ label: 'Total de contratos', value: all.length, tone: 'purple', iconName: 'checkCircle' })}
-        ${statCard({ label: 'Valor financiado (ativos)', value: formatCurrency(valorFinanciado), tone: 'orange', iconName: 'wallet' })}
-        ${statCard({ label: 'Já pago', value: formatCurrency(jaPago), tone: 'green', iconName: 'checkCircle' })}
-      </div>
-
-      <div class="panel-header" style="margin-bottom:16px">
-        <div class="pill-group">
-          <button class="pill ${parcelamentosTab === 'ativos' ? 'active' : ''}" data-tab="ativos">Ativos (${ativos.length})</button>
-          <button class="pill ${parcelamentosTab === 'quitados' ? 'active' : ''}" data-tab="quitados">Quitados (${quitados.length})</button>
-        </div>
-        <button class="btn btn-primary btn-sm" id="pz-new">${icon('plus')} Novo contrato</button>
-      </div>
-
-      ${list.length === 0 ? `<div class="panel">${emptyState({ iconName: 'layers', title: parcelamentosTab === 'ativos' ? 'Nenhum contrato ativo' : 'Nenhum contrato quitado ainda', text: 'Cadastre financiamentos, empréstimos ou consórcios para acompanhar as parcelas.', actionLabel: parcelamentosTab === 'ativos' ? 'Novo contrato' : null, actionId: 'pz-empty-new' })}</div>` : list.map((p) => parcelamentoCard(p)).join('')}
-    `;
-
-    container.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { parcelamentosTab = b.dataset.tab; draw(); });
-    document.getElementById('pz-new').onclick = () => openParcelamentoModal(null, draw);
-    if (document.getElementById('pz-empty-new')) document.getElementById('pz-empty-new').onclick = () => openParcelamentoModal(null, draw);
-
-    container.querySelectorAll('[data-action="expand-parcelamento"]').forEach((b) => b.onclick = () => { expandedParcelamentoId = expandedParcelamentoId === b.dataset.id ? null : b.dataset.id; draw(); });
-    container.querySelectorAll('[data-action="edit-parcelamento"]').forEach((b) => b.onclick = () => openParcelamentoModal(Store.get('parcelamentos', b.dataset.id), draw));
-    container.querySelectorAll('[data-action="delete-parcelamento"]').forEach((b) => b.onclick = () => {
-      confirmModal({
-        title: 'Excluir contrato', text: 'Isso remove o contrato e todo o histórico de parcelas pagas. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
-        onConfirm: () => {
-          Store.remove('parcelamentos', b.dataset.id);
-          Store.state.parcelamentosPagamentos = Store.state.parcelamentosPagamentos.filter((x) => x.parcelamentoId !== b.dataset.id);
-          Store.save();
-          toast('Contrato excluído', 'success'); draw();
-        },
-      });
-    });
-    container.querySelectorAll('[data-action="toggle-parcela"]').forEach((b) => b.onclick = () => { toggleParcelaPaga(b.dataset.id, Number(b.dataset.numero)); draw(); });
-  };
-  draw();
-}
-
-function parcelamentoCard(p) {
-  const schedule = parcelamentoSchedule(p);
-  const pagas = parcelasPagasCount(p.id);
-  const pct = Math.round((pagas / p.numParcelas) * 100);
-  const proxima = proximaParcelaPendente(p);
-  const expanded = expandedParcelamentoId === p.id;
-  return `
-    <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-        <div>
-          <strong>${p.nome}</strong> <span class="badge badge-primary">${p.tipo}</span> <span class="badge badge-muted">${p.sistema === 'sac' ? 'SAC' : 'Price'}</span>
-          <div class="row-sub" style="margin-top:6px">${formatCurrency(p.valorPrincipal)} em ${p.numParcelas}x · ${p.taxaJurosMensal}% a.m.${Store.bankById(p.bankId) ? ' · ' + Store.bankById(p.bankId).name : ''}</div>
-        </div>
-        <div class="row-actions">
-          <button class="btn btn-ghost btn-sm" data-action="expand-parcelamento" data-id="${p.id}">${icon('list')} ${expanded ? 'Ocultar parcelas' : 'Ver parcelas'}</button>
-          <button class="btn-icon" data-action="edit-parcelamento" data-id="${p.id}">${icon('edit')}</button>
-          <button class="btn-icon" data-action="delete-parcelamento" data-id="${p.id}">${icon('trash')}</button>
-        </div>
-      </div>
-      <div style="margin-top:12px;display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:5px">
-        <span>${pagas} de ${p.numParcelas} parcelas pagas</span><span>${proxima ? 'Próxima: ' + formatDateBR(parcelamentoVencimento(p, proxima.numero)) + ' · ' + formatCurrency(proxima.valor) : 'Quitado 🎉'}</span>
-      </div>
-      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
-      ${expanded ? `
-        <div class="month-table-wrap" style="margin-top:16px">
-          <table class="month-table">
-            <thead><tr><th>Nº</th><th>Vencimento</th><th>Valor</th><th>Juros</th><th>Amortização</th><th>Saldo devedor</th><th>Status</th></tr></thead>
-            <tbody>${schedule.map((s) => {
-              const paga = isParcelaPaga(p.id, s.numero);
-              return `<tr>
-                <td>${s.numero}/${p.numParcelas}</td>
-                <td>${formatDateBR(parcelamentoVencimento(p, s.numero))}</td>
-                <td><strong>${formatCurrency(s.valor)}</strong></td>
-                <td>${formatCurrency(s.juros)}</td>
-                <td>${formatCurrency(s.amortizacao)}</td>
-                <td>${formatCurrency(s.saldo)}</td>
-                <td><button class="badge ${paga ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-parcela" data-id="${p.id}" data-numero="${s.numero}">${paga ? 'Paga' : 'Pendente'}</button></td>
-              </tr>`;
-            }).join('')}</tbody>
-          </table>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function openParcelamentoModal(editing, onSaved) {
-  const overlay = document.getElementById('modal-overlay');
-  overlay.innerHTML = `
-    <div class="modal-box modal-box-lg">
-      <h3 style="margin-bottom:16px">${editing ? 'Editar contrato' : 'Novo contrato de parcelamento'}</h3>
-      <div class="field"><label>Nome</label><input type="text" id="pz-nome" placeholder="Ex.: Financiamento do carro" value="${editing ? editing.nome : ''}" /></div>
-      <div class="field-row">
-        <div class="field"><label>Tipo</label><select id="pz-tipo">${PARCELAMENTO_TIPOS.map((t) => `<option value="${t}" ${editing && editing.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-        <div class="field"><label>Sistema</label><select id="pz-sistema">
-          <option value="price" ${!editing || editing.sistema === 'price' ? 'selected' : ''}>Price (parcela fixa)</option>
-          <option value="sac" ${editing && editing.sistema === 'sac' ? 'selected' : ''}>SAC (amortização constante)</option>
-        </select></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Categoria (opcional)</label>${fieldHTML({ key: 'pz-categoria', type: 'select-category', optional: true, catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
-        <div class="field"><label>Banco (origem do recurso)</label>${fieldHTML({ key: 'pz-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Data da contratação</label><input type="date" id="pz-data-contratacao" value="${editing ? editing.dataContratacao : todayISO()}" /></div>
-        <div class="field"><label>Primeira parcela</label><input type="date" id="pz-primeira-parcela" value="${editing ? editing.primeiraParcela || '' : ''}" /></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Valor principal</label>${moneyInputHTML('pz-valor', editing ? editing.valorPrincipal : '')}</div>
-        <div class="field"><label>Quantidade de parcelas</label><input type="number" min="1" id="pz-parcelas" value="${editing ? editing.numParcelas : ''}" /></div>
-      </div>
-      <div class="field"><label>Taxa de juros mensal (%)</label><input type="number" step="0.01" id="pz-taxa" value="${editing ? editing.taxaJurosMensal : '0'}" /></div>
-      <div class="field"><label>Observação</label><textarea id="pz-obs" placeholder="Opcional">${editing ? (editing.observacao || '') : ''}</textarea></div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
-        <button class="btn btn-primary btn-sm" id="modal-confirm">${editing ? 'Salvar alterações' : 'Criar contrato'}</button>
-      </div>
-    </div>
-  `;
-  overlay.classList.add('open');
-  wireQuickAddButtons([{ key: 'pz-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'pz-banco', type: 'select-bank' }]);
-  overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
-  overlay.querySelector('#modal-confirm').onclick = () => {
-    const nome = document.getElementById('pz-nome').value.trim();
-    const valorPrincipal = moneyValue('pz-valor');
-    const numParcelas = parseInt(document.getElementById('pz-parcelas').value, 10) || 0;
-    if (!nome) { toast('Informe o nome do contrato', 'danger'); return; }
-    if (!valorPrincipal) { toast('Informe o valor principal', 'danger'); return; }
-    if (!numParcelas || numParcelas < 1) { toast('Informe a quantidade de parcelas', 'danger'); return; }
-    const payload = {
-      nome, valorPrincipal, numParcelas,
-      tipo: document.getElementById('pz-tipo').value,
-      sistema: document.getElementById('pz-sistema').value,
-      categoryId: document.getElementById('f-pz-categoria').value,
-      bankId: document.getElementById('f-pz-banco').value,
-      dataContratacao: document.getElementById('pz-data-contratacao').value,
-      primeiraParcela: document.getElementById('pz-primeira-parcela').value || document.getElementById('pz-data-contratacao').value,
-      taxaJurosMensal: parseFloat(document.getElementById('pz-taxa').value) || 0,
-      observacao: document.getElementById('pz-obs').value,
-    };
-    if (editing) { Store.update('parcelamentos', editing.id, payload); toast('Contrato atualizado', 'success'); }
-    else { Store.add('parcelamentos', payload); toast('Contrato criado', 'success'); }
-    overlay.classList.remove('open');
-    onSaved();
-  };
 }
 
 /* =========================================================================
