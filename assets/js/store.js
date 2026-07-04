@@ -548,6 +548,11 @@ function buildTransacoes(start, end) {
         bankId: c.bankId, categoryId: null, status: isCartaoFaturaPaga(c.id, m) ? 'pago' : 'pendente', valor, sinal: -1,
       };
     }).filter(Boolean)),
+    // parcelas de contratos de parcelamento (financiamentos, empréstimos, consórcios)
+    ...Store.state.parcelamentos.flatMap((p) => parcelamentoSchedule(p).map((s) => ({
+      key: `pz:${p.id}:${s.numero}`, data: parcelamentoVencimento(p, s.numero), descricao: `${p.nome} (${s.numero}/${p.numParcelas})`, tipo: 'Parcelamento',
+      bankId: p.bankId, categoryId: p.categoryId, status: isParcelaPaga(p.id, s.numero) ? 'pago' : 'pendente', valor: s.valor, sinal: -1,
+    }))),
   ];
   return txs.filter((t) => t.data >= start && t.data <= end);
 }
