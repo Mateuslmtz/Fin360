@@ -1837,7 +1837,7 @@ function pageCartoes(container) {
   const draw = () => {
     const cartoes = Store.state.cartoes;
     if (!selectedCartaoId || !cartoes.find((c) => c.id === selectedCartaoId)) selectedCartaoId = cartoes[0] ? cartoes[0].id : null;
-    if (!selectedFaturaMonth) selectedFaturaMonth = currentMonthStr();
+    if (!selectedFaturaMonth) selectedFaturaMonth = monthAddStr(currentMonthStr(), 1);
     const editingCartao = editingCartaoId ? Store.get('cartoes', editingCartaoId) : null;
     if (editingCartao) novoCartaoCor = editingCartao.cor || BANK_CORES[0];
     const editingCompra = editingCompraId ? Store.get('cartaoCompras', editingCompraId) : null;
@@ -2111,7 +2111,7 @@ function pageCartoes(container) {
     }
     if (document.getElementById('cp-cancel-edit')) document.getElementById('cp-cancel-edit').onclick = () => { editingCompraId = null; compraTipo = 'avista'; draw(); };
 
-    container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; selectedFaturaMonth = currentMonthStr(); draw(); });
+    container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; selectedFaturaMonth = monthAddStr(currentMonthStr(), 1); draw(); });
     container.querySelectorAll('[data-action="edit-cartao"]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); editingCartaoId = b.dataset.id; novoCartaoOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="delete-cartao"]').forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
