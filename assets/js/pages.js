@@ -910,7 +910,7 @@ function pageResumo(container) {
           <div class="pill-group" id="resumo-period-group">
             <button class="pill ${period.type === 'hoje' ? 'active' : ''}" data-mode="hoje">Hoje</button>
             <button class="pill ${period.type === 'amanha' ? 'active' : ''}" data-mode="amanha">Amanhã</button>
-            <button class="pill ${period.type === '7dias' ? 'active' : ''}" data-mode="7dias">Últimos 7 dias</button>
+            <button class="pill ${period.type === '7dias' ? 'active' : ''}" data-mode="7dias">Próximos 7 dias</button>
             <button class="pill ${period.type === 'mes' ? 'active' : ''}" data-mode="mes">Este mês</button>
             <button class="pill ${period.type === 'custom' ? 'active' : ''}" data-mode="custom">Personalizado</button>
           </div>
@@ -948,7 +948,7 @@ function pageResumo(container) {
           <div class="pill-group" id="resumo-period-group-2">
             <button class="pill ${period.type === 'hoje' ? 'active' : ''}" data-mode="hoje">Hoje</button>
             <button class="pill ${period.type === 'amanha' ? 'active' : ''}" data-mode="amanha">Amanhã</button>
-            <button class="pill ${period.type === '7dias' ? 'active' : ''}" data-mode="7dias">Últimos 7 dias</button>
+            <button class="pill ${period.type === '7dias' ? 'active' : ''}" data-mode="7dias">Próximos 7 dias</button>
             <button class="pill ${period.type === 'mes' ? 'active' : ''}" data-mode="mes">Este mês</button>
             <button class="pill ${period.type === 'custom' ? 'active' : ''}" data-mode="custom">Personalizado</button>
           </div>
@@ -970,7 +970,7 @@ function pageResumo(container) {
   draw();
 }
 function resumoLabel(type) {
-  return { hoje: 'hoje', amanha: 'amanhã', '7dias': 'nos últimos 7 dias', mes: 'este mês', custom: 'no período selecionado' }[type] || 'hoje';
+  return { hoje: 'hoje', amanha: 'amanhã', '7dias': 'nos próximos 7 dias', mes: 'este mês', custom: 'no período selecionado' }[type] || 'hoje';
 }
 
 /* ============ Forma de pagamento (Banco x Cartão de crédito) — Gastos Fixos e Variáveis ============ */
