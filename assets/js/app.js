@@ -9,8 +9,6 @@ const ROUTES = {
   'recebimentos': pageRecebimentos,
   'cofrinhos': pageCofrinhos,
   'cartoes': pageCartoes,
-  'investimentos': pageInvestimentos,
-  'parcelamentos': pageParcelamentos,
   'extrato': pageExtrato,
   'conciliacao': pageConciliacao,
   'planejamento': pagePlanejamento,

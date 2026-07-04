@@ -62,12 +62,8 @@ function defaultState() {
     cartaoCompras: [], // legado — só usado para migrar dados antigos, ver Store.migrarCartaoComprasParaGastos()
     migradoCartaoComprasV2: false,
     cartaoFaturasPagas: [], // {id, cartaoId, mes:'YYYY-MM', bankId, valor, ledgerApplied}
-    investimentos: [],
     conciliacoes: [], // array de chaves de transação (ex: 'gf:id:2026-06') marcadas como conciliadas
     metasCategoria: [], // {id, categoryId, mes:'YYYY-MM', valor}
-    // parcelamentos: {id,nome,tipo,sistema:'price'|'sac',categoryId,bankId,dataContratacao,primeiraParcela,valorPrincipal,numParcelas,taxaJurosMensal,observacao,createdAt}
-    parcelamentos: [],
-    parcelamentosPagamentos: [], // {id, parcelamentoId, numero, valor, bankId, data, ledgerApplied}
   };
 }
 
@@ -529,27 +525,7 @@ function fluxoLiquidoDoMes(mStr, bankId) {
   const cartao = bankId
     ? Store.state.cartoes.filter((c) => c.bankId === bankId).reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0)
     : allCartoesFaturaForMonth(mStr);
-  return ganhos - fixos - variaveis - cartao - parcelamentoParcelasForMonth(mStr, bankId);
-}
-// total das parcelas de parcelamentos com vencimento no mês (todas, pagas ou não)
-function parcelamentoParcelasForMonth(mStr, bankId) {
-  let total = 0;
-  Store.state.parcelamentos.forEach((p) => {
-    if (bankId && p.bankId !== bankId) return;
-    parcelamentoSchedule(p).forEach((s) => { if (parcelamentoVencimento(p, s.numero).slice(0, 7) === mStr) total += s.valor; });
-  });
-  return total;
-}
-// idem, mas só as parcelas já pagas
-function parcelamentoParcelasPagasForMonth(mStr, bankId) {
-  let total = 0;
-  Store.state.parcelamentos.forEach((p) => {
-    if (bankId && p.bankId !== bankId) return;
-    parcelamentoSchedule(p).forEach((s) => {
-      if (isParcelaPaga(p.id, s.numero) && parcelamentoVencimento(p, s.numero).slice(0, 7) === mStr) total += s.valor;
-    });
-  });
-  return total;
+  return ganhos - fixos - variaveis - cartao;
 }
 // o que DE FATO entrou/saiu do caixa no mês — só liquidações que mexeram no saldo dos bancos.
 // Espelha cada chamada de applyBankDelta; é a base para reconstruir o saldo de meses passados.
@@ -568,12 +544,6 @@ function fluxoRealizadoDoMes(mStr, bankId) {
   Store.state.cartaoFaturasPagas.forEach((f) => {
     if (f.mes !== mStr || !f.ledgerApplied) return;
     if (!bankId || f.bankId === bankId) total -= (f.valor || 0);
-  });
-  Store.state.parcelamentosPagamentos.forEach((rec) => {
-    if (!rec.ledgerApplied) return;
-    const p = Store.state.parcelamentos.find((x) => x.id === rec.parcelamentoId);
-    const mes = (rec.data || (p ? parcelamentoVencimento(p, rec.numero) : '')).slice(0, 7);
-    if (mes === mStr && (!bankId || rec.bankId === bankId)) total -= (rec.valor || 0);
   });
   if (bankId) {
     Store.state.transferencias.forEach((t) => {
@@ -599,8 +569,7 @@ function fluxoPendenteDoMes(mStr, bankId) {
   const cartao = Store.state.cartoes
     .filter((c) => (!bankId || c.bankId === bankId) && !isCartaoFaturaPaga(c.id, mStr))
     .reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
-  const parcelas = parcelamentoParcelasForMonth(mStr, bankId) - parcelamentoParcelasPagasForMonth(mStr, bankId);
-  return receb - fixos - variaveis - cartao - parcelas;
+  return receb - fixos - variaveis - cartao;
 }
 // reconstrói o saldo bancário no FIM de um mês. Para trás: desfaz só o que DE FATO aconteceu
 // (fluxo realizado). Mês atual: projeta o fim somando as pendências agendadas. Futuro: acumula
@@ -658,11 +627,6 @@ function buildTransacoes(start, end) {
         bankId: c.bankId, categoryId: null, status: isCartaoFaturaPaga(c.id, m) ? 'pago' : 'pendente', valor, sinal: -1,
       };
     }).filter(Boolean)),
-    // parcelas de contratos de parcelamento (financiamentos, empréstimos, consórcios)
-    ...Store.state.parcelamentos.flatMap((p) => parcelamentoSchedule(p).map((s) => ({
-      key: `pz:${p.id}:${s.numero}`, data: parcelamentoVencimento(p, s.numero), descricao: `${p.nome} (${s.numero}/${p.numParcelas})`, tipo: 'Parcelamento',
-      bankId: p.bankId, categoryId: p.categoryId, status: isParcelaPaga(p.id, s.numero) ? 'pago' : 'pendente', valor: s.valor, sinal: -1,
-    }))),
   ];
   return txs.filter((t) => t.data >= start && t.data <= end);
 }
@@ -674,77 +638,6 @@ function toggleConciliado(key) {
   const idx = list.indexOf(key);
   if (idx > -1) list.splice(idx, 1); else list.push(key);
   Store.save();
-}
-
-/* ============ Parcelamentos: amortização Price / SAC ============ */
-function dateAddMonthsISO(iso, n) {
-  const mStr = monthAddStr(iso.slice(0, 7), n);
-  const day = clampDayToMonth(mStr, parseInt(iso.slice(8, 10), 10));
-  return `${mStr}-${String(day).padStart(2, '0')}`;
-}
-function amortizacaoPrice(principal, taxaMensalPct, n) {
-  const i = taxaMensalPct / 100;
-  const pmt = i === 0 ? principal / n : (principal * i) / (1 - Math.pow(1 + i, -n));
-  let saldo = principal;
-  const parcelas = [];
-  for (let k = 1; k <= n; k++) {
-    const juros = saldo * i;
-    const amort = Math.min(saldo, pmt - juros);
-    saldo = Math.max(0, saldo - amort);
-    parcelas.push({ numero: k, valor: amort + juros, juros, amortizacao: amort, saldo });
-  }
-  return parcelas;
-}
-function amortizacaoSAC(principal, taxaMensalPct, n) {
-  const i = taxaMensalPct / 100;
-  const amortConst = principal / n;
-  let saldo = principal;
-  const parcelas = [];
-  for (let k = 1; k <= n; k++) {
-    const juros = saldo * i;
-    saldo = Math.max(0, saldo - amortConst);
-    parcelas.push({ numero: k, valor: amortConst + juros, juros, amortizacao: amortConst, saldo });
-  }
-  return parcelas;
-}
-function parcelamentoSchedule(p) {
-  return p.sistema === 'sac' ? amortizacaoSAC(p.valorPrincipal, p.taxaJurosMensal, p.numParcelas) : amortizacaoPrice(p.valorPrincipal, p.taxaJurosMensal, p.numParcelas);
-}
-function parcelamentoVencimento(p, numero) {
-  return dateAddMonthsISO(p.primeiraParcela || p.dataContratacao, numero - 1);
-}
-function isParcelaPaga(parcelamentoId, numero) {
-  return Store.state.parcelamentosPagamentos.some((x) => x.parcelamentoId === parcelamentoId && x.numero === numero);
-}
-function toggleParcelaPaga(parcelamentoId, numero) {
-  const list = Store.state.parcelamentosPagamentos;
-  const idx = list.findIndex((x) => x.parcelamentoId === parcelamentoId && x.numero === numero);
-  if (idx > -1) {
-    // desfaz a baixa: devolve o dinheiro ao banco se a parcela tinha mexido no saldo
-    const rec = list[idx];
-    if (rec.ledgerApplied) Store.applyBankDelta(rec.bankId, rec.valor);
-    list.splice(idx, 1);
-  } else {
-    const p = Store.get('parcelamentos', parcelamentoId);
-    const item = p ? parcelamentoSchedule(p).find((s) => s.numero === numero) : null;
-    const valor = item ? item.valor : 0;
-    const bankId = p ? p.bankId : null;
-    // com banco de origem definido a parcela debita o saldo na hora; sem banco, fica só o
-    // registro e o reconcileLegacyLedger aplica quando o usuário definir o banco.
-    if (bankId) Store.applyBankDelta(bankId, -valor);
-    list.push({ id: uid(), parcelamentoId, numero, valor, bankId: bankId || null, data: todayISO(), ledgerApplied: !!bankId });
-  }
-  Store.save();
-}
-function parcelasPagasCount(parcelamentoId) {
-  return Store.state.parcelamentosPagamentos.filter((x) => x.parcelamentoId === parcelamentoId).length;
-}
-function parcelamentoQuitado(p) {
-  return parcelasPagasCount(p.id) >= p.numParcelas;
-}
-function proximaParcelaPendente(p) {
-  const schedule = parcelamentoSchedule(p);
-  return schedule.find((s) => !isParcelaPaga(p.id, s.numero)) || null;
 }
 
 function isCartaoFaturaPaga(cartaoId, mStr) {
@@ -862,19 +755,6 @@ const Store = {
       p.valor = valor;
       p.bankId = cartao.bankId;
       p.ledgerApplied = true;
-      changed = true;
-    });
-    this.state.parcelamentosPagamentos.forEach((rec) => {
-      if (rec.ledgerApplied) return;
-      const p = this.get('parcelamentos', rec.parcelamentoId);
-      if (!p || !p.bankId) return; // sem banco de origem ainda — tenta de novo no próximo load
-      const item = parcelamentoSchedule(p).find((s) => s.numero === rec.numero);
-      const valor = rec.valor != null ? rec.valor : (item ? item.valor : 0);
-      this.applyBankDelta(p.bankId, -valor);
-      rec.valor = valor;
-      rec.bankId = p.bankId;
-      if (!rec.data) rec.data = parcelamentoVencimento(p, rec.numero);
-      rec.ledgerApplied = true;
       changed = true;
     });
     if (changed) this.save();
