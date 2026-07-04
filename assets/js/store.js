@@ -183,6 +183,39 @@ function gastosFixosForMonthAll(mStr) {
       return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, mesRef: mStr, ...extras };
     });
 }
+// quantos meses a cobrança de um gasto fixo desloca pra frente por causa do fechamento do cartão (0 ou 1) —
+// "dia de cobrança" depois do fechamento cai na fatura do mês seguinte, exatamente como uma compra de cartão
+function gastoFixoShift(gf) {
+  if (!gf.cartaoId) return 0;
+  const cartao = Store.get('cartoes', gf.cartaoId);
+  return (cartao && cartao.diaFechamento && gf.diaVencimento > cartao.diaFechamento) ? 1 : 0;
+}
+// gastosFixosForMonth/ForMonthAll usam sempre o mês da FATURA (pra bater com o Dashboard, Extrato, etc).
+// Aqui é o mês da COMPETÊNCIA (aba Gastos Fixos) — o que você lançou/ativou em julho aparece em julho,
+// mesmo que a fatura do cartão só vença em agosto; vencimento e "pago" continuam vindo da fatura real.
+function gastosFixosPorCompetencia(mStr) {
+  return Store.state.gastosFixos
+    .filter((gf) => gastoFixoAppliesToMonth(gf, monthAddStr(mStr, gastoFixoShift(gf))))
+    .map((gf) => {
+      const faturaEquivalente = monthAddStr(mStr, gastoFixoShift(gf));
+      const cfg = gastoFixoConfigParaMes(gf, faturaEquivalente);
+      const extras = gastoFixoOccurrenceExtras(gf, cfg, faturaEquivalente);
+      return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, mesRef: mStr, ...extras };
+    });
+}
+function gastosFixosPorCompetenciaAll(mStr) {
+  return Store.state.gastosFixos
+    .filter((gf) => {
+      const faturaEquivalente = monthAddStr(mStr, gastoFixoShift(gf));
+      return faturaEquivalente >= gastoFixoCreatedMonth(gf) && (!gf.fimMes || faturaEquivalente < gf.fimMes) && !isGastoFixoMesOculto(gf.id, mStr);
+    })
+    .map((gf) => {
+      const faturaEquivalente = monthAddStr(mStr, gastoFixoShift(gf));
+      const cfg = gastoFixoConfigParaMes(gf, faturaEquivalente);
+      const extras = gastoFixoOccurrenceExtras(gf, cfg, faturaEquivalente);
+      return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, mesRef: mStr, ...extras };
+    });
+}
 // aplica uma alteração de valor/dia de vencimento — 'deste-mes' preserva o histórico anterior a partir do mês de
 // referência; 'historico' reescreve tudo (afeta só competências ainda não pagas, já que a baixa já feita é imutável)
 function updateGastoFixoComHistorico(gastoFixoId, mStrReferencia, payload, modo) {
@@ -275,6 +308,50 @@ function gastosVariaveisForMonth(mStr) {
       vencimentoISO: x.g.cartaoId ? cartaoFaturaVencimentoISO(x.g.cartaoId, mStr) : x.g.data,
       pago: x.g.cartaoId ? isCartaoFaturaPaga(x.g.cartaoId, mStr) : x.g.status === 'pago',
     }));
+}
+// quantos meses a compra desloca pra frente por causa do fechamento do cartão (0 ou 1)
+function gastoVariavelShift(g) {
+  if (!g.cartaoId) return 0;
+  return monthsDiffStr(g.data.slice(0, 7), gastoCartaoBaseMonth(g.data, g.cartaoId));
+}
+// gastosVariaveisForMonth usa sempre o mês da FATURA (pra bater com o Dashboard, Extrato, etc). Aqui é o mês
+// da COMPETÊNCIA (aba Gastos Variáveis) — o que você lançou em julho aparece em julho, mesmo que a fatura do
+// cartão só vença em agosto; vencimento e "pago" continuam vindo da fatura real.
+function gastosVariaveisPorCompetencia(mStr) {
+  return Store.state.gastosVariaveis
+    .map((g) => ({ g, occurrence: gastoVariavelOccurrenceCompetencia(g, mStr) }))
+    .filter((x) => x.occurrence)
+    .map((x) => {
+      const faturaEquivalente = monthAddStr(mStr, gastoVariavelShift(x.g));
+      return {
+        ...x.g,
+        valor: x.occurrence.valor,
+        valorMeu: x.occurrence.valorMeu,
+        parcelaLabel: x.occurrence.parcelaLabel,
+        mesRef: mStr,
+        vencimentoISO: x.g.cartaoId ? cartaoFaturaVencimentoISO(x.g.cartaoId, faturaEquivalente) : x.g.data,
+        pago: x.g.cartaoId ? isCartaoFaturaPaga(x.g.cartaoId, faturaEquivalente) : x.g.status === 'pago',
+      };
+    });
+}
+// igual gastoVariavelOccurrenceInMonth, mas sem deslocar pelo fechamento do cartão — sempre o mês real da compra
+function gastoVariavelOccurrenceCompetencia(g, mStr) {
+  const baseMonth = g.data.slice(0, 7);
+  let base = null;
+  if (g.tipo === 'parcelado') {
+    const parcelas = Math.max(1, g.parcelas || 1);
+    for (let i = 0; i < parcelas; i++) {
+      if (monthAddStr(baseMonth, i) === mStr) {
+        const valorParcela = Math.round((g.valor / parcelas) * 100) / 100;
+        base = { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
+        break;
+      }
+    }
+  } else if (mStr === baseMonth) {
+    base = { valor: g.valor, parcelaLabel: null };
+  }
+  if (!base) return null;
+  return { ...base, valorMeu: Math.round(base.valor * gastoFracaoMinha(g) * 100) / 100 };
 }
 
 /* ============ Resumo de fatura do cartão — soma os gastos fixos e variáveis vinculados a ele ============ */

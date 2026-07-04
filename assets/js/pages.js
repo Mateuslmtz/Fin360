@@ -1104,8 +1104,8 @@ function pageGastosFixos(container) {
     const monthsToShow = period.type === 'year' ? Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`) : [mStr];
     // para a lista, no modo "ano" mostramos a recorrência consolidada (1 linha por gasto fixo ativo no ano)
     const listMonth = period.type === 'year' ? currentMonthStr() : mStr;
-    const inPeriodList = gastosFixosForMonth(listMonth);
-    const displayList = sortList(gastosFixosForMonthAll(listMonth), gfSort, (g) => g.vencimentoISO, (g) => g.valor);
+    const inPeriodList = gastosFixosPorCompetencia(listMonth);
+    const displayList = sortList(gastosFixosPorCompetenciaAll(listMonth), gfSort, (g) => g.vencimentoISO, (g) => g.valor);
     const totalMes = inPeriodList.reduce((s, g) => s + g.valor, 0);
     const pagoMes = inPeriodList.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0);
     // soma só as contas NÃO pagas — pagar com desconto não pode deixar a diferença como "pendente"
@@ -1122,7 +1122,7 @@ function pageGastosFixos(container) {
             <div class="field"><label id="ff-dia-label">${ffForma === 'cartao' ? 'Dia da cobrança' : 'Dia do vencimento'}</label><input type="number" min="1" max="31" id="ff-dia" placeholder="Ex.: 10" value="${editing ? editing.diaVencimento : ''}" /></div>
           </div>
           <div class="row-sub" id="ff-dia-hint" style="margin:-8px 0 14px;display:${ffForma === 'cartao' ? 'block' : 'none'}">Cai na fatura que fecha depois desse dia — o vencimento real é o do cartão escolhido.</div>
-          <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(period)}" /></div>
+          <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? monthAddStr(gastoFixoCreatedMonth(editing), -gastoFixoShift(editing)) : gfPeriodMonth(period)}" /></div>
           <div class="row-sub" style="margin:-8px 0 14px">Segue o mês escolhido no filtro da lista — mude aqui se quiser lançar/pagar meses passados deste gasto fixo.</div>
           <div class="field-row" style="grid-template-columns:1.3fr 1fr">
             <div class="field"><label>Duração</label><select id="ff-duracao">
@@ -1243,7 +1243,7 @@ function gastosFixosTable(list, mStr, sort) {
       <tbody>
         ${list.map((g) => `
           <tr>
-            <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}${g.fimMes ? `<span class="badge badge-primary" style="margin-left:8px" title="Parcela ${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1} de ${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}">${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}</span>` : ''}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
+            <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}${g.fimMes ? `<span class="badge badge-primary" style="margin-left:8px" title="Parcela ${monthsDiffStr(monthAddStr(gastoFixoCreatedMonth(g), -gastoFixoShift(g)), g.mesRef) + 1} de ${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}">${monthsDiffStr(monthAddStr(gastoFixoCreatedMonth(g), -gastoFixoShift(g)), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}</span>` : ''}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
             <td>${categoryTag(g.categoryId)}</td>
             <td>${formatDateBR(g.vencimentoISO)}</td>
             <td>${g.pagamento ? formatDateBR(g.pagamento.data) : '<span class="row-sub">—</span>'}</td>
@@ -1274,7 +1274,7 @@ function gastosVariaveisInPeriod(period) {
   const months = period.type === 'year'
     ? Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`)
     : [period.value || currentMonthStr()];
-  return months.flatMap((m) => gastosVariaveisForMonth(m));
+  return months.flatMap((m) => gastosVariaveisPorCompetencia(m));
 }
 
 function pageGastosVariaveis(container) {
