@@ -273,22 +273,32 @@ function cartaoCustoRealCaixaForMonth(cartaoId, mStr) {
     .filter((x) => x.occurrence)
     .reduce((s, x) => s + x.occurrence.valorMeu, 0);
 }
-// limite realmente comprometido: soma as faturas de todo mês (do primeiro lançamento até o mês atual) que
-// ainda não foram pagas — pagar uma fatura libera esse limite de volta, igual um cartão de verdade
+// limite realmente comprometido: tudo que já foi lançado e ainda não foi quitado, igual um cartão de verdade —
+// à vista conta até a fatura ser paga, parcelado segura o limite de TODAS as parcelas que faltam (inclusive
+// as de meses futuros) e assinatura conta só as cobranças já feitas (até a fatura corrente). Pagar uma fatura
+// libera de volta a parte dela.
 function cartaoLimiteUsado(cartaoId) {
-  const compras = Store.state.cartaoCompras.filter((c) => c.cartaoId === cartaoId);
-  if (!compras.length) return 0;
-  let inicio = compras[0].data.slice(0, 7);
-  compras.forEach((c) => { const m = c.data.slice(0, 7); if (m < inicio) inicio = m; });
-  const fim = currentMonthStr();
+  const cartao = Store.get('cartoes', cartaoId);
+  const atual = currentMonthStr();
   let usado = 0;
-  let mStr = inicio;
-  let guard = 0;
-  while (mStr <= fim && guard < 600) {
-    if (!isCartaoFaturaPaga(cartaoId, mStr)) usado += cartaoFaturaForMonth(cartaoId, mStr);
-    mStr = monthAddStr(mStr, 1);
-    guard++;
-  }
+  Store.state.cartaoCompras
+    .filter((c) => c.cartaoId === cartaoId)
+    .forEach((c) => {
+      const base = compraBaseMonth(c, cartao, 'caixa');
+      let ultima = base;
+      if (c.tipo === 'parcelado') ultima = monthAddStr(base, Math.max(1, c.parcelas || 1) - 1);
+      else if (c.tipo === 'recorrente') ultima = base > atual ? base : atual;
+      let mStr = base;
+      let guard = 0;
+      while (mStr <= ultima && guard < 600) {
+        if (!isCartaoFaturaPaga(cartaoId, mStr)) {
+          const occ = compraOccurrenceInMonth(c, mStr, cartao, 'caixa');
+          if (occ) usado += occ.valor;
+        }
+        mStr = monthAddStr(mStr, 1);
+        guard++;
+      }
+    });
   return usado;
 }
 /* ============ Recorrência: recebimentos (único / recorrente / parcelado) ============ */
