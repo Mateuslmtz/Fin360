@@ -1808,7 +1808,7 @@ function cofrinhosFullList(items) {
 let editingCartaoId = null;
 let editingCompraId = null;
 let selectedCartaoId = null;
-let selectedFaturaMonth = null;
+let ccPeriod = { type: 'month', value: null };
 let novoCartaoOpen = false;
 let ccFaturaSort = 'data-desc';
 let compraTipo = 'avista';
@@ -1837,7 +1837,8 @@ function pageCartoes(container) {
   const draw = () => {
     const cartoes = Store.state.cartoes;
     if (!selectedCartaoId || !cartoes.find((c) => c.id === selectedCartaoId)) selectedCartaoId = cartoes[0] ? cartoes[0].id : null;
-    if (!selectedFaturaMonth) selectedFaturaMonth = monthAddStr(currentMonthStr(), 1);
+    if (!ccPeriod.value) ccPeriod.value = monthAddStr(currentMonthStr(), 1);
+    const selectedFaturaMonth = ccPeriod.type === 'year' ? `${ccPeriod.value}-01` : ccPeriod.value;
     const editingCartao = editingCartaoId ? Store.get('cartoes', editingCartaoId) : null;
     if (editingCartao) novoCartaoCor = editingCartao.cor || BANK_CORES[0];
     const editingCompra = editingCompraId ? Store.get('cartaoCompras', editingCompraId) : null;
@@ -1858,8 +1859,6 @@ function pageCartoes(container) {
     faturaItens.forEach((x) => { const k = x.compra.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.occurrence.valor; });
     const faturaCatEntries = Object.entries(faturaCatTotals).sort((a, b) => b[1] - a[1]);
     const faturaMaiorCat = faturaCatEntries[0];
-
-    const monthOptions = Array.from({ length: 7 }, (_, i) => monthAddStr(mAtual, i - 3));
 
     container.innerHTML = `
       <div class="grid-form-list">
@@ -1975,7 +1974,7 @@ function pageCartoes(container) {
                 <div class="panel-sub">Total: <strong style="color:var(--text)">${formatCurrency(faturaTotal)}</strong> · Pago: ${formatCurrency(faturaPaga ? faturaTotal : 0)} · Saldo: ${formatCurrency(faturaPaga ? 0 : faturaTotal)}</div>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
-                <select id="cc-fatura-mes">${monthOptions.map((m) => `<option value="${m}" ${m === selectedFaturaMonth ? 'selected' : ''}>${monthLabel(Number(m.slice(5,7))-1)} de ${m.slice(2,4)}</option>`).join('')}</select>
+                ${renderPeriodControl('cc', ccPeriod)}
                 <button class="btn ${faturaPaga ? 'btn-ghost' : 'btn-primary'} btn-sm" id="cc-pagar-fatura">${faturaPaga ? 'Reabrir fatura' : 'Pagar fatura'}</button>
               </div>
             </div>
@@ -2111,7 +2110,7 @@ function pageCartoes(container) {
     }
     if (document.getElementById('cp-cancel-edit')) document.getElementById('cp-cancel-edit').onclick = () => { editingCompraId = null; compraTipo = 'avista'; draw(); };
 
-    container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; selectedFaturaMonth = monthAddStr(currentMonthStr(), 1); draw(); });
+    container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; ccPeriod = { type: 'month', value: monthAddStr(currentMonthStr(), 1) }; draw(); });
     container.querySelectorAll('[data-action="edit-cartao"]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); editingCartaoId = b.dataset.id; novoCartaoOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="delete-cartao"]').forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
@@ -2137,7 +2136,7 @@ function pageCartoes(container) {
         onConfirm: () => { Store.remove('cartaoCompras', b.dataset.id); toast('Compra excluída', 'success'); draw(); },
       });
     });
-    if (document.getElementById('cc-fatura-mes')) document.getElementById('cc-fatura-mes').onchange = (e) => { selectedFaturaMonth = e.target.value; draw(); };
+    wirePeriodControl('cc', ccPeriod, draw);
     wireSortableHeaders(container, () => ccFaturaSort, (v) => { ccFaturaSort = v; }, draw);
     if (document.getElementById('cc-pagar-fatura')) document.getElementById('cc-pagar-fatura').onclick = () => {
       if (faturaPaga) {
