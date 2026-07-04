@@ -1245,7 +1245,7 @@ function gastosFixosTable(list, mStr, sort) {
           <tr>
             <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}${g.fimMes ? `<span class="badge badge-primary" style="margin-left:8px" title="Parcela ${monthsDiffStr(monthAddStr(gastoFixoCreatedMonth(g), -gastoFixoShift(g)), g.mesRef) + 1} de ${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}">${monthsDiffStr(monthAddStr(gastoFixoCreatedMonth(g), -gastoFixoShift(g)), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}</span>` : ''}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
             <td>${categoryTag(g.categoryId)}</td>
-            <td>${formatDateBR(g.vencimentoISO)}</td>
+            <td>${g.cartaoId ? '<span class="row-sub">—</span>' : formatDateBR(g.vencimentoISO)}</td>
             <td>${g.pagamento ? formatDateBR(g.pagamento.data) : '<span class="row-sub">—</span>'}</td>
             <td>${bancoOuCartaoLabel(g)}</td>
             <td><strong>${formatCurrency(gastoFixoValorEfetivo(g))}</strong></td>
