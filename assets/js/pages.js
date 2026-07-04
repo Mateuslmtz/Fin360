@@ -460,8 +460,8 @@ function pageDashboard(container) {
     const period = dashPeriod;
     const months = monthsInPeriod(period);
     const bankFilterOn = dashBank !== 'todos';
-    const fixos = months.flatMap((m) => gastosFixosForMonth(m)).filter((g) => !bankFilterOn || g.bankId === dashBank);
-    const variaveis = Store.state.gastosVariaveis.filter((g) => months.includes(g.data.slice(0, 7)) && (!bankFilterOn || g.bankId === dashBank));
+    const fixos = months.flatMap((m) => gastosFixosForMonth(m)).filter((g) => !g.cartaoId && (!bankFilterOn || g.bankId === dashBank));
+    const variaveis = months.flatMap((m) => gastosVariaveisForMonth(m)).filter((g) => !g.cartaoId && (!bankFilterOn || g.bankId === dashBank));
     const receb = months.flatMap((m) => recebimentosForMonth(m)).filter((r) => !bankFilterOn || r.bankId === dashBank);
     const cartoesFiltrados = Store.state.cartoes.filter((c) => !bankFilterOn || c.bankId === dashBank);
     const custoRealCartoes = months.reduce((s, m) => s + cartoesFiltrados.reduce((s2, c) => s2 + cartaoCustoRealForMonth(c.id, m), 0), 0);
@@ -516,7 +516,7 @@ function pageDashboard(container) {
       </div>
 
       <div class="stat-grid">
-        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: `Fixos + variáveis + cartão + parcelamentos (cartão: sua parte, ${regimeGastoCartao() === 'competencia' ? 'por compra' : 'por fatura'})`, tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: 'Fixos + variáveis + cartão (sua parte) + parcelamentos', tone: 'red', iconName: 'arrowDownCircle' })}
         ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: `Já recebidos — de ${formatCurrency(totalRecebimentosLancado)} lançados`, tone: 'green', iconName: 'arrowUpCircle' })}
         ${statCard({ label: 'Total a receber', value: formatCurrency(totalAReceber), sub: 'Recebimentos futuros', tone: 'blue', iconName: 'download' })}
         ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
@@ -602,8 +602,8 @@ function areaChartHTML(mStr, saldoInicial, bankId) {
   const receitasDia = new Array(nDays).fill(0);
   const add = (arr, iso, valor) => { const idx = days.indexOf(iso); if (idx > -1) arr[idx] += valor; };
 
-  gastosFixosForMonth(mStr).filter((g) => !bankId || g.bankId === bankId).forEach((g) => add(despesasDia, g.vencimentoISO, g.valor));
-  Store.state.gastosVariaveis.filter((g) => g.data.slice(0, 7) === mStr && (!bankId || g.bankId === bankId)).forEach((g) => add(despesasDia, g.data, g.valor));
+  gastosFixosForMonth(mStr).filter((g) => !g.cartaoId && (!bankId || g.bankId === bankId)).forEach((g) => add(despesasDia, g.vencimentoISO, g.valor));
+  gastosVariaveisForMonth(mStr).filter((g) => !g.cartaoId && (!bankId || g.bankId === bankId)).forEach((g) => add(despesasDia, g.data, g.valor));
   Store.state.cartoes.filter((c) => !bankId || c.bankId === bankId).forEach((c) => {
     const fatura = cartaoFaturaForMonth(c.id, mStr);
     if (fatura > 0) add(despesasDia, `${mStr}-${String(clampDayToMonth(mStr, c.diaVencimento)).padStart(2, '0')}`, fatura);
@@ -686,7 +686,11 @@ function areaChartHTML(mStr, saldoInicial, bankId) {
   `;
 }
 
+// vinculado a cartão: não tem baixa própria — o pagamento é feito de uma vez na fatura do cartão (aba Cartões)
 function pagoFixoStatusHTML(g, mStr) {
+  if (g.cartaoId) {
+    return `<span class="badge ${g.pago ? 'badge-success' : 'badge-warning'}" title="Pago junto com a fatura do cartão — veja em Cartões de crédito">${g.pago ? 'Pago (fatura)' : 'Na fatura'}</span>`;
+  }
   if (g.pago) {
     return `<div style="display:inline-flex;align-items:center;gap:8px">
       <span class="badge badge-success">Pago</span>
@@ -808,8 +812,8 @@ function yearTable(year) {
   const rows = months.map((m) => {
     const mStr = `${year}-${String(m + 1).padStart(2, '0')}`;
     const ganhos = recebimentosForMonth(mStr).reduce((s, r) => s + r.valor, 0);
-    const fixos = gastosFixosForMonth(mStr).reduce((s, g) => s + g.valor, 0);
-    const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr)).reduce((s, g) => s + g.valor, 0);
+    const fixos = gastosFixosForMonth(mStr).filter((g) => !g.cartaoId).reduce((s, g) => s + g.valor, 0);
+    const variaveis = gastosVariaveisForMonth(mStr).filter((g) => !g.cartaoId).reduce((s, g) => s + g.valor, 0);
     const cartao = allCartoesFaturaForMonth(mStr);
     const parcelas = parcelamentoParcelasForMonth(mStr);
     const saldoMes = ganhos - fixos - variaveis - cartao - parcelas;
@@ -879,8 +883,8 @@ function pageResumo(container) {
     const today = todayISO();
 
     const gastos = [
-      ...resumoMonthsForPeriod(period).flatMap((m) => gastosFixosForMonth(m)).map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'pagar', status: g.pago ? 'pago' : 'pendente' })),
-      ...Store.state.gastosVariaveis.map((g) => ({ ...g, label: g.descricao, date: g.data, kind: 'pagar' })),
+      ...resumoMonthsForPeriod(period).flatMap((m) => gastosFixosForMonth(m)).filter((g) => !g.cartaoId).map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'pagar', status: g.pago ? 'pago' : 'pendente' })),
+      ...resumoMonthsForPeriod(period).flatMap((m) => gastosVariaveisForMonth(m)).filter((g) => !g.cartaoId).map((g) => ({ ...g, label: g.descricao, date: g.data, kind: 'pagar' })),
     ];
     const receb = resumoMonthsForPeriod(period).flatMap((m) => recebimentosForMonth(m)).map((r) => ({ ...r, label: r.descricao, date: r.dataOcorrencia, kind: 'receber', status: r.recebido ? 'recebido' : 'pendente' }));
 
@@ -969,12 +973,123 @@ function resumoLabel(type) {
   return { hoje: 'hoje', amanha: 'amanhã', '7dias': 'nos últimos 7 dias', mes: 'este mês', custom: 'no período selecionado' }[type] || 'hoje';
 }
 
+/* ============ Forma de pagamento (Banco x Cartão de crédito) — Gastos Fixos e Variáveis ============ */
+function cartaoOptions(selected) {
+  if (!Store.state.cartoes.length) return `<option value="">Nenhum cartão cadastrado</option>`;
+  return `<option value="">Selecione o cartão...</option>` + Store.state.cartoes.map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${c.nome}</option>`).join('');
+}
+// coluna "Banco" das tabelas de Gastos Fixos/Variáveis — mostra o cartão quando o lançamento é pago por ele
+function bancoOuCartaoLabel(item) {
+  if (item.cartaoId) {
+    const cartao = Store.get('cartoes', item.cartaoId);
+    return `${icon('card')} ${cartao ? cartao.nome : 'Cartão'}`;
+  }
+  return (Store.bankById(item.bankId) || {}).name || '—';
+}
+function formaPagamentoHTML(prefix, forma, bankSelected, cartaoSelected) {
+  return `
+    <div class="field">
+      <label>Forma de pagamento</label>
+      <div class="pill-group" id="${prefix}-forma-group">
+        <button type="button" class="pill ${forma === 'banco' ? 'active' : ''}" data-forma="banco">Banco</button>
+        <button type="button" class="pill ${forma === 'cartao' ? 'active' : ''}" data-forma="cartao">Cartão de crédito</button>
+      </div>
+    </div>
+    <div class="field" id="${prefix}-banco-field" style="display:${forma === 'banco' ? 'block' : 'none'}">
+      <label>Banco vinculado <span class="req">*</span></label>${fieldHTML({ key: `${prefix}-banco`, type: 'select-bank' }, bankSelected)}
+    </div>
+    <div class="field" id="${prefix}-cartao-field" style="display:${forma === 'cartao' ? 'block' : 'none'}">
+      <label>Cartão <span class="req">*</span></label><select id="${prefix}-cartao">${cartaoOptions(cartaoSelected)}</select>
+      <div class="row-sub" style="margin-top:6px">Entra no resumo da fatura desse cartão — pague tudo de uma vez em "Cartões de crédito".</div>
+    </div>
+  `;
+}
+function wireFormaPagamento(prefix, setForma, onToggle) {
+  const group = document.getElementById(`${prefix}-forma-group`);
+  if (!group) return;
+  group.querySelectorAll('.pill').forEach((b) => b.onclick = () => {
+    setForma(b.dataset.forma);
+    group.querySelectorAll('.pill').forEach((x) => x.classList.toggle('active', x === b));
+    document.getElementById(`${prefix}-banco-field`).style.display = b.dataset.forma === 'banco' ? 'block' : 'none';
+    document.getElementById(`${prefix}-cartao-field`).style.display = b.dataset.forma === 'cartao' ? 'block' : 'none';
+    if (onToggle) onToggle(b.dataset.forma);
+  });
+}
+
+/* ============ Racha / divisão de um lançamento com outras pessoas (usado com forma de pagamento = Cartão) ============ */
+function divisaoRowHTML(prefix, nome, valor) {
+  return `
+    <div class="field-row" data-divisao-row style="margin-bottom:8px">
+      <div class="field" style="margin-bottom:0"><input type="text" placeholder="Nome (ex.: João)" class="${prefix}-div-nome" value="${nome || ''}" /></div>
+      <div class="field" style="margin-bottom:0;display:flex;gap:6px">
+        ${moneyInputHTML('', valor, null, { extraClass: `${prefix}-div-valor`, wrapAttrs: ' style="flex:1"' })}
+        <button type="button" class="btn-icon" data-remove-divisao title="Remover">${icon('trash')}</button>
+      </div>
+    </div>
+  `;
+}
+function readDivisoesRows(prefix) {
+  const rows = document.querySelectorAll(`#${prefix}-divisoes-rows [data-divisao-row]`);
+  return [...rows].map((row) => ({
+    nome: row.querySelector(`.${prefix}-div-nome`).value.trim() || 'Sem nome',
+    valor: moneyValueFromEl(row.querySelector(`.${prefix}-div-valor`)),
+  })).filter((d) => d.valor > 0);
+}
+function readDivisoesIfChecked(prefix) {
+  const el = document.getElementById(`${prefix}-dividir`);
+  return el && el.checked ? readDivisoesRows(prefix) : [];
+}
+function divisoesBoxHTML(prefix, divisoes) {
+  const aberto = (divisoes || []).length > 0;
+  return `
+    <div class="field">
+      <label class="checkbox-row"><input type="checkbox" id="${prefix}-dividir" ${aberto ? 'checked' : ''} /> Esse lançamento é rachado com outras pessoas?</label>
+    </div>
+    <div id="${prefix}-divisoes-box" style="display:${aberto ? 'block' : 'none'};margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-input)">
+      <p class="row-sub" style="margin-bottom:10px">O valor total continua contando na fatura do cartão — só a <strong style="color:var(--text)">sua parte</strong> entra nas suas estatísticas de gasto.</p>
+      <div id="${prefix}-divisoes-rows">${(divisoes || []).map((d) => divisaoRowHTML(prefix, d.nome, d.valor)).join('')}</div>
+      <button type="button" class="btn btn-ghost btn-sm" id="${prefix}-add-divisao">${icon('plus')} Adicionar pessoa</button>
+      <div class="row-sub" id="${prefix}-sua-parte" style="margin-top:10px;font-weight:700"></div>
+    </div>
+  `;
+}
+function wireDivisoesBox(prefix, valorInputId) {
+  const dividirEl = document.getElementById(`${prefix}-dividir`);
+  if (!dividirEl) return;
+  const atualizarSuaParte = () => {
+    const total = moneyValue(valorInputId);
+    const dividido = readDivisoesRows(prefix).reduce((s, d) => s + d.valor, 0);
+    const el = document.getElementById(`${prefix}-sua-parte`);
+    if (!el) return;
+    const suaParte = total - dividido;
+    el.textContent = `Sua parte: ${formatCurrency(Math.max(0, suaParte))}${dividido > total ? ' — a soma das divisões passou do valor total!' : ''}`;
+    el.style.color = dividido > total ? 'var(--danger)' : 'var(--text)';
+  };
+  const wireRow = (row) => {
+    row.querySelectorAll('input').forEach((inp) => inp.oninput = atualizarSuaParte);
+    const rm = row.querySelector('[data-remove-divisao]');
+    if (rm) rm.onclick = () => { row.remove(); atualizarSuaParte(); };
+  };
+  document.getElementById(`${prefix}-divisoes-rows`).querySelectorAll('[data-divisao-row]').forEach(wireRow);
+  dividirEl.onchange = (e) => { document.getElementById(`${prefix}-divisoes-box`).style.display = e.target.checked ? 'block' : 'none'; atualizarSuaParte(); };
+  document.getElementById(`${prefix}-add-divisao`).onclick = () => {
+    const box = document.getElementById(`${prefix}-divisoes-rows`);
+    box.insertAdjacentHTML('beforeend', divisaoRowHTML(prefix, '', ''));
+    wireRow(box.lastElementChild);
+    atualizarSuaParte();
+  };
+  const valorEl = document.getElementById(valorInputId);
+  if (valorEl) valorEl.addEventListener('input', atualizarSuaParte);
+  atualizarSuaParte();
+}
+
 /* =========================================================================
    GASTOS FIXOS
    ========================================================================= */
 let gfPeriod = { type: 'month', value: currentMonthStr() };
 let editingFixoId = null;
 let gfSort = 'data-asc';
+let ffForma = 'banco';
 
 function gfPeriodMonth(period) {
   return period.type === 'year' ? `${period.value}-01` : (period.value || currentMonthStr());
@@ -1004,8 +1119,9 @@ function pageGastosFixos(container) {
           <div class="field"><label>Nome</label><input type="text" id="ff-nome" placeholder="Ex.: Aluguel" value="${editing ? editing.nome : ''}" /></div>
           <div class="field-row">
             <div class="field"><label>Valor</label>${moneyInputHTML('ff-valor', editing ? editing.valor : '')}</div>
-            <div class="field"><label>Dia do vencimento</label><input type="number" min="1" max="31" id="ff-dia" placeholder="Ex.: 10" value="${editing ? editing.diaVencimento : ''}" /></div>
+            <div class="field"><label id="ff-dia-label">${ffForma === 'cartao' ? 'Dia da cobrança' : 'Dia do vencimento'}</label><input type="number" min="1" max="31" id="ff-dia" placeholder="Ex.: 10" value="${editing ? editing.diaVencimento : ''}" /></div>
           </div>
+          <div class="row-sub" id="ff-dia-hint" style="margin:-8px 0 14px;display:${ffForma === 'cartao' ? 'block' : 'none'}">Cai na fatura que fecha depois desse dia — o vencimento real é o do cartão escolhido.</div>
           <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(period)}" /></div>
           <div class="row-sub" style="margin:-8px 0 14px">Segue o mês escolhido no filtro da lista — mude aqui se quiser lançar/pagar meses passados deste gasto fixo.</div>
           <div class="field-row" style="grid-template-columns:1.3fr 1fr">
@@ -1018,7 +1134,8 @@ function pageGastosFixos(container) {
           <div class="row-sub" style="margin:-8px 0 14px">Ex.: 12 parcelas — a conta aparece por 12 meses a partir do "Ativo desde" e para sozinha.</div>
           <div class="field"><label>Categoria</label>${fieldHTML({ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
           <div class="field" style="display:flex;align-items:center;padding-top:4px"><label class="checkbox-row"><input type="checkbox" id="ff-ativo" ${!editing || editing.ativo !== false ? 'checked' : ''} /> Ativo (recorrente todo mês)</label></div>
-          <div class="field"><label>Banco vinculado <span class="req">*</span></label>${fieldHTML({ key: 'ff-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
+          ${formaPagamentoHTML('ff', ffForma, editing ? editing.bankId : '', editing ? editing.cartaoId : '')}
+          <div id="ff-racha-wrap" style="display:${ffForma === 'cartao' ? 'block' : 'none'}">${divisoesBoxHTML('ff', editing ? editing.divisoes : [])}</div>
           <div class="field"><label>Observação (opcional)</label><textarea id="ff-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
           <button class="btn btn-primary btn-block" id="ff-save">${editing ? 'Salvar alterações' : 'Salvar gasto fixo'}</button>
           ${editing ? `<button class="btn btn-ghost btn-block" id="ff-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
@@ -1051,18 +1168,23 @@ function pageGastosFixos(container) {
       const nome = document.getElementById('ff-nome').value.trim();
       const valor = moneyValue('ff-valor');
       const diaVencimento = Math.min(31, Math.max(1, parseInt(document.getElementById('ff-dia').value, 10) || 1));
-      const inicioMes = document.getElementById('ff-inicio').value || currentMonthStr();
-      const bankId = document.getElementById('f-ff-banco').value;
+      const inicioMesInformado = document.getElementById('ff-inicio').value || currentMonthStr();
       const categoryId = document.getElementById('f-ff-categoria').value;
       const duracao = document.getElementById('ff-duracao').value;
       const nParcelas = parseInt(document.getElementById('ff-parcelas').value, 10) || 0;
+      const bankId = ffForma === 'banco' ? document.getElementById('f-ff-banco').value : null;
+      const cartaoId = ffForma === 'cartao' ? document.getElementById('ff-cartao').value : null;
       if (!nome) { toast('Informe o nome do gasto fixo', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
-      if (!bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
+      if (ffForma === 'banco' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
+      if (ffForma === 'cartao' && !cartaoId) { toast('Selecione o cartão', 'danger'); return; }
       if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
       if (duracao === 'parcelas' && nParcelas < 1) { toast('Informe o número de parcelas', 'danger'); return; }
+      // vinculado a cartão: a cobrança pode cair na fatura do mês seguinte se o dia passar do fechamento do cartão
+      const inicioMes = cartaoId ? gastoCartaoBaseMonth(`${inicioMesInformado}-${String(diaVencimento).padStart(2, '0')}`, cartaoId) : inicioMesInformado;
+      const divisoes = cartaoId ? readDivisoesIfChecked('ff') : [];
       const payload = {
-        nome, valor, diaVencimento, inicioMes, bankId,
+        nome, valor, diaVencimento, inicioMes, bankId, cartaoId, divisoes,
         categoryId,
         // fimMes é exclusivo: 12 parcelas a partir de jul/2026 => aparece de jul/2026 a jun/2027
         fimMes: duracao === 'parcelas' ? monthAddStr(inicioMes, nParcelas) : null,
@@ -1070,29 +1192,37 @@ function pageGastosFixos(container) {
         observacao: document.getElementById('ff-obs').value,
       };
       if (editing) {
-        const valorMudou = valor !== editing.valor || diaVencimento !== editing.diaVencimento;
+        const valorMudou = valor !== editing.valor || diaVencimento !== editing.diaVencimento || cartaoId !== (editing.cartaoId || null);
         if (valorMudou) {
-          aplicarAlteracaoGastoFixoModal(editing, listMonth, payload, () => { editingFixoId = null; draw(); });
+          aplicarAlteracaoGastoFixoModal(editing, listMonth, payload, () => { editingFixoId = null; ffForma = 'banco'; draw(); });
         } else {
           Store.update('gastosFixos', editing.id, payload);
           toast('Gasto fixo atualizado', 'success');
           editingFixoId = null;
+          ffForma = 'banco';
           draw();
         }
       } else {
         Store.add('gastosFixos', Object.assign({ historico: [{ id: uid(), mes: inicioMes, valor, diaVencimento }] }, payload));
         toast('Gasto fixo cadastrado', 'success');
+        ffForma = 'banco';
         draw();
       }
     };
-    if (editing) document.getElementById('ff-cancel-edit').onclick = () => { editingFixoId = null; draw(); };
+    if (editing) document.getElementById('ff-cancel-edit').onclick = () => { editingFixoId = null; ffForma = 'banco'; draw(); };
 
     wireQuickAddButtons([{ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'ff-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('ff', () => draw(), { catTipo: 'despesa' });
     wirePeriodControl('gf', period, draw);
     wireSortableHeaders(container, () => gfSort, (v) => { gfSort = v; }, draw);
+    wireFormaPagamento('ff', (v) => { ffForma = v; }, (forma) => {
+      document.getElementById('ff-dia-label').textContent = forma === 'cartao' ? 'Dia da cobrança' : 'Dia do vencimento';
+      document.getElementById('ff-dia-hint').style.display = forma === 'cartao' ? 'block' : 'none';
+      document.getElementById('ff-racha-wrap').style.display = forma === 'cartao' ? 'block' : 'none';
+    });
+    wireDivisoesBox('ff', 'ff-valor');
 
-    container.querySelectorAll('[data-action="edit-fixo"]').forEach((b) => b.onclick = () => { editingFixoId = b.dataset.id; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    container.querySelectorAll('[data-action="edit-fixo"]').forEach((b) => b.onclick = () => { editingFixoId = b.dataset.id; ffForma = Store.get('gastosFixos', b.dataset.id).cartaoId ? 'cartao' : 'banco'; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="toggle-ativo-fixo"]').forEach((b) => b.onclick = () => {
       const item = Store.get('gastosFixos', b.dataset.id);
       Store.update('gastosFixos', b.dataset.id, { ativo: item.ativo === false });
@@ -1117,7 +1247,7 @@ function gastosFixosTable(list, mStr, sort) {
             <td>${categoryTag(g.categoryId)}</td>
             <td>${formatDateBR(g.vencimentoISO)}</td>
             <td>${g.pagamento ? formatDateBR(g.pagamento.data) : '<span class="row-sub">—</span>'}</td>
-            <td>${Store.bankById(g.bankId) ? Store.bankById(g.bankId).name : '—'}</td>
+            <td>${bancoOuCartaoLabel(g)}</td>
             <td><strong>${formatCurrency(gastoFixoValorEfetivo(g))}</strong></td>
             <td style="text-align:center">${pagoFixoStatusHTML(g, mStr)}</td>
             <td><div class="row-actions">
@@ -1137,18 +1267,28 @@ function gastosFixosTable(list, mStr, sort) {
 let gvPeriod = { type: 'month', value: currentMonthStr() };
 let gvFilters = { pill: 'todos', status: 'todos', category: 'todos', sort: 'data-desc', search: '' };
 let editingVariavelId = null;
+let gvForma = 'banco';
+let gvTipo = 'unico';
+
+function gastosVariaveisInPeriod(period) {
+  const months = period.type === 'year'
+    ? Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`)
+    : [period.value || currentMonthStr()];
+  return months.flatMap((m) => gastosVariaveisForMonth(m));
+}
 
 function pageGastosVariaveis(container) {
   const draw = () => {
     const editing = editingVariavelId ? Store.get('gastosVariaveis', editingVariavelId) : null;
     const period = gvPeriod;
-    let list = Store.state.gastosVariaveis.filter((g) => inPeriod(g.data, period));
+    const allInPeriod = gastosVariaveisInPeriod(period);
+    let list = allInPeriod;
 
-    if (gvFilters.pill === 'pagos') list = list.filter((g) => g.status === 'pago');
-    else if (gvFilters.pill === 'pendentes') list = list.filter((g) => g.status !== 'pago');
+    if (gvFilters.pill === 'pagos') list = list.filter((g) => g.pago);
+    else if (gvFilters.pill === 'pendentes') list = list.filter((g) => !g.pago);
     else if (gvFilters.pill.startsWith('cat:')) list = list.filter((g) => g.categoryId === gvFilters.pill.slice(4));
 
-    if (gvFilters.status !== 'todos') list = list.filter((g) => g.status === gvFilters.status);
+    if (gvFilters.status !== 'todos') list = list.filter((g) => (gvFilters.status === 'pago' ? g.pago : !g.pago));
     if (gvFilters.category !== 'todos') list = list.filter((g) => g.categoryId === gvFilters.category);
     if (gvFilters.search) {
       const q = gvFilters.search.toLowerCase();
@@ -1156,10 +1296,10 @@ function pageGastosVariaveis(container) {
     }
     list = sortList(list, gvFilters.sort, (g) => g.data, (g) => g.valor);
 
-    const baseForStats = Store.state.gastosVariaveis.filter((g) => inPeriod(g.data, period));
+    const baseForStats = allInPeriod;
     const total = list.reduce((s, g) => s + g.valor, 0);
     const media = list.length ? total / list.length : 0;
-    const pago = list.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0);
+    const pago = list.filter((g) => g.pago).reduce((s, g) => s + g.valor, 0);
     const pendente = total - pago;
 
     const usedCatIds = [...new Set(baseForStats.map((g) => g.categoryId).filter(Boolean))];
@@ -1174,7 +1314,21 @@ function pageGastosVariaveis(container) {
             <div class="field"><label>Data</label><input type="date" id="gv-data" value="${editing ? editing.data : todayISO()}" /></div>
           </div>
           <div class="field"><label>Categoria</label>${fieldHTML({ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
-          <div class="field"><label>Banco vinculado <span class="req">*</span></label>${fieldHTML({ key: 'gv-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
+          ${formaPagamentoHTML('gv', gvForma, editing ? editing.bankId : '', editing ? editing.cartaoId : '')}
+          <div id="gv-tipo-wrap" style="display:${gvForma === 'cartao' ? 'block' : 'none'}">
+            <div class="field">
+              <label>Tipo de compra</label>
+              <div class="pill-group" id="gv-tipo-group">
+                <button type="button" class="pill ${gvTipo === 'unico' ? 'active' : ''}" data-tipo="unico">Único</button>
+                <button type="button" class="pill ${gvTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">Parcelado</button>
+              </div>
+            </div>
+            <div class="field" id="gv-parcelas-field" style="display:${gvTipo === 'parcelado' ? 'block' : 'none'}">
+              <label>Número de parcelas</label><input type="number" min="2" max="48" id="gv-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
+            </div>
+            <div class="row-sub" style="margin:-8px 0 14px">Cai na fatura que fecha depois da data acima — o vencimento real é o do cartão escolhido.</div>
+          </div>
+          <div id="gv-racha-wrap" style="display:${gvForma === 'cartao' ? 'block' : 'none'}">${divisoesBoxHTML('gv', editing ? editing.divisoes : [])}</div>
           <div class="field"><label>Observação (opcional)</label><textarea id="gv-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
           <button class="btn btn-primary btn-block" id="gv-save">${editing ? 'Salvar alterações' : 'Adicionar lançamento'}</button>
           ${editing ? `<button class="btn btn-ghost btn-block" id="gv-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
@@ -1224,26 +1378,42 @@ function pageGastosVariaveis(container) {
       const descricao = document.getElementById('gv-desc').value.trim();
       const valor = moneyValue('gv-valor');
       const data = document.getElementById('gv-data').value;
-      const bankId = document.getElementById('f-gv-banco').value;
       const categoryId = document.getElementById('f-gv-categoria').value;
+      const bankId = gvForma === 'banco' ? document.getElementById('f-gv-banco').value : null;
+      const cartaoId = gvForma === 'cartao' ? document.getElementById('gv-cartao').value : null;
       if (!descricao) { toast('Informe a descrição', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
-      if (!bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
+      if (gvForma === 'banco' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
+      if (gvForma === 'cartao' && !cartaoId) { toast('Selecione o cartão', 'danger'); return; }
       if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
+      const tipo = cartaoId ? gvTipo : 'unico';
+      const parcelas = tipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('gv-parcelas').value, 10) || 2) : 1;
+      const divisoes = cartaoId ? readDivisoesIfChecked('gv') : [];
       const payload = {
-        descricao, valor, data, bankId,
+        descricao, valor, data, bankId, cartaoId, tipo, parcelas, divisoes,
         categoryId,
         observacao: document.getElementById('gv-obs').value,
       };
       if (editing) { updateGastoVariavel(editing.id, payload); toast('Lançamento atualizado', 'success'); editingVariavelId = null; }
       else { addGastoVariavel(payload); toast('Lançamento adicionado', 'success'); }
+      gvForma = 'banco'; gvTipo = 'unico';
       draw();
     };
-    if (editing) document.getElementById('gv-cancel-edit').onclick = () => { editingVariavelId = null; draw(); };
+    if (editing) document.getElementById('gv-cancel-edit').onclick = () => { editingVariavelId = null; gvForma = 'banco'; gvTipo = 'unico'; draw(); };
 
     wireQuickAddButtons([{ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'gv-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('gv', () => draw(), { catTipo: 'despesa' });
     wirePeriodControl('gvp', period, draw);
+    wireFormaPagamento('gv', (v) => { gvForma = v; }, (forma) => {
+      document.getElementById('gv-tipo-wrap').style.display = forma === 'cartao' ? 'block' : 'none';
+      document.getElementById('gv-racha-wrap').style.display = forma === 'cartao' ? 'block' : 'none';
+    });
+    wireDivisoesBox('gv', 'gv-valor');
+    if (document.getElementById('gv-tipo-group')) document.getElementById('gv-tipo-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => {
+      gvTipo = b.dataset.tipo;
+      document.getElementById('gv-tipo-group').querySelectorAll('.pill').forEach((x) => x.classList.toggle('active', x === b));
+      document.getElementById('gv-parcelas-field').style.display = gvTipo === 'parcelado' ? 'block' : 'none';
+    });
 
     document.getElementById('gv-filter-status').onchange = (e) => { gvFilters.status = e.target.value; draw(); };
     document.getElementById('gv-filter-cat').onchange = (e) => { gvFilters.category = e.target.value; draw(); };
@@ -1251,7 +1421,14 @@ function pageGastosVariaveis(container) {
     document.getElementById('gv-search').oninput = (e) => { gvFilters.search = e.target.value; draw(); };
     container.querySelectorAll('[data-pill]').forEach((b) => b.onclick = () => { gvFilters.pill = b.dataset.pill; draw(); });
 
-    container.querySelectorAll('[data-action="edit-var"]').forEach((b) => b.onclick = () => { editingVariavelId = b.dataset.id; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    container.querySelectorAll('[data-action="edit-var"]').forEach((b) => b.onclick = () => {
+      editingVariavelId = b.dataset.id;
+      const item = Store.get('gastosVariaveis', b.dataset.id);
+      gvForma = item.cartaoId ? 'cartao' : 'banco';
+      gvTipo = item.tipo === 'parcelado' ? 'parcelado' : 'unico';
+      draw();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     container.querySelectorAll('[data-action="toggle-pago-var"]').forEach((b) => b.onclick = () => {
       const item = Store.get('gastosVariaveis', b.dataset.id);
       if (item.status === 'pago') reopenGastoVariavel(b.dataset.id); else payGastoVariavel(b.dataset.id);
@@ -1267,6 +1444,13 @@ function pageGastosVariaveis(container) {
   draw();
 }
 
+// vinculado a cartão: não tem baixa própria — o pagamento é feito de uma vez na fatura do cartão (aba Cartões)
+function pagoVariavelStatusHTML(g) {
+  if (g.cartaoId) {
+    return `<span class="badge ${g.pago ? 'badge-success' : 'badge-warning'}" title="Pago junto com a fatura do cartão — veja em Cartões de crédito">${g.pago ? 'Pago (fatura)' : 'Na fatura'}</span>`;
+  }
+  return `<button class="badge ${g.status === 'pago' ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-pago-var" data-id="${g.id}">${g.status === 'pago' ? 'Pago' : 'Pendente'}</button>`;
+}
 function gastosVariaveisTable(list, sort) {
   return `
     <table class="list-table">
@@ -1274,12 +1458,12 @@ function gastosVariaveisTable(list, sort) {
       <tbody>
         ${list.map((g) => `
           <tr>
-            <td><div class="row-title">${g.descricao}</div>${g.observacao ? `<div class="row-sub">${g.observacao}</div>` : ''}</td>
+            <td><div class="row-title">${g.descricao}${g.parcelaLabel ? `<span class="badge badge-primary" style="margin-left:8px">${g.parcelaLabel}</span>` : ''}</div>${g.observacao ? `<div class="row-sub">${g.observacao}</div>` : ''}</td>
             <td>${categoryTag(g.categoryId)}</td>
             <td>${formatDateBR(g.data)}</td>
-            <td>${Store.bankById(g.bankId) ? Store.bankById(g.bankId).name : '—'}</td>
+            <td>${bancoOuCartaoLabel(g)}</td>
             <td><strong>${formatCurrency(g.valor)}</strong></td>
-            <td><button class="badge ${g.status === 'pago' ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-pago-var" data-id="${g.id}">${g.status === 'pago' ? 'Pago' : 'Pendente'}</button></td>
+            <td>${pagoVariavelStatusHTML(g)}</td>
             <td><div class="row-actions">
               <button class="btn-icon" data-action="edit-var" data-id="${g.id}">${icon('edit')}</button>
               <button class="btn-icon" data-action="delete-var" data-id="${g.id}">${icon('trash')}</button>
@@ -1806,31 +1990,27 @@ function cofrinhosFullList(items) {
 
 /* ---- Cartões de crédito ---- */
 let editingCartaoId = null;
-let editingCompraId = null;
 let selectedCartaoId = null;
 let ccPeriod = { type: 'month', value: null };
 let novoCartaoOpen = false;
-let ccFaturaSort = 'data-desc';
-let compraTipo = 'avista';
+let ccFaturaSort = 'valor-desc';
 let novoCartaoCor = BANK_CORES[0];
 
-function divisaoRowHTML(nome, valor) {
-  return `
-    <div class="field-row" data-divisao-row style="margin-bottom:8px">
-      <div class="field" style="margin-bottom:0"><input type="text" placeholder="Nome (ex.: João)" class="cp-div-nome" value="${nome || ''}" /></div>
-      <div class="field" style="margin-bottom:0;display:flex;gap:6px">
-        ${moneyInputHTML('', valor, null, { extraClass: 'cp-div-valor', wrapAttrs: ' style="flex:1"' })}
-        <button type="button" class="btn-icon" data-remove-divisao title="Remover">${icon('trash')}</button>
-      </div>
-    </div>
-  `;
+// linha da fatura: compras diretas viraram gastos fixos (assinaturas) ou variáveis (à vista/parcelado)
+// lançados nas próprias abas — aqui é só resumo, edição/exclusão acontece na origem
+function cartaoItemDescricao(x) {
+  return x.origem === 'variavel' ? x.item.descricao : x.item.nome;
 }
-function readDivisoesRows() {
-  const rows = document.querySelectorAll('#cp-divisoes-rows [data-divisao-row]');
-  return [...rows].map((row) => ({
-    nome: row.querySelector('.cp-div-nome').value.trim() || 'Sem nome',
-    valor: moneyValueFromEl(row.querySelector('.cp-div-valor')),
-  })).filter((d) => d.valor > 0);
+function cartaoItemParcelaLabel(x) {
+  if (x.origem === 'variavel') return x.item.parcelaLabel || '—';
+  if (x.item.fimMes) return `${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.fimMes)}`;
+  return '—';
+}
+function cartaoItemOrigemRoute(x) {
+  return x.origem === 'variavel' ? 'gastos-variaveis' : 'gastos-fixos';
+}
+function cartaoItemOrigemLabel(x) {
+  return x.origem === 'variavel' ? 'Gastos Variáveis' : 'Gastos Fixos';
 }
 
 function pageCartoes(container) {
@@ -1841,7 +2021,6 @@ function pageCartoes(container) {
     const selectedFaturaMonth = ccPeriod.type === 'year' ? `${ccPeriod.value}-01` : ccPeriod.value;
     const editingCartao = editingCartaoId ? Store.get('cartoes', editingCartaoId) : null;
     if (editingCartao) novoCartaoCor = editingCartao.cor || BANK_CORES[0];
-    const editingCompra = editingCompraId ? Store.get('cartaoCompras', editingCompraId) : null;
     const mAtual = currentMonthStr();
 
     const totalLimite = cartoes.reduce((s, c) => s + (c.limite || 0), 0);
@@ -1849,16 +2028,14 @@ function pageCartoes(container) {
     const totalParcelas = cartoes.reduce((s, c) => s + parcelasAtivasCount(c.id), 0);
 
     const selected = cartoes.find((c) => c.id === selectedCartaoId);
-    const faturaItens = selected ? sortList(cartaoComprasForMonth(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.compra.data, (x) => x.occurrence.valor) : [];
-    const faturaVencimentoISO = selected ? `${selectedFaturaMonth}-${String(clampDayToMonth(selectedFaturaMonth, selected.diaVencimento)).padStart(2, '0')}` : null;
-    const faturaTotal = faturaItens.reduce((s, x) => s + x.occurrence.valor, 0);
-    const faturaCustoReal = faturaItens.reduce((s, x) => s + x.occurrence.valorMeu, 0);
+    const faturaItens = selected ? sortList(cartaoItensForMonth(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
+    const faturaTotal = faturaItens.reduce((s, x) => s + x.item.valor, 0);
+    const faturaCustoReal = faturaItens.reduce((s, x) => s + x.item.valorMeu, 0);
     const faturaPaga = selected && isCartaoFaturaPaga(selected.id, selectedFaturaMonth);
     const limiteUsado = selected ? cartaoLimiteUsado(selected.id) : 0;
     const faturaCatTotals = {};
-    faturaItens.forEach((x) => { const k = x.compra.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.occurrence.valor; });
+    faturaItens.forEach((x) => { const k = x.item.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.item.valor; });
     const faturaCatEntries = Object.entries(faturaCatTotals).sort((a, b) => b[1] - a[1]);
-    const faturaMaiorCat = faturaCatEntries[0];
 
     container.innerHTML = `
       <div class="grid-form-list">
@@ -1890,38 +2067,10 @@ function pageCartoes(container) {
           </div>
 
           <div class="panel">
-            <h3 style="margin-bottom:14px">${editingCompra ? 'Editar compra' : 'Adicionar compra'}</h3>
-            ${cartoes.length === 0 ? `<div class="row-sub" style="margin-bottom:10px">Cadastre um cartão acima antes de lançar compras.</div>` : ''}
-            <div class="field"><label>Nome da compra</label><input type="text" id="cp-nome" placeholder="Ex.: Mercado" value="${editingCompra ? editingCompra.descricao : ''}" /></div>
-            <div class="field-row">
-              <div class="field"><label>Valor</label>${moneyInputHTML('cp-valor', editingCompra ? editingCompra.valorTotal : '')}</div>
-              <div class="field"><label>Data</label><input type="date" id="cp-data" value="${editingCompra ? editingCompra.data : todayISO()}" /></div>
-            </div>
-            <div class="field"><label>Cartão</label><select id="cp-cartao">${cartoes.length === 0 ? '<option value="">Nenhum cartão cadastrado</option>' : cartoes.map((c) => `<option value="${c.id}" ${c.id === (editingCompra ? editingCompra.cartaoId : selectedCartaoId) ? 'selected' : ''}>${c.nome}${(Store.bankById(c.bankId) || {}).name ? ' (' + Store.bankById(c.bankId).name + ')' : ''}</option>`).join('')}</select></div>
-            <div class="field"><label>Categoria</label>${fieldHTML({ key: 'cp-categoria', type: 'select-category', catTipo: 'despesa' }, editingCompra ? editingCompra.categoryId : '')}</div>
-            <div class="field">
-              <label>Tipo de compra</label>
-              <div class="pill-group" id="cp-tipo-group">
-                <button type="button" class="pill ${compraTipo === 'avista' ? 'active' : ''}" data-tipo="avista">À vista</button>
-                <button type="button" class="pill ${compraTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">Parcelado</button>
-                <button type="button" class="pill ${compraTipo === 'recorrente' ? 'active' : ''}" data-tipo="recorrente">Recorrente</button>
-              </div>
-            </div>
-            <div class="field" id="cp-parcelas-field" style="display:${compraTipo === 'parcelado' ? 'block' : 'none'}">
-              <label>Número de parcelas</label><input type="number" min="2" max="48" id="cp-parcelas" value="${editingCompra ? editingCompra.parcelas || 2 : 2}" />
-            </div>
-            <div class="field">
-              <label class="checkbox-row"><input type="checkbox" id="cp-dividir" ${editingCompra && compraValorDividido(editingCompra) > 0 ? 'checked' : ''} /> Essa compra é rachada com outras pessoas?</label>
-            </div>
-            <div id="cp-divisoes-box" style="display:${editingCompra && compraValorDividido(editingCompra) > 0 ? 'block' : 'none'};margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-input)">
-              <p class="row-sub" style="margin-bottom:10px">O valor total continua contando na fatura do cartão — só a <strong style="color:var(--text)">sua parte</strong> entra nas suas estatísticas de gasto.</p>
-              <div id="cp-divisoes-rows">${(editingCompra ? editingCompra.divisoes || [] : []).map((d) => divisaoRowHTML(d.nome, d.valor)).join('')}</div>
-              <button type="button" class="btn btn-ghost btn-sm" id="cp-add-divisao">${icon('plus')} Adicionar pessoa</button>
-              <div class="row-sub" id="cp-sua-parte" style="margin-top:10px;font-weight:700"></div>
-            </div>
-            <button class="btn btn-primary btn-block" id="cp-save" ${cartoes.length === 0 ? 'disabled' : ''}>${editingCompra ? 'Salvar alterações' : 'Adicionar compra'}</button>
-            ${editingCompra ? `<button class="btn btn-ghost btn-block" id="cp-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
-            <div style="margin-top:14px">${collapsibleNewCategory('cp', { catTipo: 'despesa' })}</div>
+            <h3 style="margin-bottom:10px">${icon('sparkles')} Como lançar compras</h3>
+            <p class="row-sub" style="margin-bottom:14px">Esta aba agora é só o resumo das faturas. Lance as compras nas abas de sempre — na "Forma de pagamento" escolha o cartão em vez do banco.</p>
+            <button class="btn btn-ghost btn-block" id="cc-ir-fixos" style="margin-bottom:8px">${icon('repeat')} Assinatura recorrente → Gastos Fixos</button>
+            <button class="btn btn-ghost btn-block" id="cc-ir-variaveis">${icon('bag')} Compra à vista ou parcelada → Gastos Variáveis</button>
           </div>
         </div>
 
@@ -1985,25 +2134,21 @@ function pageCartoes(container) {
               ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
               ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
-            ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.' }) : `
+            ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
               <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th>${sortableThHTML('Compra', 'data', ccFaturaSort)}<th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
                 <tbody>
-                  ${faturaItens.map(({ compra, occurrence }) => {
-                    const dividido = compraValorDividido(compra);
+                  ${faturaItens.map((x) => {
+                    const dividido = gastoValorDividido(x.item);
                     return `
                     <tr>
-                      <td class="row-title">${compra.descricao}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${compra.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
-                      <td>${categoryTag(compra.categoryId)}</td>
-                      <td>${formatDateBR(compra.data)}</td>
-                      <td>${formatDateBR(faturaVencimentoISO)}</td>
-                      <td>${occurrence.parcelaLabel}</td>
-                      <td><strong>${formatCurrency(occurrence.valor)}</strong></td>
-                      <td>${dividido > 0 ? `<span class="amount-pos">${formatCurrency(occurrence.valorMeu)}</span>` : formatCurrency(occurrence.valorMeu)}</td>
-                      <td><div class="row-actions">
-                        <button class="btn-icon" data-action="edit-compra" data-id="${compra.id}">${icon('edit')}</button>
-                        <button class="btn-icon" data-action="delete-compra" data-id="${compra.id}">${icon('trash')}</button>
-                      </div></td>
+                      <td class="row-title">${cartaoItemDescricao(x)}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${x.item.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
+                      <td>${categoryTag(x.item.categoryId)}</td>
+                      <td>${formatDateBR(x.item.vencimentoISO)}</td>
+                      <td>${cartaoItemParcelaLabel(x)}</td>
+                      <td><strong>${formatCurrency(x.item.valor)}</strong></td>
+                      <td>${dividido > 0 ? `<span class="amount-pos">${formatCurrency(x.item.valorMeu)}</span>` : formatCurrency(x.item.valorMeu)}</td>
+                      <td><button class="btn-icon" data-action="ir-lancamento" data-route="${cartaoItemOrigemRoute(x)}" title="Editar em ${cartaoItemOrigemLabel(x)}">${icon('edit')}</button></td>
                     </tr>`;
                   }).join('')}
                 </tbody>
@@ -2015,6 +2160,9 @@ function pageCartoes(container) {
     `;
 
     document.getElementById('cc-toggle-novocartao').onclick = () => { novoCartaoOpen = !novoCartaoOpen; draw(); };
+    document.getElementById('cc-ir-fixos').onclick = () => goRoute('gastos-fixos');
+    document.getElementById('cc-ir-variaveis').onclick = () => goRoute('gastos-variaveis');
+    wireQuickAddButtons([{ key: 'cc-vinculo', type: 'select-bank' }]);
     if (document.getElementById('cc-cor-group')) {
       const corBtns = document.getElementById('cc-cor-group').querySelectorAll('[data-cor]');
       corBtns.forEach((b) => b.onclick = () => {
@@ -2047,95 +2195,22 @@ function pageCartoes(container) {
     }
     if (document.getElementById('cc-cancel-cartao')) document.getElementById('cc-cancel-cartao').onclick = () => { editingCartaoId = null; novoCartaoOpen = false; draw(); };
 
-    document.getElementById('cp-tipo-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => {
-      compraTipo = b.dataset.tipo;
-      document.getElementById('cp-tipo-group').querySelectorAll('.pill').forEach((x) => x.classList.toggle('active', x === b));
-      document.getElementById('cp-parcelas-field').style.display = compraTipo === 'parcelado' ? 'block' : 'none';
-    });
-
-    wireQuickAddButtons([{ key: 'cp-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'cc-vinculo', type: 'select-bank' }]);
-    wireCollapsibleNewCategory('cp', () => draw(), { catTipo: 'despesa' });
-
-    const atualizarSuaParte = () => {
-      const total = moneyValue('cp-valor');
-      const dividido = readDivisoesRows().reduce((s, d) => s + d.valor, 0);
-      const el = document.getElementById('cp-sua-parte');
-      if (!el) return;
-      const suaParte = total - dividido;
-      el.textContent = `Sua parte: ${formatCurrency(Math.max(0, suaParte))}${dividido > total ? ' — a soma das divisões passou do valor total!' : ''}`;
-      el.style.color = dividido > total ? 'var(--danger)' : 'var(--text)';
-    };
-    const wireDivisaoRow = (row) => {
-      row.querySelectorAll('input').forEach((inp) => inp.oninput = atualizarSuaParte);
-      const rm = row.querySelector('[data-remove-divisao]');
-      if (rm) rm.onclick = () => { row.remove(); atualizarSuaParte(); };
-    };
-    if (document.getElementById('cp-dividir')) {
-      document.getElementById('cp-divisoes-rows').querySelectorAll('[data-divisao-row]').forEach(wireDivisaoRow);
-      document.getElementById('cp-dividir').onchange = (e) => { document.getElementById('cp-divisoes-box').style.display = e.target.checked ? 'block' : 'none'; atualizarSuaParte(); };
-      document.getElementById('cp-add-divisao').onclick = () => {
-        const box = document.getElementById('cp-divisoes-rows');
-        box.insertAdjacentHTML('beforeend', divisaoRowHTML('', ''));
-        wireDivisaoRow(box.lastElementChild);
-        atualizarSuaParte();
-      };
-      document.getElementById('cp-valor').addEventListener('input', atualizarSuaParte);
-      atualizarSuaParte();
-    }
-
-    if (document.getElementById('cp-save')) {
-      document.getElementById('cp-save').onclick = () => {
-        const descricao = document.getElementById('cp-nome').value.trim();
-        const valorTotal = moneyValue('cp-valor');
-        const cartaoId = document.getElementById('cp-cartao').value;
-        const categoryId = document.getElementById('f-cp-categoria').value;
-        if (!descricao) { toast('Informe o nome da compra', 'danger'); return; }
-        if (!valorTotal) { toast('Informe um valor', 'danger'); return; }
-        if (!cartaoId) { toast('Selecione um cartão', 'danger'); return; }
-        if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
-        const divisoes = document.getElementById('cp-dividir').checked ? readDivisoesRows() : [];
-        if (divisoes.reduce((s, d) => s + d.valor, 0) > valorTotal) { toast('A soma das divisões não pode passar do valor total', 'danger'); return; }
-        const payload = {
-          descricao, valorTotal, cartaoId, divisoes,
-          data: document.getElementById('cp-data').value,
-          categoryId,
-          tipo: compraTipo,
-          parcelas: compraTipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('cp-parcelas').value, 10) || 2) : 1,
-        };
-        if (editingCompra) { Store.update('cartaoCompras', editingCompra.id, payload); toast('Compra atualizada', 'success'); editingCompraId = null; }
-        else { Store.add('cartaoCompras', payload); toast('Compra adicionada', 'success'); }
-        selectedCartaoId = cartaoId;
-        draw();
-      };
-    }
-    if (document.getElementById('cp-cancel-edit')) document.getElementById('cp-cancel-edit').onclick = () => { editingCompraId = null; compraTipo = 'avista'; draw(); };
-
     container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; ccPeriod = { type: 'month', value: monthAddStr(currentMonthStr(), 1) }; draw(); });
     container.querySelectorAll('[data-action="edit-cartao"]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); editingCartaoId = b.dataset.id; novoCartaoOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="delete-cartao"]').forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
       confirmModal({
-        title: 'Excluir cartão', text: 'Isso também vai remover as compras lançadas nesse cartão. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+        title: 'Excluir cartão', text: 'Isso também vai remover os gastos fixos/variáveis lançados nesse cartão. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
         onConfirm: () => {
           Store.remove('cartoes', b.dataset.id);
-          Store.state.cartaoCompras = Store.state.cartaoCompras.filter((c) => c.cartaoId !== b.dataset.id);
+          Store.state.gastosFixos = Store.state.gastosFixos.filter((g) => g.cartaoId !== b.dataset.id);
+          Store.state.gastosVariaveis = Store.state.gastosVariaveis.filter((g) => g.cartaoId !== b.dataset.id);
           Store.save();
           toast('Cartão excluído', 'success'); draw();
         },
       });
     });
-    container.querySelectorAll('[data-action="edit-compra"]').forEach((b) => b.onclick = () => {
-      editingCompraId = b.dataset.id;
-      compraTipo = Store.get('cartaoCompras', b.dataset.id).tipo || 'avista';
-      draw();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-    container.querySelectorAll('[data-action="delete-compra"]').forEach((b) => b.onclick = () => {
-      confirmModal({
-        title: 'Excluir compra', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
-        onConfirm: () => { Store.remove('cartaoCompras', b.dataset.id); toast('Compra excluída', 'success'); draw(); },
-      });
-    });
+    container.querySelectorAll('[data-action="ir-lancamento"]').forEach((b) => b.onclick = () => goRoute(b.dataset.route));
     wirePeriodControl('cc', ccPeriod, draw);
     wireSortableHeaders(container, () => ccFaturaSort, (v) => { ccFaturaSort = v; }, draw);
     if (document.getElementById('cc-pagar-fatura')) document.getElementById('cc-pagar-fatura').onclick = () => {
@@ -2544,7 +2619,7 @@ function setMetaCategoria(categoryId, mes, valor) {
 }
 function realizadoCategoria(categoryId, mes) {
   const fixos = gastosFixosForMonth(mes).filter((g) => g.categoryId === categoryId).reduce((s, g) => s + g.valor, 0);
-  const variaveis = Store.state.gastosVariaveis.filter((g) => g.categoryId === categoryId && isSameMonth(g.data, mes)).reduce((s, g) => s + g.valor, 0);
+  const variaveis = gastosVariaveisForMonth(mes).filter((g) => g.categoryId === categoryId).reduce((s, g) => s + g.valor, 0);
   return fixos + variaveis;
 }
 function removeMetaCategoria(categoryId, mes) {
@@ -3015,22 +3090,6 @@ function pageConfiguracoes(container) {
       </div>
 
       <div class="panel">
-        <h3 style="margin-bottom:10px">${icon('card')} Gastos do cartão no orçamento</h3>
-        <p class="row-sub" style="margin-bottom:14px">A <strong style="color:var(--text)">fatura do cartão</strong> (em Cartões de crédito) sempre segue o ciclo real de fechamento — é o valor exato que você paga ao banco. Já o <strong style="color:var(--text)">Total de gastos</strong> do Dashboard pode contar essas compras de dois jeitos:</p>
-        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-          <label class="checkbox-row" style="align-items:flex-start;gap:10px">
-            <input type="radio" name="cfg-regime-cartao" id="cfg-regime-competencia" ${p.gastoCartaoPorCompra !== false ? 'checked' : ''} style="margin-top:3px" />
-            <span><strong style="display:block;color:var(--text)">Pela data da compra</strong><span class="row-sub">O gasto conta no mês em que você comprou, não no mês em que a fatura fecha. Combina com quem se organiza no formato "recebo pra gastar" — o dinheiro já está comprometido no mês da compra, mesmo que o pagamento real da fatura seja só no mês seguinte.</span></span>
-          </label>
-          <label class="checkbox-row" style="align-items:flex-start;gap:10px">
-            <input type="radio" name="cfg-regime-cartao" id="cfg-regime-caixa" ${p.gastoCartaoPorCompra === false ? 'checked' : ''} style="margin-top:3px" />
-            <span><strong style="display:block;color:var(--text)">Pela fatura (vencimento)</strong><span class="row-sub">O gasto só conta no mês em que a fatura realmente vence — igual ao dinheiro saindo de fato da sua conta.</span></span>
-          </label>
-        </div>
-        <button class="btn btn-primary btn-sm" id="cfg-save-regime">Salvar</button>
-      </div>
-
-      <div class="panel">
         <h3 style="margin-bottom:10px">${icon('logout')} Sessão</h3>
         <p class="row-sub" style="margin-bottom:14px">Encerre sua sessão neste dispositivo.</p>
         <button class="btn btn-danger-ghost btn-sm" id="cfg-logout">Sair da conta</button>
@@ -3081,12 +3140,6 @@ function pageConfiguracoes(container) {
       Store.state.profile.currency = document.getElementById('cfg-moeda').value;
       Store.save();
       toast('Moeda atualizada', 'success');
-      render();
-    };
-    document.getElementById('cfg-save-regime').onclick = () => {
-      Store.state.profile.gastoCartaoPorCompra = document.getElementById('cfg-regime-competencia').checked;
-      Store.save();
-      toast('Preferência salva', 'success');
       render();
     };
     document.getElementById('cfg-logout').onclick = () => {
