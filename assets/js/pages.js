@@ -2305,7 +2305,7 @@ function pageExtrato(container) {
     const faltaPagar = totalGastos - totalPago;
     const entradasRealizadas = receb.filter((t) => t.status === 'recebido').reduce((s, t) => s + t.valor, 0);
     const saidasPagas = totalPago;
-    const saldoBancario = Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
+    const saldoBancario = extratoBanco !== 'todos' ? ((Store.bankById(extratoBanco) || {}).balance || 0) : Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
 
     const periodPills = [
       { mode: 'sync', label: `Sincronizar com Dashboard (${dashPeriod.type === 'year' ? dashPeriod.value : 'Este mês'})` },
