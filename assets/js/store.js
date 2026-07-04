@@ -283,6 +283,24 @@ function cartaoItensForMonth(cartaoId, mStr) {
   const variaveis = gastosVariaveisForMonth(mStr).filter((g) => g.cartaoId === cartaoId).map((g) => ({ origem: 'variavel', item: g }));
   return [...fixos, ...variaveis];
 }
+// "dia de cobrança" de um item, pra comparar com o dia de fechamento do cartão — o mesmo dia usado pra decidir
+// em qual fatura a cobrança cai (ver gastoCartaoBaseMonth)
+function itemDiaCobranca(x) {
+  return x.origem === 'fixo' ? x.item.diaVencimento : parseInt(x.item.data.slice(8, 10), 10);
+}
+function itemDeslocado(x, cartao) {
+  return !!(cartao && cartao.diaFechamento && itemDiaCobranca(x) > cartao.diaFechamento);
+}
+// itens agrupados pelo mês da COMPRA/lançamento (competência) — não pelo mês em que a fatura vence.
+// Uma cobrança feita depois do fechamento aparece aqui no mês em que foi feita, mas o vencimento exibido
+// (item.vencimentoISO) continua sendo o mês seguinte, real, da fatura — evita confundir "quando comprei"
+// com "quando vence". Total da fatura/limite/pagamento continuam sempre pelo vencimento real (ver cartaoFaturaForMonth).
+function cartaoItensPorCompetencia(cartaoId, mStr) {
+  const cartao = Store.get('cartoes', cartaoId);
+  const desteMes = cartaoItensForMonth(cartaoId, mStr).filter((x) => !itemDeslocado(x, cartao)).map((x) => ({ ...x, deslocado: false }));
+  const proxMes = cartaoItensForMonth(cartaoId, monthAddStr(mStr, 1)).filter((x) => itemDeslocado(x, cartao)).map((x) => ({ ...x, deslocado: true }));
+  return [...desteMes, ...proxMes];
+}
 // fatura real do cartão — o que você de fato paga ao banco naquele mês (valor cheio, sem descontar racha)
 function cartaoFaturaForMonth(cartaoId, mStr) {
   return cartaoItensForMonth(cartaoId, mStr).reduce((s, x) => s + x.item.valor, 0);
