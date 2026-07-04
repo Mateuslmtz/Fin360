@@ -2028,13 +2028,20 @@ function pageCartoes(container) {
     const totalParcelas = cartoes.reduce((s, c) => s + parcelasAtivasCount(c.id), 0);
 
     const selected = cartoes.find((c) => c.id === selectedCartaoId);
-    const faturaItens = selected ? sortList(cartaoItensForMonth(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
-    const faturaTotal = faturaItens.reduce((s, x) => s + x.item.valor, 0);
-    const faturaCustoReal = faturaItens.reduce((s, x) => s + x.item.valorMeu, 0);
+    // a lista mostra o que foi COMPRADO no mês selecionado (mesmo que o vencimento caia no mês seguinte);
+    // total/limite/pagamento continuam sempre pelo vencimento real — os dois podem divergir quando há itens
+    // deslocados, por isso cada linha mostra seu próprio vencimento e é marcada quando cai na fatura seguinte
+    const faturaItens = selected ? sortList(cartaoItensPorCompetencia(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
+    const faturaTotal = selected ? cartaoFaturaForMonth(selected.id, selectedFaturaMonth) : 0;
+    const faturaCustoReal = selected ? cartaoCustoRealForMonth(selected.id, selectedFaturaMonth) : 0;
     const faturaPaga = selected && isCartaoFaturaPaga(selected.id, selectedFaturaMonth);
     const limiteUsado = selected ? cartaoLimiteUsado(selected.id) : 0;
+    // itens que entram no total desta fatura mas foram comprados no mês anterior (por isso não aparecem na
+    // lista abaixo, que é organizada por mês da compra) — evita o Total parecer "sem explicação"
+    const itensDoMesAnterior = selected ? cartaoItensForMonth(selected.id, selectedFaturaMonth).filter((x) => itemDeslocado(x, selected)) : [];
+    const totalMesAnterior = itensDoMesAnterior.reduce((s, x) => s + x.item.valor, 0);
     const faturaCatTotals = {};
-    faturaItens.forEach((x) => { const k = x.item.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.item.valor; });
+    (selected ? cartaoItensForMonth(selected.id, selectedFaturaMonth) : []).forEach((x) => { const k = x.item.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.item.valor; });
     const faturaCatEntries = Object.entries(faturaCatTotals).sort((a, b) => b[1] - a[1]);
 
     container.innerHTML = `
@@ -2134,9 +2141,11 @@ function pageCartoes(container) {
               ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
               ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
-            ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
+            <div class="panel-sub" style="margin:2px 0 12px">Compras lançadas em ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} — o vencimento de cada uma mostra em qual fatura ela realmente entra.</div>
+            ${totalMesAnterior > 0 ? `<div class="row-sub" style="margin:-6px 0 12px">${icon('sparkles')} O total da fatura acima inclui ${formatCurrency(totalMesAnterior)} de compras feitas em ${monthLabel(Number(monthAddStr(selectedFaturaMonth, -1).slice(5,7))-1)} que caíram nesta fatura.</div>` : ''}
+            ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhuma compra nesse mês.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
               <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
                 <tbody>
                   ${faturaItens.map((x) => {
                     const dividido = gastoValorDividido(x.item);
@@ -2144,7 +2153,7 @@ function pageCartoes(container) {
                     <tr>
                       <td class="row-title">${cartaoItemDescricao(x)}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${x.item.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
                       <td>${categoryTag(x.item.categoryId)}</td>
-                      <td>${formatDateBR(x.item.vencimentoISO)}</td>
+                      <td>${formatDateBR(x.item.vencimentoISO)}${x.deslocado ? `<div class="row-sub">${icon('sparkles')} Fatura seguinte</div>` : ''}</td>
                       <td>${cartaoItemParcelaLabel(x)}</td>
                       <td><strong>${formatCurrency(x.item.valor)}</strong></td>
                       <td>${dividido > 0 ? `<span class="amount-pos">${formatCurrency(x.item.valorMeu)}</span>` : formatCurrency(x.item.valorMeu)}</td>
