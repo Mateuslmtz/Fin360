@@ -41,12 +41,15 @@ function defaultState() {
       { id: 'cat-outros-receita', name: 'Outros', color: '#8b93ac', emoji: '📦', tipo: 'receita' },
     ],
     banks: [],
-    // gastosFixos: {id,nome,valor,diaVencimento(1-31),categoryId,bankId,ativo,inicioMes(opcional),fimMes(opcional, exclusivo),observacao,createdAt,
+    // gastosFixos: {id,nome,valor,diaVencimento(1-31),categoryId,bankId,cartaoId(opcional — pago via fatura do cartão em vez de banco),
+    //   divisoes(opcional, racha — ver gastoValorMeu),ativo,inicioMes(opcional),fimMes(opcional, exclusivo),observacao,createdAt,
     //   historico:[{id,mes:'YYYY-MM',valor,diaVencimento}] (valor/dia vigentes a partir de cada mês — ver gastoFixoConfigParaMes)}
-    // recorrentes — "pago/pendente" é controlado por mês em gastosFixosPagamentos
+    // recorrentes — "pago/pendente" é controlado por mês em gastosFixosPagamentos (ou pela fatura do cartão, se cartaoId)
     gastosFixos: [],
     gastosFixosPagamentos: [], // {id, gastoFixoId, mes:'YYYY-MM', bankId, data, valor}
     gastosFixosMesesOcultos: [], // {id, gastoFixoId, mes:'YYYY-MM'} — ocorrência excluída só naquele mês ("Apenas este mês")
+    // gastosVariaveis: {id,descricao,valor,data,categoryId,bankId,cartaoId(opcional),divisoes(opcional, racha),
+    //   tipo:'unico'|'parcelado'(só faz sentido com cartaoId),parcelas,status:'pago'|'pendente'(ignorado quando cartaoId),observacao,createdAt}
     gastosVariaveis: [],
     // recebimentos: {id,descricao,valor,data,categoryId,bankId,tipo:'unico'|'recorrente'|'parcelado',parcelas,dataFinal(recorrente, opcional),observacao,createdAt}
     recebimentos: [],
@@ -54,10 +57,10 @@ function defaultState() {
     // cofrinhos: {id,nome,meta,atual,icone,cor,prazo,observacao,aporteAutomatico,diaAporte,valorAporte,contaOrigemId,ultimoAporteMes,createdAt}
     cofrinhos: [],
     transferencias: [], // {id,deId,paraId,valor,data,observacao,createdAt}
-    // cartoes: {id,nome,bankId,limite,diaFechamento,diaVencimento,cor}
+    // cartoes: {id,nome,bankId,limite,diaFechamento,diaVencimento,cor} — compras são lançadas em Gastos Fixos/Variáveis (cartaoId)
     cartoes: [],
-    // cartaoCompras: {id,cartaoId,descricao,categoryId,valorTotal,data,tipo:'avista'|'parcelado'|'recorrente',parcelas}
-    cartaoCompras: [],
+    cartaoCompras: [], // legado — só usado para migrar dados antigos, ver Store.migrarCartaoComprasParaGastos()
+    migradoCartaoComprasV2: false,
     cartaoFaturasPagas: [], // {id, cartaoId, mes:'YYYY-MM', bankId, valor, ledgerApplied}
     investimentos: [],
     conciliacoes: [], // array de chaves de transação (ex: 'gf:id:2026-06') marcadas como conciliadas
@@ -76,7 +79,10 @@ function clampDayToMonth(mStr, day) {
   const [y, m] = mStr.split('-').map(Number);
   return Math.min(day || 1, daysInMonth(y, m - 1));
 }
-function gastoFixoVencimentoISO(gf, mStr) {
+// quando pago via cartão, o vencimento de verdade é o da fatura (dia de vencimento do cartão), não o "dia de
+// cobrança" cadastrado no gasto fixo — esse dia só serve pra decidir em qual fatura a cobrança cai (ver gastoCartaoBaseMonth)
+function gastoFixoVencimentoISO(gf, mStr, cartaoId) {
+  if (cartaoId) return cartaoFaturaVencimentoISO(cartaoId, mStr);
   const day = clampDayToMonth(mStr, gf.diaVencimento);
   return `${mStr}-${String(day).padStart(2, '0')}`;
 }
@@ -144,13 +150,27 @@ function gastoFixoConfigParaMes(gf, mStr) {
   if (!hist.length) return { valor: gf.valor, diaVencimento: gf.diaVencimento };
   return hist.reduce((latest, h) => (h.mes > latest.mes ? h : latest));
 }
+// gasto fixo pago via cartão: "pago/pendente" segue a fatura do cartão (ver isCartaoFaturaPaga), não tem
+// baixa própria — a "sua parte" (racha) usa gastoValorMeu, igual às compras de cartão de antes
+function gastoFixoOccurrenceExtras(gf, cfg, mStr) {
+  if (gf.cartaoId) {
+    return {
+      vencimentoISO: gastoFixoVencimentoISO(cfg, mStr, gf.cartaoId),
+      pago: isCartaoFaturaPaga(gf.cartaoId, mStr),
+      pagamento: null,
+      valorMeu: gastoValorMeu(gf),
+    };
+  }
+  const pagamento = gastoFixoPagamento(gf.id, mStr);
+  return { vencimentoISO: gastoFixoVencimentoISO(cfg, mStr), pago: !!pagamento, pagamento, valorMeu: gastoValorMeu(gf) };
+}
 function gastosFixosForMonth(mStr) {
   return Store.state.gastosFixos
     .filter((gf) => gastoFixoAppliesToMonth(gf, mStr))
     .map((gf) => {
       const cfg = gastoFixoConfigParaMes(gf, mStr);
-      const pagamento = gastoFixoPagamento(gf.id, mStr);
-      return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, vencimentoISO: gastoFixoVencimentoISO(cfg, mStr), pago: !!pagamento, pagamento, mesRef: mStr };
+      const extras = gastoFixoOccurrenceExtras(gf, cfg, mStr);
+      return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, mesRef: mStr, ...extras };
     });
 }
 // igual gastosFixosForMonth, mas inclui os inativos (pra tela de listagem não "sumir" com o botão de reativar)
@@ -159,8 +179,8 @@ function gastosFixosForMonthAll(mStr) {
     .filter((gf) => mStr >= gastoFixoCreatedMonth(gf) && (!gf.fimMes || mStr < gf.fimMes) && !isGastoFixoMesOculto(gf.id, mStr))
     .map((gf) => {
       const cfg = gastoFixoConfigParaMes(gf, mStr);
-      const pagamento = gastoFixoPagamento(gf.id, mStr);
-      return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, vencimentoISO: gastoFixoVencimentoISO(cfg, mStr), pago: !!pagamento, pagamento, mesRef: mStr };
+      const extras = gastoFixoOccurrenceExtras(gf, cfg, mStr);
+      return { ...gf, valor: cfg.valor, diaVencimento: cfg.diaVencimento, mesRef: mStr, ...extras };
     });
 }
 // aplica uma alteração de valor/dia de vencimento — 'deste-mes' preserva o histórico anterior a partir do mês de
@@ -189,116 +209,122 @@ function monthsDiffStr(a, b) {
   const [yb, mb] = b.split('-').map(Number);
   return (yb - ya) * 12 + (mb - ma);
 }
-/* ---- Racha / divisão de compras de cartão com outras pessoas ---- */
-function compraValorDividido(compra) {
-  return (compra.divisoes || []).reduce((s, d) => s + (d.valor || 0), 0);
+/* ---- Racha / divisão de um lançamento (gasto fixo ou variável) com outras pessoas ---- */
+function gastoValorDividido(item) {
+  return (item.divisoes || []).reduce((s, d) => s + (d.valor || 0), 0);
 }
-function compraValorMeu(compra) {
-  return Math.max(0, compra.valorTotal - compraValorDividido(compra));
+function gastoValorMeu(item) {
+  return Math.max(0, item.valor - gastoValorDividido(item));
 }
-function compraFracaoMinha(compra) {
-  return compra.valorTotal > 0 ? compraValorMeu(compra) / compra.valorTotal : 1;
+function gastoFracaoMinha(item) {
+  return item.valor > 0 ? gastoValorMeu(item) / item.valor : 1;
 }
 
-// "caixa" = mês da fatura em que a compra realmente é cobrada (respeita o dia de fechamento do cartão)
-// "competencia" = mês em que a compra foi feita (útil pra quem organiza o orçamento por "recebo pra gastar")
-function compraBaseMonth(compra, cartao, regime) {
-  const compraMonth = compra.data.slice(0, 7);
-  if (regime === 'caixa') {
-    const dia = parseInt(compra.data.slice(8, 10), 10);
-    const fechamento = cartao && cartao.diaFechamento;
-    if (fechamento && dia > fechamento) return monthAddStr(compraMonth, 1);
-  }
-  return compraMonth;
+// dia de vencimento real da fatura de um cartão num mês específico (clampado aos dias daquele mês)
+function cartaoFaturaVencimentoISO(cartaoId, mStr) {
+  const cartao = Store.get('cartoes', cartaoId);
+  const day = clampDayToMonth(mStr, cartao ? cartao.diaVencimento : 1);
+  return `${mStr}-${String(day).padStart(2, '0')}`;
 }
-function compraOccurrenceInMonth(compra, mStr, cartao, regime) {
-  const baseMonth = compraBaseMonth(compra, cartao, regime);
-  const fracaoMinha = compraFracaoMinha(compra);
+// mês da fatura em que uma cobrança lançada num cartão cai — respeita o dia de fechamento do cartão
+// (cobrança depois do fechamento vai pra fatura do mês seguinte), igual uma compra de cartão de verdade
+function gastoCartaoBaseMonth(dataISO, cartaoId) {
+  const cartao = Store.get('cartoes', cartaoId);
+  const mes = dataISO.slice(0, 7);
+  const dia = parseInt(dataISO.slice(8, 10), 10);
+  const fechamento = cartao && cartao.diaFechamento;
+  if (fechamento && dia > fechamento) return monthAddStr(mes, 1);
+  return mes;
+}
+
+/* ============ Gastos variáveis: único ou parcelado (parcelado só faz sentido vinculado a cartão) ============ */
+function gastoVariavelBaseMonth(g) {
+  return g.cartaoId ? gastoCartaoBaseMonth(g.data, g.cartaoId) : g.data.slice(0, 7);
+}
+function gastoVariavelOccurrenceInMonth(g, mStr) {
+  const baseMonth = gastoVariavelBaseMonth(g);
   let base = null;
-  if (compra.tipo === 'parcelado') {
-    const parcelas = Math.max(1, compra.parcelas || 1);
+  if (g.tipo === 'parcelado') {
+    const parcelas = Math.max(1, g.parcelas || 1);
     for (let i = 0; i < parcelas; i++) {
       if (monthAddStr(baseMonth, i) === mStr) {
-        const valorParcela = Math.round((compra.valorTotal / parcelas) * 100) / 100;
+        const valorParcela = Math.round((g.valor / parcelas) * 100) / 100;
         base = { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
         break;
       }
     }
-  } else if (compra.tipo === 'recorrente') {
-    if (mStr >= baseMonth) base = { valor: compra.valorTotal, parcelaLabel: '—' };
-  } else {
-    // à vista
-    if (mStr === baseMonth) base = { valor: compra.valorTotal, parcelaLabel: '1/1' };
+  } else if (mStr === baseMonth) {
+    base = { valor: g.valor, parcelaLabel: null };
   }
   if (!base) return null;
-  return { ...base, valorMeu: Math.round(base.valor * fracaoMinha * 100) / 100 };
+  return { ...base, valorMeu: Math.round(base.valor * gastoFracaoMinha(g) * 100) / 100 };
 }
-function regimeGastoCartao() {
-  return Store.state.profile.gastoCartaoPorCompra !== false ? 'competencia' : 'caixa';
+// gastos variáveis que ocorrem no mês mStr. Pago direto do banco: aparece uma vez, status próprio.
+// Vinculado a cartão: segue o ciclo de fatura (pode virar várias parcelas em meses diferentes) e o
+// "pago/pendente" vem da fatura do cartão, não tem baixa própria.
+function gastosVariaveisForMonth(mStr) {
+  return Store.state.gastosVariaveis
+    .map((g) => ({ g, occurrence: gastoVariavelOccurrenceInMonth(g, mStr) }))
+    .filter((x) => x.occurrence)
+    .map((x) => ({
+      ...x.g,
+      valor: x.occurrence.valor,
+      valorMeu: x.occurrence.valorMeu,
+      parcelaLabel: x.occurrence.parcelaLabel,
+      mesRef: mStr,
+      vencimentoISO: x.g.cartaoId ? cartaoFaturaVencimentoISO(x.g.cartaoId, mStr) : x.g.data,
+      pago: x.g.cartaoId ? isCartaoFaturaPaga(x.g.cartaoId, mStr) : x.g.status === 'pago',
+    }));
 }
-// fatura real do cartão — sempre pelo ciclo de fechamento, é o que você de fato paga ao banco naquele mês
-function cartaoComprasForMonth(cartaoId, mStr) {
-  const cartao = Store.get('cartoes', cartaoId);
-  return Store.state.cartaoCompras
-    .filter((c) => c.cartaoId === cartaoId)
-    .map((c) => ({ compra: c, occurrence: compraOccurrenceInMonth(c, mStr, cartao, 'caixa') }))
-    .filter((x) => x.occurrence);
+
+/* ============ Resumo de fatura do cartão — soma os gastos fixos e variáveis vinculados a ele ============ */
+function cartaoItensForMonth(cartaoId, mStr) {
+  const fixos = gastosFixosForMonth(mStr).filter((g) => g.cartaoId === cartaoId).map((g) => ({ origem: 'fixo', item: g }));
+  const variaveis = gastosVariaveisForMonth(mStr).filter((g) => g.cartaoId === cartaoId).map((g) => ({ origem: 'variavel', item: g }));
+  return [...fixos, ...variaveis];
 }
+// fatura real do cartão — o que você de fato paga ao banco naquele mês (valor cheio, sem descontar racha)
 function cartaoFaturaForMonth(cartaoId, mStr) {
-  return cartaoComprasForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valor, 0);
+  return cartaoItensForMonth(cartaoId, mStr).reduce((s, x) => s + x.item.valor, 0);
 }
-// custo real pro seu orçamento pessoal — segue o regime escolhido em Configurações (padrão: mês da compra)
-// e já desconta a parte rachada com outras pessoas
-function cartaoComprasCustoRealForMonth(cartaoId, mStr) {
-  const cartao = Store.get('cartoes', cartaoId);
-  const regime = regimeGastoCartao();
-  return Store.state.cartaoCompras
-    .filter((c) => c.cartaoId === cartaoId)
-    .map((c) => ({ compra: c, occurrence: compraOccurrenceInMonth(c, mStr, cartao, regime) }))
-    .filter((x) => x.occurrence);
-}
+// custo real pro seu orçamento pessoal — já desconta a parte rachada com outras pessoas
 function cartaoCustoRealForMonth(cartaoId, mStr) {
-  return cartaoComprasCustoRealForMonth(cartaoId, mStr).reduce((s, x) => s + x.occurrence.valorMeu, 0);
+  return cartaoItensForMonth(cartaoId, mStr).reduce((s, x) => s + x.item.valorMeu, 0);
 }
 function allCartoesFaturaForMonth(mStr) {
   return Store.state.cartoes.reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
 }
-// custo real (sua parte) sempre no regime "caixa" — usado pra marcar como "pago" quando a fatura é quitada,
-// independente do regime de exibição escolhido em Configurações (competência x caixa)
+// mantido por compatibilidade com quem já chamava a versão "sempre caixa" — hoje é sempre esse regime
 function cartaoCustoRealCaixaForMonth(cartaoId, mStr) {
-  const cartao = Store.get('cartoes', cartaoId);
-  return Store.state.cartaoCompras
-    .filter((c) => c.cartaoId === cartaoId)
-    .map((c) => ({ compra: c, occurrence: compraOccurrenceInMonth(c, mStr, cartao, 'caixa') }))
-    .filter((x) => x.occurrence)
-    .reduce((s, x) => s + x.occurrence.valorMeu, 0);
+  return cartaoCustoRealForMonth(cartaoId, mStr);
 }
 // limite realmente comprometido: tudo que já foi lançado e ainda não foi quitado, igual um cartão de verdade —
-// à vista conta até a fatura ser paga, parcelado segura o limite de TODAS as parcelas que faltam (inclusive
-// as de meses futuros) e assinatura conta só as cobranças já feitas (até a fatura corrente). Pagar uma fatura
-// libera de volta a parte dela.
+// gasto fixo conta enquanto a recorrência estiver ativa, gasto variável parcelado segura o limite de TODAS as
+// parcelas que faltam (inclusive as de meses futuros). Pagar uma fatura libera de volta a parte dela.
 function cartaoLimiteUsado(cartaoId) {
-  const cartao = Store.get('cartoes', cartaoId);
   const atual = currentMonthStr();
   let usado = 0;
-  Store.state.cartaoCompras
-    .filter((c) => c.cartaoId === cartaoId)
-    .forEach((c) => {
-      const base = compraBaseMonth(c, cartao, 'caixa');
-      let ultima = base;
-      if (c.tipo === 'parcelado') ultima = monthAddStr(base, Math.max(1, c.parcelas || 1) - 1);
-      else if (c.tipo === 'recorrente') ultima = base > atual ? base : atual;
-      let mStr = base;
-      let guard = 0;
-      while (mStr <= ultima && guard < 600) {
-        if (!isCartaoFaturaPaga(cartaoId, mStr)) {
-          const occ = compraOccurrenceInMonth(c, mStr, cartao, 'caixa');
-          if (occ) usado += occ.valor;
-        }
-        mStr = monthAddStr(mStr, 1);
-        guard++;
+  Store.state.gastosFixos.filter((gf) => gf.cartaoId === cartaoId).forEach((gf) => {
+    const inicio = gastoFixoCreatedMonth(gf);
+    const fim = gf.fimMes ? monthAddStr(gf.fimMes, -1) : atual;
+    let mStr = inicio;
+    let guard = 0;
+    while (mStr <= fim && guard < 600) {
+      if (gf.ativo !== false && !isGastoFixoMesOculto(gf.id, mStr) && !isCartaoFaturaPaga(cartaoId, mStr)) {
+        usado += gastoFixoConfigParaMes(gf, mStr).valor;
       }
-    });
+      mStr = monthAddStr(mStr, 1);
+      guard++;
+    }
+  });
+  Store.state.gastosVariaveis.filter((g) => g.cartaoId === cartaoId).forEach((g) => {
+    const base = gastoVariavelBaseMonth(g);
+    const n = g.tipo === 'parcelado' ? Math.max(1, g.parcelas || 1) : 1;
+    for (let i = 0; i < n; i++) {
+      const mStr = monthAddStr(base, i);
+      if (!isCartaoFaturaPaga(cartaoId, mStr)) usado += Math.round((g.valor / n) * 100) / 100;
+    }
+  });
   return usado;
 }
 /* ============ Recorrência: recebimentos (único / recorrente / parcelado) ============ */
@@ -367,8 +393,11 @@ function deleteRecebimento(id) {
   Store.remove('recebimentos', id);
 }
 
-/* ============ Gastos variáveis: status pago/pendente também move o saldo do banco ============ */
+/* ============ Gastos variáveis: status pago/pendente também move o saldo do banco ============
+   Vinculado a cartão (g.cartaoId) nunca mexe no saldo do banco diretamente — o dinheiro só sai de
+   fato quando a fatura do cartão é paga (ver payCartaoFatura), então essas funções viram no-op pra eles. */
 function addGastoVariavel(payload) {
+  if (payload.cartaoId) return Store.add('gastosVariaveis', Object.assign({ status: 'pendente' }, payload));
   const autoPago = payload.data <= todayISO();
   const item = Store.add('gastosVariaveis', Object.assign({ status: autoPago ? 'pago' : 'pendente' }, payload, autoPago ? { ledgerApplied: true } : {}));
   if (autoPago) Store.applyBankDelta(payload.bankId, -payload.valor);
@@ -376,27 +405,27 @@ function addGastoVariavel(payload) {
 }
 function updateGastoVariavel(id, payload) {
   const old = Store.get('gastosVariaveis', id);
-  if (old && old.status === 'pago') {
+  if (old && !old.cartaoId && old.status === 'pago') {
     Store.applyBankDelta(old.bankId, old.valor);
-    Store.applyBankDelta(payload.bankId, -payload.valor);
+    if (!payload.cartaoId) Store.applyBankDelta(payload.bankId, -payload.valor);
   }
   Store.update('gastosVariaveis', id, payload);
 }
 function payGastoVariavel(id) {
   const g = Store.get('gastosVariaveis', id);
-  if (!g || g.status === 'pago') return;
+  if (!g || g.cartaoId || g.status === 'pago') return;
   Store.update('gastosVariaveis', id, { status: 'pago', ledgerApplied: true });
   Store.applyBankDelta(g.bankId, -g.valor);
 }
 function reopenGastoVariavel(id) {
   const g = Store.get('gastosVariaveis', id);
-  if (!g || g.status !== 'pago') return;
+  if (!g || g.cartaoId || g.status !== 'pago') return;
   Store.update('gastosVariaveis', id, { status: 'pendente' });
   Store.applyBankDelta(g.bankId, g.valor);
 }
 function deleteGastoVariavel(id) {
   const g = Store.get('gastosVariaveis', id);
-  if (g && g.status === 'pago') Store.applyBankDelta(g.bankId, g.valor);
+  if (g && !g.cartaoId && g.status === 'pago') Store.applyBankDelta(g.bankId, g.valor);
   Store.remove('gastosVariaveis', id);
 }
 function recebimentosForMonth(mStr) {
@@ -414,10 +443,12 @@ function recebimentosForMonth(mStr) {
 }
 
 // entradas - saídas realizadas naquele mês (recebimentos + gastos fixos + variáveis + fatura de cartão)
+// gastos fixos/variáveis vinculados a cartão (g.cartaoId) NÃO entram nos buckets "fixos"/"variaveis" — já
+// estão contados dentro da fatura do cartão (bucket "cartao"), senão contaria em dobro.
 function fluxoLiquidoDoMes(mStr, bankId) {
   const ganhos = recebimentosForMonth(mStr).filter((r) => !bankId || r.bankId === bankId).reduce((s, r) => s + r.valor, 0);
-  const fixos = gastosFixosForMonth(mStr).filter((g) => !bankId || g.bankId === bankId).reduce((s, g) => s + g.valor, 0);
-  const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr) && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+  const fixos = gastosFixosForMonth(mStr).filter((g) => !g.cartaoId && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+  const variaveis = gastosVariaveisForMonth(mStr).filter((g) => !g.cartaoId && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
   const cartao = bankId
     ? Store.state.cartoes.filter((c) => c.bankId === bankId).reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0)
     : allCartoesFaturaForMonth(mStr);
@@ -452,7 +483,7 @@ function fluxoRealizadoDoMes(mStr, bankId) {
     if (mes === mStr && (!bankId || p.bankId === bankId)) total -= p.valor;
   });
   Store.state.gastosVariaveis.forEach((g) => {
-    if (g.status === 'pago' && isSameMonth(g.data, mStr) && (!bankId || g.bankId === bankId)) total -= g.valor;
+    if (!g.cartaoId && g.status === 'pago' && isSameMonth(g.data, mStr) && (!bankId || g.bankId === bankId)) total -= g.valor;
   });
   recebimentosForMonth(mStr).forEach((r) => {
     if (r.recebido && (!bankId || r.bankId === bankId)) total += r.valor;
@@ -486,8 +517,8 @@ function fluxoRealizadoDoMes(mStr, bankId) {
 // o que ainda está agendado e NÃO liquidado num mês (usado pra projetar o fim do mês corrente)
 function fluxoPendenteDoMes(mStr, bankId) {
   const receb = recebimentosForMonth(mStr).filter((r) => !r.recebido && (!bankId || r.bankId === bankId)).reduce((s, r) => s + r.valor, 0);
-  const fixos = gastosFixosForMonth(mStr).filter((g) => !g.pago && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
-  const variaveis = Store.state.gastosVariaveis.filter((g) => isSameMonth(g.data, mStr) && g.status !== 'pago' && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+  const fixos = gastosFixosForMonth(mStr).filter((g) => !g.cartaoId && !g.pago && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+  const variaveis = gastosVariaveisForMonth(mStr).filter((g) => !g.cartaoId && g.status !== 'pago' && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
   const cartao = Store.state.cartoes
     .filter((c) => (!bankId || c.bankId === bankId) && !isCartaoFaturaPaga(c.id, mStr))
     .reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
@@ -524,12 +555,14 @@ function monthsBetweenISO(start, end) {
 function buildTransacoes(start, end) {
   const months = monthsBetweenISO(start, end);
   const txs = [
-    ...months.flatMap((m) => gastosFixosForMonth(m)).map((g) => ({
+    // gastos fixos/variáveis vinculados a cartão (g.cartaoId) não entram aqui como linha própria — já
+    // aparecem juntos na linha "Fatura X" abaixo, exatamente como as compras de cartão de antes.
+    ...months.flatMap((m) => gastosFixosForMonth(m)).filter((g) => !g.cartaoId).map((g) => ({
       key: `gf:${g.id}:${g.mesRef}`, data: g.vencimentoISO, descricao: g.nome, tipo: 'Gasto fixo',
       bankId: g.pago && g.pagamento ? g.pagamento.bankId : g.bankId, categoryId: g.categoryId,
       status: g.pago ? 'pago' : 'pendente', valor: g.pago && g.pagamento ? g.pagamento.valor : g.valor, sinal: -1,
     })),
-    ...Store.state.gastosVariaveis.map((g) => ({
+    ...months.flatMap((m) => gastosVariaveisForMonth(m)).filter((g) => !g.cartaoId).map((g) => ({
       key: `gv:${g.id}`, data: g.data, descricao: g.descricao, tipo: 'Gasto variável',
       bankId: g.bankId, categoryId: g.categoryId, status: g.status, valor: g.valor, sinal: -1,
     })),
@@ -661,8 +694,7 @@ function reopenCartaoFatura(cartaoId, mStr) {
 }
 function parcelasAtivasCount(cartaoId) {
   const mStr = currentMonthStr();
-  const cartao = Store.get('cartoes', cartaoId);
-  return Store.state.cartaoCompras.filter((c) => c.cartaoId === cartaoId && c.tipo === 'parcelado' && compraOccurrenceInMonth(c, mStr, cartao, 'caixa')).length;
+  return Store.state.gastosVariaveis.filter((g) => g.cartaoId === cartaoId && g.tipo === 'parcelado' && gastoVariavelOccurrenceInMonth(g, mStr)).length;
 }
 
 const Store = {
@@ -676,6 +708,7 @@ const Store = {
       this.state = defaultState();
     }
     this.migrateCategorias();
+    this.migrarCartaoComprasParaGastos();
     this.reconcileLegacyLedger();
     return this.state;
   },
@@ -689,6 +722,34 @@ const Store = {
       changed = true;
     }
     if (changed) this.save();
+  },
+
+  // migração única: compras lançadas no modelo antigo (aba Cartões) viram Gasto Fixo (assinatura recorrente)
+  // ou Gasto Variável (à vista/parcelado), vinculadas ao cartão via cartaoId — mesmo comportamento de antes,
+  // só que lançadas nas abas de Gastos Fixos/Variáveis em vez de terem uma tela própria dentro de Cartões.
+  migrarCartaoComprasParaGastos() {
+    if (this.state.migradoCartaoComprasV2) return;
+    this.state.cartaoCompras.forEach((c) => {
+      const categoryId = c.categoryId || null;
+      const divisoes = c.divisoes || [];
+      if (c.tipo === 'recorrente') {
+        const inicioMes = gastoCartaoBaseMonth(c.data, c.cartaoId);
+        const dia = parseInt(c.data.slice(8, 10), 10) || 1;
+        this.add('gastosFixos', {
+          nome: c.descricao, valor: c.valorTotal, diaVencimento: dia, categoryId, cartaoId: c.cartaoId,
+          divisoes, ativo: true, inicioMes, fimMes: null, observacao: '',
+        });
+      } else {
+        this.add('gastosVariaveis', {
+          descricao: c.descricao, valor: c.valorTotal, data: c.data, categoryId, cartaoId: c.cartaoId,
+          divisoes, tipo: c.tipo === 'parcelado' ? 'parcelado' : 'unico', parcelas: c.parcelas || 1,
+          status: 'pendente', observacao: '',
+        });
+      }
+    });
+    this.state.cartaoCompras = [];
+    this.state.migradoCartaoComprasV2 = true;
+    this.save();
   },
 
   // baixas/recebimentos marcados ANTES do saldo do banco virar um livro-razão de verdade (applyBankDelta)
