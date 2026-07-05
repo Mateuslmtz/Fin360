@@ -323,6 +323,9 @@ a { color: inherit; }
 .pill:not(.active):hover { background: var(--bg-card-hover); color: var(--text); }
 .pill .svg-icon { width: 14px; height: 14px; margin-right: 5px; }
 
+.pill-group-forma { flex-wrap: nowrap; }
+.pill-group-forma .pill { flex: 1; justify-content: center; padding: 7px 6px; font-size: 12px; white-space: nowrap; }
+
 .type-box-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .type-box {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
