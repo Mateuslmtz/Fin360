@@ -973,8 +973,8 @@ function formaPagamentoHTML(prefix, forma, bankSelected, cartaoSelected) {
   return `
     <div class="field">
       <label>Forma de pagamento</label>
-      <div class="pill-group" id="${prefix}-forma-group">
-        <button type="button" class="pill ${forma === 'cartao' ? 'active' : ''}" data-forma="cartao">Cartão de crédito</button>
+      <div class="pill-group pill-group-forma" id="${prefix}-forma-group">
+        <button type="button" class="pill ${forma === 'cartao' ? 'active' : ''}" data-forma="cartao">Cartão</button>
         <button type="button" class="pill ${forma === 'pix' ? 'active' : ''}" data-forma="pix">Pix</button>
         <button type="button" class="pill ${forma === 'ted' ? 'active' : ''}" data-forma="ted">TED</button>
         <button type="button" class="pill ${forma === 'boleto' ? 'active' : ''}" data-forma="boleto">Boleto</button>
