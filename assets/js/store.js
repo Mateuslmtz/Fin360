@@ -356,6 +356,14 @@ function cartaoItensForMonth(cartaoId, mStr) {
   const variaveis = gastosVariaveisForMonth(mStr).filter((g) => g.cartaoId === cartaoId).map((g) => ({ origem: 'variavel', item: g }));
   return [...fixos, ...variaveis];
 }
+// cartaoItensForMonth usa sempre o mês da FATURA (pra bater com o Dashboard, Extrato, etc — ver Total/Pagar
+// fatura na aba Cartões). Aqui é o mês da COMPETÊNCIA — a compra aparece no mês em que ela foi feita, mesmo
+// que a fatura só vença no mês seguinte; vencimentoISO segue mostrando a fatura real de cada item.
+function cartaoItensPorCompetencia(cartaoId, mStr) {
+  const fixos = gastosFixosPorCompetencia(mStr).filter((g) => g.cartaoId === cartaoId).map((g) => ({ origem: 'fixo', item: g, faturaSeguinte: g.vencimentoISO.slice(0, 7) !== mStr }));
+  const variaveis = gastosVariaveisPorCompetencia(mStr).filter((g) => g.cartaoId === cartaoId).map((g) => ({ origem: 'variavel', item: g, faturaSeguinte: g.vencimentoISO.slice(0, 7) !== mStr }));
+  return [...fixos, ...variaveis];
+}
 // fatura real do cartão — o que você de fato paga ao banco naquele mês (valor cheio, sem descontar racha)
 function cartaoFaturaForMonth(cartaoId, mStr) {
   return cartaoItensForMonth(cartaoId, mStr).reduce((s, x) => s + x.item.valor, 0);

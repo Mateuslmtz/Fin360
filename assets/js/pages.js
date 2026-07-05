@@ -1982,7 +1982,7 @@ function cartaoItemDescricao(x) {
 }
 function cartaoItemParcelaLabel(x) {
   if (x.origem === 'variavel') return x.item.parcelaLabel || '—';
-  if (x.item.fimMes) return `${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.fimMes)}`;
+  if (x.item.fimMes) return `${monthsDiffStr(monthAddStr(gastoFixoCreatedMonth(x.item), -gastoFixoShift(x.item)), x.item.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.fimMes)}`;
   return '—';
 }
 function cartaoItemOrigemRoute(x) {
@@ -2007,13 +2007,17 @@ function pageCartoes(container) {
     const totalParcelas = cartoes.reduce((s, c) => s + parcelasAtivasCount(c.id), 0);
 
     const selected = cartoes.find((c) => c.id === selectedCartaoId);
-    const faturaItens = selected ? sortList(cartaoItensForMonth(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
-    const faturaTotal = faturaItens.reduce((s, x) => s + x.item.valor, 0);
-    const faturaCustoReal = faturaItens.reduce((s, x) => s + x.item.valorMeu, 0);
+    // total/pago/limite continuam pela fatura de VERDADE (vencimento real) — bate com Dashboard, Extrato,
+    // Controle do Ano e com o botão "Pagar fatura". A lista abaixo já é por competência (ver compItens).
+    const faturaTotal = selected ? cartaoFaturaForMonth(selected.id, selectedFaturaMonth) : 0;
+    const faturaCustoReal = selected ? cartaoCustoRealForMonth(selected.id, selectedFaturaMonth) : 0;
     const faturaPaga = selected && isCartaoFaturaPaga(selected.id, selectedFaturaMonth);
     const limiteUsado = selected ? cartaoLimiteUsado(selected.id) : 0;
+    // itens do mês em que você realmente lançou a compra (mesmo que a fatura só vença no mês seguinte)
+    const compItens = selected ? sortList(cartaoItensPorCompetencia(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
+    const compTotal = compItens.reduce((s, x) => s + x.item.valor, 0);
     const faturaCatTotals = {};
-    faturaItens.forEach((x) => { const k = x.item.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.item.valor; });
+    compItens.forEach((x) => { const k = x.item.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.item.valor; });
     const faturaCatEntries = Object.entries(faturaCatTotals).sort((a, b) => b[1] - a[1]);
 
     container.innerHTML = `
@@ -2091,8 +2095,8 @@ function pageCartoes(container) {
 
           ${selected ? `
           <div class="panel">
-            <div class="panel-header"><div><h3>Análise por categoria · fatura selecionada</h3><div class="panel-sub">Gastos por categoria da fatura ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} — ${selected.nome}.</div></div></div>
-            ${faturaCatEntries.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum lançamento nessa fatura.' }) : categoryDonut(faturaCatEntries, faturaTotal)}
+            <div class="panel-header"><div><h3>Análise por categoria · lançamentos do mês</h3><div class="panel-sub">Gastos lançados em ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} — ${selected.nome}.</div></div></div>
+            ${faturaCatEntries.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum lançamento nesse mês.' }) : categoryDonut(faturaCatEntries, compTotal)}
           </div>
 
           <div class="panel">
@@ -2113,17 +2117,18 @@ function pageCartoes(container) {
               ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
               ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
-            ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
+            <div class="row-sub" style="margin:2px 0 12px">Lista abaixo mostra o que você lançou em ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} — itens com o selo "Fatura seguinte" só entram na conta do mês que vem; o total/pagamento acima já é o da fatura certa deste ciclo.</div>
+            ${compItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum lançamento nesse mês.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
               <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
                 <tbody>
-                  ${faturaItens.map((x) => {
+                  ${compItens.map((x) => {
                     const dividido = gastoValorDividido(x.item);
                     return `
                     <tr>
                       <td class="row-title">${cartaoItemDescricao(x)}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${x.item.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
                       <td>${categoryTag(x.item.categoryId)}</td>
-                      <td>${formatDateBR(x.item.vencimentoISO)}</td>
+                      <td>${formatDateBR(x.item.vencimentoISO)}${x.faturaSeguinte ? `<div class="row-sub"><span class="badge badge-muted" title="Essa compra entra na fatura do mês que vem, não na deste ciclo">Fatura seguinte</span></div>` : ''}</td>
                       <td>${cartaoItemParcelaLabel(x)}</td>
                       <td><strong>${formatCurrency(x.item.valor)}</strong></td>
                       <td>${dividido > 0 ? `<span class="amount-pos">${formatCurrency(x.item.valorMeu)}</span>` : formatCurrency(x.item.valorMeu)}</td>
