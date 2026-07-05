@@ -41,14 +41,16 @@ function defaultState() {
       { id: 'cat-outros-receita', name: 'Outros', color: '#8b93ac', emoji: '📦', tipo: 'receita' },
     ],
     banks: [],
-    // gastosFixos: {id,nome,valor,diaVencimento(1-31),categoryId,bankId,cartaoId(opcional — pago via fatura do cartão em vez de banco),
+    // gastosFixos: {id,nome,valor,diaVencimento(1-31),categoryId,bankId,meioPagamento('pix'|'ted'|'boleto', só quando bankId),
+    //   cartaoId(opcional — pago via fatura do cartão em vez de banco),
     //   divisoes(opcional, racha — ver gastoValorMeu),ativo,inicioMes(opcional),fimMes(opcional, exclusivo),observacao,createdAt,
     //   historico:[{id,mes:'YYYY-MM',valor,diaVencimento}] (valor/dia vigentes a partir de cada mês — ver gastoFixoConfigParaMes)}
     // recorrentes — "pago/pendente" é controlado por mês em gastosFixosPagamentos (ou pela fatura do cartão, se cartaoId)
     gastosFixos: [],
     gastosFixosPagamentos: [], // {id, gastoFixoId, mes:'YYYY-MM', bankId, data, valor}
     gastosFixosMesesOcultos: [], // {id, gastoFixoId, mes:'YYYY-MM'} — ocorrência excluída só naquele mês ("Apenas este mês")
-    // gastosVariaveis: {id,descricao,valor,data,categoryId,bankId,cartaoId(opcional),divisoes(opcional, racha),
+    // gastosVariaveis: {id,descricao,valor,data,categoryId,bankId,meioPagamento('pix'|'ted'|'boleto', só quando bankId),
+    //   cartaoId(opcional),divisoes(opcional, racha),
     //   tipo:'unico'|'parcelado'(só faz sentido com cartaoId),parcelas,status:'pago'|'pendente'(ignorado quando cartaoId),observacao,createdAt}
     gastosVariaveis: [],
     // recebimentos: {id,descricao,valor,data,categoryId,bankId,tipo:'unico'|'recorrente'|'parcelado',parcelas,dataFinal(recorrente, opcional),observacao,createdAt}

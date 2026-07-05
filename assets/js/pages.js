@@ -957,24 +957,30 @@ function cartaoOptions(selected) {
   if (!Store.state.cartoes.length) return `<option value="">Nenhum cartão cadastrado</option>`;
   return `<option value="">Selecione o cartão...</option>` + Store.state.cartoes.map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${c.nome}</option>`).join('');
 }
-// coluna "Banco" das tabelas de Gastos Fixos/Variáveis — mostra o cartão quando o lançamento é pago por ele
+const MEIO_PAGAMENTO_LABELS = { pix: 'Pix', ted: 'TED', boleto: 'Boleto' };
+// coluna "Banco" das tabelas de Gastos Fixos/Variáveis — mostra o cartão quando o lançamento é pago por ele,
+// ou o banco + meio (Pix/TED/Boleto) quando pago direto da conta
 function bancoOuCartaoLabel(item) {
   if (item.cartaoId) {
     const cartao = Store.get('cartoes', item.cartaoId);
     return `${icon('card')} ${cartao ? cartao.nome : 'Cartão'}`;
   }
-  return (Store.bankById(item.bankId) || {}).name || '—';
+  const bankName = (Store.bankById(item.bankId) || {}).name || '—';
+  const meio = MEIO_PAGAMENTO_LABELS[item.meioPagamento];
+  return meio ? `${bankName} · ${meio}` : bankName;
 }
 function formaPagamentoHTML(prefix, forma, bankSelected, cartaoSelected) {
   return `
     <div class="field">
       <label>Forma de pagamento</label>
       <div class="pill-group" id="${prefix}-forma-group">
-        <button type="button" class="pill ${forma === 'banco' ? 'active' : ''}" data-forma="banco">Banco</button>
         <button type="button" class="pill ${forma === 'cartao' ? 'active' : ''}" data-forma="cartao">Cartão de crédito</button>
+        <button type="button" class="pill ${forma === 'pix' ? 'active' : ''}" data-forma="pix">Pix</button>
+        <button type="button" class="pill ${forma === 'ted' ? 'active' : ''}" data-forma="ted">TED</button>
+        <button type="button" class="pill ${forma === 'boleto' ? 'active' : ''}" data-forma="boleto">Boleto</button>
       </div>
     </div>
-    <div class="field" id="${prefix}-banco-field" style="display:${forma === 'banco' ? 'block' : 'none'}">
+    <div class="field" id="${prefix}-banco-field" style="display:${forma !== 'cartao' ? 'block' : 'none'}">
       <label>Banco vinculado <span class="req">*</span></label>${fieldHTML({ key: `${prefix}-banco`, type: 'select-bank' }, bankSelected)}
     </div>
     <div class="field" id="${prefix}-cartao-field" style="display:${forma === 'cartao' ? 'block' : 'none'}">
@@ -989,7 +995,7 @@ function wireFormaPagamento(prefix, setForma, onToggle) {
   group.querySelectorAll('.pill').forEach((b) => b.onclick = () => {
     setForma(b.dataset.forma);
     group.querySelectorAll('.pill').forEach((x) => x.classList.toggle('active', x === b));
-    document.getElementById(`${prefix}-banco-field`).style.display = b.dataset.forma === 'banco' ? 'block' : 'none';
+    document.getElementById(`${prefix}-banco-field`).style.display = b.dataset.forma !== 'cartao' ? 'block' : 'none';
     document.getElementById(`${prefix}-cartao-field`).style.display = b.dataset.forma === 'cartao' ? 'block' : 'none';
     if (onToggle) onToggle(b.dataset.forma);
   });
@@ -1068,7 +1074,7 @@ function wireDivisoesBox(prefix, valorInputId) {
 let gfPeriod = { type: 'month', value: currentMonthStr() };
 let editingFixoId = null;
 let gfSort = 'data-asc';
-let ffForma = 'banco';
+let ffForma = 'pix';
 
 function gfPeriodMonth(period) {
   return period.type === 'year' ? `${period.value}-01` : (period.value || currentMonthStr());
@@ -1151,18 +1157,19 @@ function pageGastosFixos(container) {
       const categoryId = document.getElementById('f-ff-categoria').value;
       const duracao = document.getElementById('ff-duracao').value;
       const nParcelas = parseInt(document.getElementById('ff-parcelas').value, 10) || 0;
-      const bankId = ffForma === 'banco' ? document.getElementById('f-ff-banco').value : null;
+      const bankId = ffForma !== 'cartao' ? document.getElementById('f-ff-banco').value : null;
       const cartaoId = ffForma === 'cartao' ? document.getElementById('ff-cartao').value : null;
+      const meioPagamento = ffForma !== 'cartao' ? ffForma : null;
       if (!nome) { toast('Informe o nome do gasto fixo', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
-      if (ffForma === 'banco' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
+      if (ffForma !== 'cartao' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
       if (ffForma === 'cartao' && !cartaoId) { toast('Selecione o cartão', 'danger'); return; }
       if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
       if (duracao === 'parcelas' && nParcelas < 1) { toast('Informe o número de parcelas', 'danger'); return; }
       const inicioMes = inicioMesInformado;
       const divisoes = cartaoId ? readDivisoesIfChecked('ff') : [];
       const payload = {
-        nome, valor, diaVencimento, inicioMes, bankId, cartaoId, divisoes,
+        nome, valor, diaVencimento, inicioMes, bankId, cartaoId, meioPagamento, divisoes,
         categoryId,
         // fimMes é exclusivo: 12 parcelas a partir de jul/2026 => aparece de jul/2026 a jun/2027
         fimMes: duracao === 'parcelas' ? monthAddStr(inicioMes, nParcelas) : null,
@@ -1172,22 +1179,22 @@ function pageGastosFixos(container) {
       if (editing) {
         const valorMudou = valor !== editing.valor || diaVencimento !== editing.diaVencimento || cartaoId !== (editing.cartaoId || null);
         if (valorMudou) {
-          aplicarAlteracaoGastoFixoModal(editing, listMonth, payload, () => { editingFixoId = null; ffForma = 'banco'; draw(); });
+          aplicarAlteracaoGastoFixoModal(editing, listMonth, payload, () => { editingFixoId = null; ffForma = 'pix'; draw(); });
         } else {
           Store.update('gastosFixos', editing.id, payload);
           toast('Gasto fixo atualizado', 'success');
           editingFixoId = null;
-          ffForma = 'banco';
+          ffForma = 'pix';
           draw();
         }
       } else {
         Store.add('gastosFixos', Object.assign({ historico: [{ id: uid(), mes: inicioMes, valor, diaVencimento }] }, payload));
         toast('Gasto fixo cadastrado', 'success');
-        ffForma = 'banco';
+        ffForma = 'pix';
         draw();
       }
     };
-    if (editing) document.getElementById('ff-cancel-edit').onclick = () => { editingFixoId = null; ffForma = 'banco'; draw(); };
+    if (editing) document.getElementById('ff-cancel-edit').onclick = () => { editingFixoId = null; ffForma = 'pix'; draw(); };
 
     wireQuickAddButtons([{ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'ff-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('ff', () => draw(), { catTipo: 'despesa' });
@@ -1200,7 +1207,13 @@ function pageGastosFixos(container) {
     });
     wireDivisoesBox('ff', 'ff-valor');
 
-    container.querySelectorAll('[data-action="edit-fixo"]').forEach((b) => b.onclick = () => { editingFixoId = b.dataset.id; ffForma = Store.get('gastosFixos', b.dataset.id).cartaoId ? 'cartao' : 'banco'; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    container.querySelectorAll('[data-action="edit-fixo"]').forEach((b) => b.onclick = () => {
+      const gf = Store.get('gastosFixos', b.dataset.id);
+      editingFixoId = b.dataset.id;
+      ffForma = gf.cartaoId ? 'cartao' : (gf.meioPagamento || 'pix');
+      draw();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     container.querySelectorAll('[data-action="toggle-ativo-fixo"]').forEach((b) => b.onclick = () => {
       const item = Store.get('gastosFixos', b.dataset.id);
       Store.update('gastosFixos', b.dataset.id, { ativo: item.ativo === false });
@@ -1245,7 +1258,7 @@ function gastosFixosTable(list, mStr, sort) {
 let gvPeriod = { type: 'month', value: currentMonthStr() };
 let gvFilters = { pill: 'todos', status: 'todos', category: 'todos', sort: 'data-desc', search: '' };
 let editingVariavelId = null;
-let gvForma = 'banco';
+let gvForma = 'pix';
 let gvTipo = 'unico';
 
 function gastosVariaveisInPeriod(period) {
@@ -1357,27 +1370,28 @@ function pageGastosVariaveis(container) {
       const valor = moneyValue('gv-valor');
       const data = document.getElementById('gv-data').value;
       const categoryId = document.getElementById('f-gv-categoria').value;
-      const bankId = gvForma === 'banco' ? document.getElementById('f-gv-banco').value : null;
+      const bankId = gvForma !== 'cartao' ? document.getElementById('f-gv-banco').value : null;
       const cartaoId = gvForma === 'cartao' ? document.getElementById('gv-cartao').value : null;
+      const meioPagamento = gvForma !== 'cartao' ? gvForma : null;
       if (!descricao) { toast('Informe a descrição', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
-      if (gvForma === 'banco' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
+      if (gvForma !== 'cartao' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
       if (gvForma === 'cartao' && !cartaoId) { toast('Selecione o cartão', 'danger'); return; }
       if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
       const tipo = cartaoId ? gvTipo : 'unico';
       const parcelas = tipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('gv-parcelas').value, 10) || 2) : 1;
       const divisoes = cartaoId ? readDivisoesIfChecked('gv') : [];
       const payload = {
-        descricao, valor, data, bankId, cartaoId, tipo, parcelas, divisoes,
+        descricao, valor, data, bankId, cartaoId, meioPagamento, tipo, parcelas, divisoes,
         categoryId,
         observacao: document.getElementById('gv-obs').value,
       };
       if (editing) { updateGastoVariavel(editing.id, payload); toast('Lançamento atualizado', 'success'); editingVariavelId = null; }
       else { addGastoVariavel(payload); toast('Lançamento adicionado', 'success'); }
-      gvForma = 'banco'; gvTipo = 'unico';
+      gvForma = 'pix'; gvTipo = 'unico';
       draw();
     };
-    if (editing) document.getElementById('gv-cancel-edit').onclick = () => { editingVariavelId = null; gvForma = 'banco'; gvTipo = 'unico'; draw(); };
+    if (editing) document.getElementById('gv-cancel-edit').onclick = () => { editingVariavelId = null; gvForma = 'pix'; gvTipo = 'unico'; draw(); };
 
     wireQuickAddButtons([{ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'gv-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('gv', () => draw(), { catTipo: 'despesa' });
@@ -1402,7 +1416,7 @@ function pageGastosVariaveis(container) {
     container.querySelectorAll('[data-action="edit-var"]').forEach((b) => b.onclick = () => {
       editingVariavelId = b.dataset.id;
       const item = Store.get('gastosVariaveis', b.dataset.id);
-      gvForma = item.cartaoId ? 'cartao' : 'banco';
+      gvForma = item.cartaoId ? 'cartao' : (item.meioPagamento || 'pix');
       gvTipo = item.tipo === 'parcelado' ? 'parcelado' : 'unico';
       draw();
       window.scrollTo({ top: 0, behavior: 'smooth' });
