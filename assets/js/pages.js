@@ -1083,8 +1083,8 @@ function pageGastosFixos(container) {
     const monthsToShow = period.type === 'year' ? Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`) : [mStr];
     // para a lista, no modo "ano" mostramos a recorrência consolidada (1 linha por gasto fixo ativo no ano)
     const listMonth = period.type === 'year' ? currentMonthStr() : mStr;
-    const inPeriodList = gastosFixosPorCompetencia(listMonth);
-    const displayList = sortList(gastosFixosPorCompetenciaAll(listMonth), gfSort, (g) => g.vencimentoISO, (g) => g.valor);
+    const inPeriodList = gastosFixosForMonth(listMonth);
+    const displayList = sortList(gastosFixosForMonthAll(listMonth), gfSort, (g) => g.vencimentoISO, (g) => g.valor);
     const totalMes = inPeriodList.reduce((s, g) => s + g.valor, 0);
     const pagoMes = inPeriodList.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0);
     // soma só as contas NÃO pagas — pagar com desconto não pode deixar a diferença como "pendente"
@@ -1100,8 +1100,8 @@ function pageGastosFixos(container) {
             <div class="field"><label>Valor</label>${moneyInputHTML('ff-valor', editing ? editing.valor : '')}</div>
             <div class="field"><label id="ff-dia-label">${ffForma === 'cartao' ? 'Dia da cobrança' : 'Dia do vencimento'}</label><input type="number" min="1" max="31" id="ff-dia" placeholder="Ex.: 10" value="${editing ? editing.diaVencimento : ''}" /></div>
           </div>
-          <div class="row-sub" id="ff-dia-hint" style="margin:-8px 0 14px;display:${ffForma === 'cartao' ? 'block' : 'none'}">Cai na fatura que fecha depois desse dia — o vencimento real é o do cartão escolhido.</div>
-          <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? monthAddStr(gastoFixoCreatedMonth(editing), -gastoFixoShift(editing)) : gfPeriodMonth(period)}" /></div>
+          <div class="row-sub" id="ff-dia-hint" style="margin:-8px 0 14px;display:${ffForma === 'cartao' ? 'block' : 'none'}">Só de referência — o vencimento mostrado segue o dia de vencimento do próprio cartão, no mês da cobrança.</div>
+          <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(period)}" /></div>
           <div class="row-sub" style="margin:-8px 0 14px">Segue o mês escolhido no filtro da lista — mude aqui se quiser lançar/pagar meses passados deste gasto fixo.</div>
           <div class="field-row" style="grid-template-columns:1.3fr 1fr">
             <div class="field"><label>Duração</label><select id="ff-duracao">
@@ -1159,8 +1159,7 @@ function pageGastosFixos(container) {
       if (ffForma === 'cartao' && !cartaoId) { toast('Selecione o cartão', 'danger'); return; }
       if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
       if (duracao === 'parcelas' && nParcelas < 1) { toast('Informe o número de parcelas', 'danger'); return; }
-      // vinculado a cartão: a cobrança pode cair na fatura do mês seguinte se o dia passar do fechamento do cartão
-      const inicioMes = cartaoId ? gastoCartaoBaseMonth(`${inicioMesInformado}-${String(diaVencimento).padStart(2, '0')}`, cartaoId) : inicioMesInformado;
+      const inicioMes = inicioMesInformado;
       const divisoes = cartaoId ? readDivisoesIfChecked('ff') : [];
       const payload = {
         nome, valor, diaVencimento, inicioMes, bankId, cartaoId, divisoes,
@@ -1222,7 +1221,7 @@ function gastosFixosTable(list, mStr, sort) {
       <tbody>
         ${list.map((g) => `
           <tr>
-            <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}${g.fimMes ? `<span class="badge badge-primary" style="margin-left:8px" title="Parcela ${monthsDiffStr(monthAddStr(gastoFixoCreatedMonth(g), -gastoFixoShift(g)), g.mesRef) + 1} de ${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}">${monthsDiffStr(monthAddStr(gastoFixoCreatedMonth(g), -gastoFixoShift(g)), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}</span>` : ''}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
+            <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}${g.fimMes ? `<span class="badge badge-primary" style="margin-left:8px" title="Parcela ${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1} de ${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}">${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}</span>` : ''}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
             <td>${categoryTag(g.categoryId)}</td>
             <td>${g.cartaoId ? '<span class="row-sub">—</span>' : formatDateBR(g.vencimentoISO)}</td>
             <td>${g.pagamento ? formatDateBR(g.pagamento.data) : '<span class="row-sub">—</span>'}</td>
@@ -1253,7 +1252,7 @@ function gastosVariaveisInPeriod(period) {
   const months = period.type === 'year'
     ? Array.from({ length: 12 }, (_, i) => `${period.value}-${String(i + 1).padStart(2, '0')}`)
     : [period.value || currentMonthStr()];
-  return months.flatMap((m) => gastosVariaveisPorCompetencia(m));
+  return months.flatMap((m) => gastosVariaveisForMonth(m));
 }
 
 function pageGastosVariaveis(container) {
@@ -1305,7 +1304,7 @@ function pageGastosVariaveis(container) {
             <div class="field" id="gv-parcelas-field" style="display:${gvTipo === 'parcelado' ? 'block' : 'none'}">
               <label>Número de parcelas</label><input type="number" min="2" max="48" id="gv-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
             </div>
-            <div class="row-sub" style="margin:-8px 0 14px">Cai na fatura que fecha depois da data acima — o vencimento real é o do cartão escolhido.</div>
+            <div class="row-sub" style="margin:-8px 0 14px">Conta na fatura do mês da compra — o vencimento mostrado segue o dia de vencimento do cartão escolhido.</div>
           </div>
           <div id="gv-racha-wrap" style="display:${gvForma === 'cartao' ? 'block' : 'none'}">${divisoesBoxHTML('gv', editing ? editing.divisoes : [])}</div>
           <div class="field"><label>Observação (opcional)</label><textarea id="gv-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
@@ -1982,7 +1981,7 @@ function cartaoItemDescricao(x) {
 }
 function cartaoItemParcelaLabel(x) {
   if (x.origem === 'variavel') return x.item.parcelaLabel || '—';
-  if (x.item.fimMes) return `${monthsDiffStr(monthAddStr(gastoFixoCreatedMonth(x.item), -gastoFixoShift(x.item)), x.item.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.fimMes)}`;
+  if (x.item.fimMes) return `${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.fimMes)}`;
   return '—';
 }
 function cartaoItemOrigemRoute(x) {
@@ -2007,18 +2006,15 @@ function pageCartoes(container) {
     const totalParcelas = cartoes.reduce((s, c) => s + parcelasAtivasCount(c.id), 0);
 
     const selected = cartoes.find((c) => c.id === selectedCartaoId);
-    // total/pago/limite continuam pela fatura de VERDADE (vencimento real) — bate com Dashboard, Extrato,
-    // Controle do Ano e com o botão "Pagar fatura". A lista abaixo já é por competência (ver compItens).
-    const faturaTotal = selected ? cartaoFaturaForMonth(selected.id, selectedFaturaMonth) : 0;
-    const faturaCustoReal = selected ? cartaoCustoRealForMonth(selected.id, selectedFaturaMonth) : 0;
+    // a fatura sempre soma pelo mês da compra/cobrança (sem deslocar por fechamento) — o mesmo número
+    // aparece aqui, no Dashboard, no Extrato e no Controle do Ano
+    const faturaItens = selected ? sortList(cartaoItensForMonth(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
+    const faturaTotal = faturaItens.reduce((s, x) => s + x.item.valor, 0);
+    const faturaCustoReal = faturaItens.reduce((s, x) => s + x.item.valorMeu, 0);
     const faturaPaga = selected && isCartaoFaturaPaga(selected.id, selectedFaturaMonth);
     const limiteUsado = selected ? cartaoLimiteUsado(selected.id) : 0;
-    // itens do mês em que você realmente lançou a compra (mesmo que a fatura só vença no mês seguinte)
-    const compItens = selected ? sortList(cartaoItensPorCompetencia(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
-    const compTotal = compItens.reduce((s, x) => s + x.item.valor, 0);
-    const compCustoReal = compItens.reduce((s, x) => s + x.item.valorMeu, 0);
     const faturaCatTotals = {};
-    compItens.forEach((x) => { const k = x.item.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.item.valor; });
+    faturaItens.forEach((x) => { const k = x.item.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.item.valor; });
     const faturaCatEntries = Object.entries(faturaCatTotals).sort((a, b) => b[1] - a[1]);
 
     container.innerHTML = `
@@ -2096,42 +2092,39 @@ function pageCartoes(container) {
 
           ${selected ? `
           <div class="panel">
-            <div class="panel-header"><div><h3>Análise por categoria · lançamentos do mês</h3><div class="panel-sub">Gastos lançados em ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} — ${selected.nome}.</div></div></div>
-            ${faturaCatEntries.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum lançamento nesse mês.' }) : categoryDonut(faturaCatEntries, compTotal)}
+            <div class="panel-header"><div><h3>Análise por categoria · fatura selecionada</h3><div class="panel-sub">Gastos por categoria de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} — ${selected.nome}.</div></div></div>
+            ${faturaCatEntries.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum lançamento nesse mês.' }) : categoryDonut(faturaCatEntries, faturaTotal)}
           </div>
 
           <div class="panel">
             <div class="panel-header">
               <div>
-                <h3>${selected.nome} — lançamentos de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}</h3>
-                <div class="panel-sub">Total lançado: <strong style="color:var(--text)">${formatCurrency(compTotal)}</strong> · Sua parte: ${formatCurrency(compCustoReal)}</div>
+                <h3>Fatura — ${selected.nome} <span class="badge ${faturaPaga ? 'badge-success' : 'badge-danger'}">${faturaPaga ? 'Paga' : 'Em aberto'}</span></h3>
+                <div class="panel-sub">Total: <strong style="color:var(--text)">${formatCurrency(faturaTotal)}</strong> · Pago: ${formatCurrency(faturaPaga ? faturaTotal : 0)} · Saldo: ${formatCurrency(faturaPaga ? 0 : faturaTotal)}</div>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
                 ${renderPeriodControl('cc', ccPeriod)}
+                <button class="btn ${faturaPaga ? 'btn-ghost' : 'btn-primary'} btn-sm" id="cc-pagar-fatura">${faturaPaga ? 'Reabrir fatura' : 'Pagar fatura'}</button>
               </div>
             </div>
             <div class="stat-grid">
               ${statCard({ label: 'Limite total', value: formatCurrency(selected.limite), tone: 'blue', iconName: 'card' })}
               ${statCard({ label: 'Limite usado', value: formatCurrency(limiteUsado), sub: 'Faturas em aberto (todas)', tone: 'red', iconName: 'arrowDownCircle' })}
               ${statCard({ label: 'Limite disponível', value: formatCurrency(Math.max(0, selected.limite - limiteUsado)), tone: 'green', iconName: 'checkCircle' })}
-              ${statCard({ label: `Fatura de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}`, value: formatCurrency(faturaTotal), sub: faturaPaga ? 'Paga' : 'Em aberto', tone: faturaPaga ? 'green' : 'orange', iconName: 'wallet' })}
-              ${statCard({ label: 'Seu custo real (fatura)', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
+              ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
+              ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
-            <div style="display:flex;justify-content:flex-end;margin:-4px 0 12px">
-              <button class="btn ${faturaPaga ? 'btn-ghost' : 'btn-primary'} btn-sm" id="cc-pagar-fatura">${faturaPaga ? `Reabrir fatura de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}` : `Pagar fatura de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}`}</button>
-            </div>
-            <div class="row-sub" style="margin:2px 0 12px">A lista abaixo é o que você lançou em ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} (data da compra). Itens com o selo "Fatura seguinte" não entram na "Fatura de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}" acima — eles só vão pesar na conta do mês que vem.</div>
-            ${compItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum lançamento nesse mês.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
+            ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
               <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
                 <tbody>
-                  ${compItens.map((x) => {
+                  ${faturaItens.map((x) => {
                     const dividido = gastoValorDividido(x.item);
                     return `
                     <tr>
                       <td class="row-title">${cartaoItemDescricao(x)}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${x.item.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
                       <td>${categoryTag(x.item.categoryId)}</td>
-                      <td>${formatDateBR(x.item.vencimentoISO)}${x.faturaSeguinte ? `<div class="row-sub"><span class="badge badge-muted" title="Essa compra entra na fatura do mês que vem, não na deste ciclo">Fatura seguinte</span></div>` : ''}</td>
+                      <td>${formatDateBR(x.item.vencimentoISO)}</td>
                       <td>${cartaoItemParcelaLabel(x)}</td>
                       <td><strong>${formatCurrency(x.item.valor)}</strong></td>
                       <td>${dividido > 0 ? `<span class="amount-pos">${formatCurrency(x.item.valorMeu)}</span>` : formatCurrency(x.item.valorMeu)}</td>
