@@ -2016,6 +2016,7 @@ function pageCartoes(container) {
     // itens do mês em que você realmente lançou a compra (mesmo que a fatura só vença no mês seguinte)
     const compItens = selected ? sortList(cartaoItensPorCompetencia(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
     const compTotal = compItens.reduce((s, x) => s + x.item.valor, 0);
+    const compCustoReal = compItens.reduce((s, x) => s + x.item.valorMeu, 0);
     const faturaCatTotals = {};
     compItens.forEach((x) => { const k = x.item.categoryId || 'sem'; faturaCatTotals[k] = (faturaCatTotals[k] || 0) + x.item.valor; });
     const faturaCatEntries = Object.entries(faturaCatTotals).sort((a, b) => b[1] - a[1]);
@@ -2102,22 +2103,24 @@ function pageCartoes(container) {
           <div class="panel">
             <div class="panel-header">
               <div>
-                <h3>Fatura — ${selected.nome} <span class="badge ${faturaPaga ? 'badge-success' : 'badge-danger'}">${faturaPaga ? 'Paga' : 'Em aberto'}</span></h3>
-                <div class="panel-sub">Total: <strong style="color:var(--text)">${formatCurrency(faturaTotal)}</strong> · Pago: ${formatCurrency(faturaPaga ? faturaTotal : 0)} · Saldo: ${formatCurrency(faturaPaga ? 0 : faturaTotal)}</div>
+                <h3>${selected.nome} — lançamentos de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}</h3>
+                <div class="panel-sub">Total lançado: <strong style="color:var(--text)">${formatCurrency(compTotal)}</strong> · Sua parte: ${formatCurrency(compCustoReal)}</div>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
                 ${renderPeriodControl('cc', ccPeriod)}
-                <button class="btn ${faturaPaga ? 'btn-ghost' : 'btn-primary'} btn-sm" id="cc-pagar-fatura">${faturaPaga ? 'Reabrir fatura' : 'Pagar fatura'}</button>
               </div>
             </div>
             <div class="stat-grid">
               ${statCard({ label: 'Limite total', value: formatCurrency(selected.limite), tone: 'blue', iconName: 'card' })}
               ${statCard({ label: 'Limite usado', value: formatCurrency(limiteUsado), sub: 'Faturas em aberto (todas)', tone: 'red', iconName: 'arrowDownCircle' })}
               ${statCard({ label: 'Limite disponível', value: formatCurrency(Math.max(0, selected.limite - limiteUsado)), tone: 'green', iconName: 'checkCircle' })}
-              ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
-              ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
+              ${statCard({ label: `Fatura de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}`, value: formatCurrency(faturaTotal), sub: faturaPaga ? 'Paga' : 'Em aberto', tone: faturaPaga ? 'green' : 'orange', iconName: 'wallet' })}
+              ${statCard({ label: 'Seu custo real (fatura)', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
-            <div class="row-sub" style="margin:2px 0 12px">Lista abaixo mostra o que você lançou em ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} — itens com o selo "Fatura seguinte" só entram na conta do mês que vem; o total/pagamento acima já é o da fatura certa deste ciclo.</div>
+            <div style="display:flex;justify-content:flex-end;margin:-4px 0 12px">
+              <button class="btn ${faturaPaga ? 'btn-ghost' : 'btn-primary'} btn-sm" id="cc-pagar-fatura">${faturaPaga ? `Reabrir fatura de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}` : `Pagar fatura de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}`}</button>
+            </div>
+            <div class="row-sub" style="margin:2px 0 12px">A lista abaixo é o que você lançou em ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)} (data da compra). Itens com o selo "Fatura seguinte" não entram na "Fatura de ${monthLabel(Number(selectedFaturaMonth.slice(5,7))-1)}" acima — eles só vão pesar na conta do mês que vem.</div>
             ${compItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum lançamento nesse mês.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
               <table class="list-table">
                 <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
