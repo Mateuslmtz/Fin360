@@ -469,7 +469,6 @@ function pageDashboard(container) {
     const custoRealCartoesPago = months.reduce((s, m) => s + cartoesFiltrados.filter((c) => isCartaoFaturaPaga(c.id, m)).reduce((s2, c) => s2 + cartaoCustoRealCaixaForMonth(c.id, m), 0), 0);
 
     const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes;
-    // só o que de fato entrou — assim o card bate com o saldo disponível; o previsto vira legenda
     const totalRecebimentosLancado = receb.reduce((s, r) => s + r.valor, 0);
     const totalRecebimentos = receb.filter((r) => r.recebido).reduce((s, r) => s + r.valor, 0);
     const totalAReceber = receb.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
@@ -481,6 +480,9 @@ function pageDashboard(container) {
     const saldoDisponivel = saldoBancos;
     // balanço já considerando as provisões (tudo que ainda falta receber/pagar até o fim do período selecionado)
     const saldoProjetado = saldoBancosNoFimDoMes(months[months.length - 1], bankFilterOn ? dashBank : null);
+    // saldo do período pela projeção: tudo lançado de entrada menos tudo lançado de saída
+    const saldoMes = totalRecebimentosLancado - totalGastos;
+    const perLabel = period.type === 'year' ? 'do ano' : 'do mês';
 
     const allTx = [
       ...fixos.map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'gasto' })),
@@ -513,14 +515,23 @@ function pageDashboard(container) {
         </div>
       </div>
 
-      <div class="stat-grid">
-        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), sub: 'Fixos + variáveis + cartão (sua parte)', tone: 'red', iconName: 'arrowDownCircle' })}
-        ${statCard({ label: 'Total de recebimentos', value: formatCurrency(totalRecebimentos), sub: `Já recebidos — de ${formatCurrency(totalRecebimentosLancado)} lançados`, tone: 'green', iconName: 'arrowUpCircle' })}
-        ${statCard({ label: 'Total a receber', value: formatCurrency(totalAReceber), sub: 'Recebimentos futuros', tone: 'blue', iconName: 'download' })}
-        ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), sub: 'Despesas já quitadas', tone: 'purple', iconName: 'checkCircle' })}
-        ${statCard({ label: 'Falta pagar', value: formatCurrency(faltaPagar), sub: 'Pendentes + fatura', tone: 'orange', iconName: 'alertTriangle' })}
-        ${statCard({ label: 'Saldo disponível', value: formatCurrency(saldoDisponivel), sub: saldoDisponivel >= 0 ? 'Positivo' : 'Negativo', tone: 'cyan', iconName: 'wallet' })}
-        ${statCard({ label: 'Balanço projetado', value: formatCurrency(saldoProjetado), sub: saldoProjetado >= 0 ? 'Após receber e pagar tudo do período' : 'Ficará negativo se nada mudar', tone: saldoProjetado >= 0 ? 'blue' : 'red', iconName: 'trendUp' })}
+      <div class="dash-stats">
+        <div class="dash-stats-group">
+          <div class="dash-stats-title">Projeção ${perLabel} — tudo que foi lançado</div>
+          <div class="stat-grid">
+            ${statCard({ label: `Gastos ${perLabel}`, value: formatCurrency(totalGastos), sub: 'Já pago + a pagar', tone: 'red', iconName: 'arrowDownCircle' })}
+            ${statCard({ label: `Recebimentos ${perLabel}`, value: formatCurrency(totalRecebimentosLancado), sub: 'Já recebido + a receber', tone: 'green', iconName: 'arrowUpCircle' })}
+            ${statCard({ label: `Saldo ${perLabel}`, value: formatCurrency(saldoMes), sub: 'Recebimentos − gastos, se tudo entrar e for pago', tone: saldoMes >= 0 ? 'blue' : 'red', iconName: 'trendUp' })}
+          </div>
+        </div>
+        <div class="dash-stats-group">
+          <div class="dash-stats-title">Hoje — o que já aconteceu</div>
+          <div class="stat-grid">
+            ${statCard({ label: 'Já recebido', value: formatCurrency(totalRecebimentos), sub: `A receber: ${formatCurrency(totalAReceber)}`, tone: 'green', iconName: 'download' })}
+            ${statCard({ label: 'Já pago', value: formatCurrency(totalPago), sub: `Falta pagar: ${formatCurrency(faltaPagar)}`, tone: 'purple', iconName: 'checkCircle' })}
+            ${statCard({ label: 'Saldo atual', value: formatCurrency(saldoDisponivel), sub: `No fim ${perLabel}: ${formatCurrency(saldoProjetado)}`, tone: 'cyan', iconName: 'wallet' })}
+          </div>
+        </div>
       </div>
 
       <div class="panel">
