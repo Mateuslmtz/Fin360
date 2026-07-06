@@ -2019,7 +2019,7 @@ function pageCartoes(container) {
   const draw = () => {
     const cartoes = Store.state.cartoes;
     if (!selectedCartaoId || !cartoes.find((c) => c.id === selectedCartaoId)) selectedCartaoId = cartoes[0] ? cartoes[0].id : null;
-    if (!ccPeriod.value) ccPeriod.value = monthAddStr(currentMonthStr(), 1);
+    if (!ccPeriod.value) ccPeriod.value = currentMonthStr();
     const selectedFaturaMonth = ccPeriod.type === 'year' ? `${ccPeriod.value}-01` : ccPeriod.value;
     const editingCartao = editingCartaoId ? Store.get('cartoes', editingCartaoId) : null;
     if (editingCartao) novoCartaoCor = editingCartao.cor || BANK_CORES[0];
@@ -2200,7 +2200,7 @@ function pageCartoes(container) {
     }
     if (document.getElementById('cc-cancel-cartao')) document.getElementById('cc-cancel-cartao').onclick = () => { editingCartaoId = null; novoCartaoOpen = false; draw(); };
 
-    container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; ccPeriod = { type: 'month', value: monthAddStr(currentMonthStr(), 1) }; draw(); });
+    container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; ccPeriod = { type: 'month', value: currentMonthStr() }; draw(); });
     container.querySelectorAll('[data-action="edit-cartao"]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); editingCartaoId = b.dataset.id; novoCartaoOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="delete-cartao"]').forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
