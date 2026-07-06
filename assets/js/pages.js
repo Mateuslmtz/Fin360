@@ -1996,6 +1996,13 @@ let novoCartaoCor = BANK_CORES[0];
 function cartaoItemDescricao(x) {
   return x.origem === 'variavel' ? x.item.descricao : x.item.nome;
 }
+// data em que a despesa foi lançada/comprada — variável tem a data exata da compra; o fixo é recorrente,
+// então usamos o dia de vencimento dele dentro do mês de competência
+function cartaoItemDataLancamento(x) {
+  if (x.origem === 'variavel') return x.item.data;
+  const dia = clampDayToMonth(x.item.mesRef, x.item.diaVencimento);
+  return `${x.item.mesRef}-${String(dia).padStart(2, '0')}`;
+}
 function cartaoItemParcelaLabel(x) {
   if (x.origem === 'variavel') return x.item.parcelaLabel || '—';
   if (x.item.fimMes) return `${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(x.item), x.item.fimMes)}`;
@@ -2133,7 +2140,7 @@ function pageCartoes(container) {
             </div>
             ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
               <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Lançamento</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
                 <tbody>
                   ${faturaItens.map((x) => {
                     const dividido = gastoValorDividido(x.item);
@@ -2141,6 +2148,7 @@ function pageCartoes(container) {
                     <tr>
                       <td class="row-title">${cartaoItemDescricao(x)}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${x.item.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
                       <td>${categoryTag(x.item.categoryId)}</td>
+                      <td>${formatDateBR(cartaoItemDataLancamento(x))}</td>
                       <td>${formatDateBR(x.item.vencimentoISO)}</td>
                       <td>${cartaoItemParcelaLabel(x)}</td>
                       <td><strong>${formatCurrency(x.item.valor)}</strong></td>
