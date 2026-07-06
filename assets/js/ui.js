@@ -8,7 +8,6 @@ const NAV_ITEMS = [
   { route: 'gastos-fixos', label: 'Gastos fixos', icon: 'repeat', subtitle: 'Cadastre custos recorrentes e acompanhe vencimentos' },
   { route: 'cartoes', label: 'Cartões de crédito', icon: 'card', subtitle: 'Limite, fatura e vencimento dos seus cartões' },
   { route: 'cofrinhos', label: 'Cofrinhos', icon: 'piggy', subtitle: 'Reserva de emergência e metas de poupança' },
-  { route: 'conciliacao', label: 'Conciliação', icon: 'checkCircle', subtitle: 'Confira lançamentos com seu extrato bancário' },
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
   { route: 'bancos', label: 'Bancos', icon: 'bank', subtitle: 'Contas e saldos vinculados' },
   { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Espelha o Dashboard com os mesmos filtros e regras' },

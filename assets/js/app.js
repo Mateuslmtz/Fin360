@@ -10,7 +10,6 @@ const ROUTES = {
   'cofrinhos': pageCofrinhos,
   'cartoes': pageCartoes,
   'extrato': pageExtrato,
-  'conciliacao': pageConciliacao,
   'planejamento': pagePlanejamento,
   'importar': pageImportar,
   'assistente': pageAssistente,
