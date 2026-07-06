@@ -64,7 +64,6 @@ function defaultState() {
     cartaoCompras: [], // legado — só usado para migrar dados antigos, ver Store.migrarCartaoComprasParaGastos()
     migradoCartaoComprasV2: false,
     cartaoFaturasPagas: [], // {id, cartaoId, mes:'YYYY-MM', bankId, valor, ledgerApplied}
-    conciliacoes: [], // array de chaves de transação (ex: 'gf:id:2026-06') marcadas como conciliadas
     metasCategoria: [], // {id, categoryId, mes:'YYYY-MM', valor}
   };
 }
@@ -548,7 +547,7 @@ function saldoBancosNoFimDoMes(mStr, bankId) {
   return acc;
 }
 
-/* ============ Motor de transações unificado (Extrato / Conciliação) ============ */
+/* ============ Motor de transações unificado (Extrato) ============ */
 function monthsBetweenISO(start, end) {
   const months = [];
   let cur = start.slice(0, 7);
@@ -588,15 +587,6 @@ function buildTransacoes(start, end) {
     }).filter(Boolean)),
   ];
   return txs.filter((t) => t.data >= start && t.data <= end);
-}
-function isConciliado(key) {
-  return Store.state.conciliacoes.includes(key);
-}
-function toggleConciliado(key) {
-  const list = Store.state.conciliacoes;
-  const idx = list.indexOf(key);
-  if (idx > -1) list.splice(idx, 1); else list.push(key);
-  Store.save();
 }
 
 function isCartaoFaturaPaga(cartaoId, mStr) {
