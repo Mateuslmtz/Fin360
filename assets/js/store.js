@@ -77,10 +77,10 @@ function clampDayToMonth(mStr, day) {
   const [y, m] = mStr.split('-').map(Number);
   return Math.min(day || 1, daysInMonth(y, m - 1));
 }
-// quando pago via cartão, o vencimento mostrado é o dia de vencimento do próprio cartão, dentro do mesmo mês
-// em que a cobrança foi lançada (o mês de referência é sempre o mês da cobrança, nunca desloca pro seguinte)
+// quando pago via cartão, o vencimento mostrado é a data real da fatura (considerando o fechamento do
+// cartão) — só informativo, não muda o mês em que a cobrança conta (isso é sempre o mês da compra)
 function gastoFixoVencimentoISO(gf, mStr, cartaoId) {
-  if (cartaoId) return cartaoFaturaVencimentoISO(cartaoId, mStr);
+  if (cartaoId) return cartaoVencimentoRealISO(cartaoId, mStr, gf.diaVencimento);
   const day = clampDayToMonth(mStr, gf.diaVencimento);
   return `${mStr}-${String(day).padStart(2, '0')}`;
 }
@@ -218,11 +218,18 @@ function gastoFracaoMinha(item) {
   return item.valor > 0 ? gastoValorMeu(item) / item.valor : 1;
 }
 
-// dia de vencimento real da fatura de um cartão num mês específico (clampado aos dias daquele mês)
-function cartaoFaturaVencimentoISO(cartaoId, mStr) {
+// data real de vencimento da fatura que engloba uma cobrança feita no dia `day` do mês de competência
+// `mStr` — usa o fechamento do cartão só pra achar a data real de pagamento (informativo). Isso é
+// independente do mês em que a cobrança conta pro total (sempre o mês da compra, ver gastoVariavelBaseMonth)
+function cartaoVencimentoRealISO(cartaoId, mStr, day) {
   const cartao = Store.get('cartoes', cartaoId);
-  const day = clampDayToMonth(mStr, cartao ? cartao.diaVencimento : 1);
-  return `${mStr}-${String(day).padStart(2, '0')}`;
+  // sem fechamento cadastrado, assume que a fatura nunca fecha antes do fim do mês (mantém vencimento no mesmo mês)
+  const fechamento = cartao ? (cartao.diaFechamento || 31) : 31;
+  const vencimento = cartao ? (cartao.diaVencimento || 1) : 1;
+  const fechamentoMes = (day || 1) <= fechamento ? mStr : monthAddStr(mStr, 1);
+  const vencimentoMes = vencimento > fechamento ? fechamentoMes : monthAddStr(fechamentoMes, 1);
+  const vDay = clampDayToMonth(vencimentoMes, vencimento);
+  return `${vencimentoMes}-${String(vDay).padStart(2, '0')}`;
 }
 /* ============ Gastos variáveis: único ou parcelado (parcelado só faz sentido vinculado a cartão) ============ */
 // mês em que uma cobrança lançada num cartão conta — sempre o mês em que a compra foi feita (o dia de
@@ -261,7 +268,7 @@ function gastosVariaveisForMonth(mStr) {
       valorMeu: x.occurrence.valorMeu,
       parcelaLabel: x.occurrence.parcelaLabel,
       mesRef: mStr,
-      vencimentoISO: x.g.cartaoId ? cartaoFaturaVencimentoISO(x.g.cartaoId, mStr) : x.g.data,
+      vencimentoISO: x.g.cartaoId ? cartaoVencimentoRealISO(x.g.cartaoId, mStr, Number(x.g.data.slice(8, 10))) : x.g.data,
       pago: x.g.cartaoId ? isCartaoFaturaPaga(x.g.cartaoId, mStr) : x.g.status === 'pago',
     }));
 }
