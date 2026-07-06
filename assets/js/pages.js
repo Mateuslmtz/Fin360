@@ -1109,7 +1109,7 @@ function pageGastosFixos(container) {
             <div class="field"><label>Valor</label>${moneyInputHTML('ff-valor', editing ? editing.valor : '')}</div>
             <div class="field"><label id="ff-dia-label">${ffForma === 'cartao' ? 'Dia da cobrança' : 'Dia do vencimento'}</label><input type="number" min="1" max="31" id="ff-dia" placeholder="Ex.: 10" value="${editing ? editing.diaVencimento : ''}" /></div>
           </div>
-          <div class="row-sub" id="ff-dia-hint" style="margin:-8px 0 14px;display:${ffForma === 'cartao' ? 'block' : 'none'}">Só de referência — o vencimento mostrado segue o dia de vencimento do próprio cartão, no mês da cobrança.</div>
+          <div class="row-sub" id="ff-dia-hint" style="margin:-8px 0 14px;display:${ffForma === 'cartao' ? 'block' : 'none'}">Só de referência — o vencimento mostrado é a data real da fatura desse cartão (considerando o fechamento).</div>
           <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(period)}" /></div>
           <div class="row-sub" style="margin:-8px 0 14px">Segue o mês escolhido no filtro da lista — mude aqui se quiser lançar/pagar meses passados deste gasto fixo.</div>
           <div class="field-row" style="grid-template-columns:1.3fr 1fr">
@@ -1320,7 +1320,7 @@ function pageGastosVariaveis(container) {
             <div class="field" id="gv-parcelas-field" style="display:${gvTipo === 'parcelado' ? 'block' : 'none'}">
               <label>Número de parcelas</label><input type="number" min="2" max="48" id="gv-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
             </div>
-            <div class="row-sub" style="margin:-8px 0 14px">Conta na fatura do mês da compra — o vencimento mostrado segue o dia de vencimento do cartão escolhido.</div>
+            <div class="row-sub" style="margin:-8px 0 14px">Conta na fatura do mês da compra — o vencimento mostrado é a data real da fatura desse cartão (considerando o fechamento).</div>
           </div>
           <div id="gv-racha-wrap" style="display:${gvForma === 'cartao' ? 'block' : 'none'}">${divisoesBoxHTML('gv', editing ? editing.divisoes : [])}</div>
           <div class="field"><label>Observação (opcional)</label><textarea id="gv-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
