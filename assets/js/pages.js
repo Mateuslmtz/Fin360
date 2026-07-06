@@ -1263,6 +1263,7 @@ let gvFilters = { pill: 'todos', status: 'todos', category: 'todos', sort: 'data
 let editingVariavelId = null;
 let gvForma = 'pix';
 let gvTipo = 'unico';
+let gvEstorno = false;
 
 function gastosVariaveisInPeriod(period) {
   const months = period.type === 'year'
@@ -1304,25 +1305,28 @@ function pageGastosVariaveis(container) {
           <h3 style="margin-bottom:14px">${editing ? 'Editar lançamento' : 'Novo lançamento'}</h3>
           <div class="field"><label>Descrição</label><input type="text" id="gv-desc" placeholder="Ex.: Mercado" value="${editing ? editing.descricao : ''}" /></div>
           <div class="field-row">
-            <div class="field"><label>Valor</label>${moneyInputHTML('gv-valor', editing ? editing.valor : '')}</div>
+            <div class="field"><label>Valor</label>${moneyInputHTML('gv-valor', editing ? Math.abs(editing.valor) : '')}</div>
             <div class="field"><label>Data</label><input type="date" id="gv-data" value="${editing ? editing.data : todayISO()}" /></div>
           </div>
           <div class="field"><label>Categoria</label>${fieldHTML({ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
           ${formaPagamentoHTML('gv', gvForma, editing ? editing.bankId : '', editing ? editing.cartaoId : '')}
           <div id="gv-tipo-wrap" style="display:${gvForma === 'cartao' ? 'block' : 'none'}">
-            <div class="field">
-              <label>Tipo de compra</label>
-              <div class="pill-group" id="gv-tipo-group">
-                <button type="button" class="pill ${gvTipo === 'unico' ? 'active' : ''}" data-tipo="unico">Único</button>
-                <button type="button" class="pill ${gvTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">Parcelado</button>
+            <div class="field"><label class="checkbox-row"><input type="checkbox" id="gv-estorno" ${gvEstorno ? 'checked' : ''} /> É um estorno (crédito na fatura)</label></div>
+            <div id="gv-compra-wrap" style="display:${gvEstorno ? 'none' : 'block'}">
+              <div class="field">
+                <label>Tipo de compra</label>
+                <div class="pill-group" id="gv-tipo-group">
+                  <button type="button" class="pill ${gvTipo === 'unico' ? 'active' : ''}" data-tipo="unico">Único</button>
+                  <button type="button" class="pill ${gvTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">Parcelado</button>
+                </div>
+              </div>
+              <div class="field" id="gv-parcelas-field" style="display:${gvTipo === 'parcelado' ? 'block' : 'none'}">
+                <label>Número de parcelas</label><input type="number" min="2" max="48" id="gv-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
               </div>
             </div>
-            <div class="field" id="gv-parcelas-field" style="display:${gvTipo === 'parcelado' ? 'block' : 'none'}">
-              <label>Número de parcelas</label><input type="number" min="2" max="48" id="gv-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
-            </div>
-            <div class="row-sub" style="margin:-8px 0 14px">Conta na fatura do mês da compra — o vencimento mostrado é a data real da fatura desse cartão (considerando o fechamento).</div>
+            <div class="row-sub" style="margin:-8px 0 14px">${gvEstorno ? 'Abate esse valor da fatura do cartão no mês do lançamento.' : 'Conta na fatura do mês da compra — o vencimento mostrado é a data real da fatura desse cartão (considerando o fechamento).'}</div>
           </div>
-          <div id="gv-racha-wrap" style="display:${gvForma === 'cartao' ? 'block' : 'none'}">${divisoesBoxHTML('gv', editing ? editing.divisoes : [])}</div>
+          <div id="gv-racha-wrap" style="display:${gvForma === 'cartao' && !gvEstorno ? 'block' : 'none'}">${divisoesBoxHTML('gv', editing ? editing.divisoes : [])}</div>
           <div class="field"><label>Observação (opcional)</label><textarea id="gv-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
           <button class="btn btn-primary btn-block" id="gv-save">${editing ? 'Salvar alterações' : 'Adicionar lançamento'}</button>
           ${editing ? `<button class="btn btn-ghost btn-block" id="gv-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
@@ -1370,39 +1374,46 @@ function pageGastosVariaveis(container) {
 
     document.getElementById('gv-save').onclick = () => {
       const descricao = document.getElementById('gv-desc').value.trim();
-      const valor = moneyValue('gv-valor');
+      let valor = moneyValue('gv-valor');
       const data = document.getElementById('gv-data').value;
       const categoryId = document.getElementById('f-gv-categoria').value;
       const bankId = gvForma !== 'cartao' ? document.getElementById('f-gv-banco').value : null;
       const cartaoId = gvForma === 'cartao' ? document.getElementById('gv-cartao').value : null;
       const meioPagamento = gvForma !== 'cartao' ? gvForma : null;
+      const estorno = gvForma === 'cartao' && gvEstorno;
       if (!descricao) { toast('Informe a descrição', 'danger'); return; }
       if (!valor) { toast('Informe um valor', 'danger'); return; }
       if (gvForma !== 'cartao' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
       if (gvForma === 'cartao' && !cartaoId) { toast('Selecione o cartão', 'danger'); return; }
       if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
-      const tipo = cartaoId ? gvTipo : 'unico';
+      if (estorno) valor = -valor; // estorno abate da fatura, então guardamos como valor negativo
+      const tipo = (cartaoId && !estorno) ? gvTipo : 'unico';
       const parcelas = tipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('gv-parcelas').value, 10) || 2) : 1;
-      const divisoes = cartaoId ? readDivisoesIfChecked('gv') : [];
+      const divisoes = (cartaoId && !estorno) ? readDivisoesIfChecked('gv') : [];
       const payload = {
-        descricao, valor, data, bankId, cartaoId, meioPagamento, tipo, parcelas, divisoes,
+        descricao, valor, data, bankId, cartaoId, meioPagamento, estorno, tipo, parcelas, divisoes,
         categoryId,
         observacao: document.getElementById('gv-obs').value,
       };
       if (editing) { updateGastoVariavel(editing.id, payload); toast('Lançamento atualizado', 'success'); editingVariavelId = null; }
-      else { addGastoVariavel(payload); toast('Lançamento adicionado', 'success'); }
-      gvForma = 'pix'; gvTipo = 'unico';
+      else { addGastoVariavel(payload); toast(estorno ? 'Estorno lançado' : 'Lançamento adicionado', 'success'); }
+      gvForma = 'pix'; gvTipo = 'unico'; gvEstorno = false;
       draw();
     };
-    if (editing) document.getElementById('gv-cancel-edit').onclick = () => { editingVariavelId = null; gvForma = 'pix'; gvTipo = 'unico'; draw(); };
+    if (editing) document.getElementById('gv-cancel-edit').onclick = () => { editingVariavelId = null; gvForma = 'pix'; gvTipo = 'unico'; gvEstorno = false; draw(); };
 
     wireQuickAddButtons([{ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'gv-banco', type: 'select-bank' }]);
     wireCollapsibleNewCategory('gv', () => draw(), { catTipo: 'despesa' });
     wirePeriodControl('gvp', period, draw);
     wireFormaPagamento('gv', (v) => { gvForma = v; }, (forma) => {
       document.getElementById('gv-tipo-wrap').style.display = forma === 'cartao' ? 'block' : 'none';
-      document.getElementById('gv-racha-wrap').style.display = forma === 'cartao' ? 'block' : 'none';
+      document.getElementById('gv-racha-wrap').style.display = forma === 'cartao' && !gvEstorno ? 'block' : 'none';
     });
+    if (document.getElementById('gv-estorno')) document.getElementById('gv-estorno').onchange = (e) => {
+      gvEstorno = e.target.checked;
+      document.getElementById('gv-compra-wrap').style.display = gvEstorno ? 'none' : 'block';
+      document.getElementById('gv-racha-wrap').style.display = gvEstorno ? 'none' : 'block';
+    };
     wireDivisoesBox('gv', 'gv-valor');
     if (document.getElementById('gv-tipo-group')) document.getElementById('gv-tipo-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => {
       gvTipo = b.dataset.tipo;
@@ -1421,6 +1432,7 @@ function pageGastosVariaveis(container) {
       const item = Store.get('gastosVariaveis', b.dataset.id);
       gvForma = item.cartaoId ? 'cartao' : (item.meioPagamento || 'pix');
       gvTipo = item.tipo === 'parcelado' ? 'parcelado' : 'unico';
+      gvEstorno = !!item.estorno;
       draw();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
@@ -1453,11 +1465,11 @@ function gastosVariaveisTable(list, sort) {
       <tbody>
         ${list.map((g) => `
           <tr>
-            <td><div class="row-title">${g.descricao}${g.parcelaLabel ? `<span class="badge badge-primary" style="margin-left:8px">${g.parcelaLabel}</span>` : ''}</div>${g.observacao ? `<div class="row-sub">${g.observacao}</div>` : ''}</td>
+            <td><div class="row-title">${g.descricao}${g.estorno ? `<span class="badge badge-success" style="margin-left:8px">Estorno</span>` : ''}${g.parcelaLabel ? `<span class="badge badge-primary" style="margin-left:8px">${g.parcelaLabel}</span>` : ''}</div>${g.observacao ? `<div class="row-sub">${g.observacao}</div>` : ''}</td>
             <td>${categoryTag(g.categoryId)}</td>
             <td>${formatDateBR(g.data)}</td>
             <td>${bancoOuCartaoLabel(g)}</td>
-            <td><strong>${formatCurrency(g.valor)}</strong></td>
+            <td><strong class="${g.estorno ? 'amount-pos' : ''}">${formatCurrency(g.valor)}</strong></td>
             <td>${pagoVariavelStatusHTML(g)}</td>
             <td><div class="row-actions">
               <button class="btn-icon" data-action="edit-var" data-id="${g.id}">${icon('edit')}</button>
@@ -2136,7 +2148,7 @@ function pageCartoes(container) {
               ${statCard({ label: 'Limite total', value: formatCurrency(selected.limite), tone: 'blue', iconName: 'card' })}
               ${statCard({ label: 'Limite usado', value: formatCurrency(limiteUsado), sub: 'Faturas em aberto (todas)', tone: 'red', iconName: 'arrowDownCircle' })}
               ${statCard({ label: 'Limite disponível', value: formatCurrency(Math.max(0, selected.limite - limiteUsado)), tone: 'green', iconName: 'checkCircle' })}
-              ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), tone: 'orange', iconName: 'wallet' })}
+              ${statCard({ label: 'Saldo da fatura', value: formatCurrency(faturaPaga ? 0 : faturaTotal), sub: !faturaPaga && faturaTotal < 0 ? 'Crédito a seu favor' : '', tone: 'orange', iconName: 'wallet' })}
               ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
             ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
@@ -2147,13 +2159,13 @@ function pageCartoes(container) {
                     const dividido = gastoValorDividido(x.item);
                     return `
                     <tr>
-                      <td class="row-title">${cartaoItemDescricao(x)}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${x.item.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
+                      <td class="row-title">${cartaoItemDescricao(x)}${x.item.estorno ? `<span class="badge badge-success" style="margin-left:8px">Estorno</span>` : ''}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${x.item.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
                       <td>${categoryTag(x.item.categoryId)}</td>
                       <td>${formatDateBR(cartaoItemDataLancamento(x))}</td>
                       <td>${formatDateBR(x.item.vencimentoISO)}</td>
                       <td>${cartaoItemParcelaLabel(x)}</td>
-                      <td><strong>${formatCurrency(x.item.valor)}</strong></td>
-                      <td>${dividido > 0 ? `<span class="amount-pos">${formatCurrency(x.item.valorMeu)}</span>` : formatCurrency(x.item.valorMeu)}</td>
+                      <td><strong class="${x.item.estorno ? 'amount-pos' : ''}">${formatCurrency(x.item.valor)}</strong></td>
+                      <td>${x.item.estorno || dividido > 0 ? `<span class="amount-pos">${formatCurrency(x.item.valorMeu)}</span>` : formatCurrency(x.item.valorMeu)}</td>
                       <td><button class="btn-icon" data-action="ir-lancamento" data-route="${cartaoItemOrigemRoute(x)}" title="Editar em ${cartaoItemOrigemLabel(x)}">${icon('edit')}</button></td>
                     </tr>`;
                   }).join('')}

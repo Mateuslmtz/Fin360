@@ -50,7 +50,7 @@ function defaultState() {
     gastosFixosPagamentos: [], // {id, gastoFixoId, mes:'YYYY-MM', bankId, data, valor}
     gastosFixosMesesOcultos: [], // {id, gastoFixoId, mes:'YYYY-MM'} — ocorrência excluída só naquele mês ("Apenas este mês")
     // gastosVariaveis: {id,descricao,valor,data,categoryId,bankId,meioPagamento('pix'|'ted'|'boleto', só quando bankId),
-    //   cartaoId(opcional),divisoes(opcional, racha),
+    //   cartaoId(opcional),divisoes(opcional, racha),estorno(opcional; quando true o valor é negativo e abate da fatura),
     //   tipo:'unico'|'parcelado'(só faz sentido com cartaoId),parcelas,status:'pago'|'pendente'(ignorado quando cartaoId),observacao,createdAt}
     gastosVariaveis: [],
     // recebimentos: {id,descricao,valor,data,categoryId,bankId,tipo:'unico'|'recorrente'|'parcelado',parcelas,dataFinal(recorrente, opcional),observacao,createdAt}
