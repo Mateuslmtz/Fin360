@@ -315,9 +315,22 @@ function cartaoFaturaAbertaMonth(cartaoId) {
   }
   return atual;
 }
-// custo real pro seu orçamento (COMPETÊNCIA, mês da compra) — já desconta a parte rachada com outras pessoas
+// regime de contabilização do cartão (config do usuário): true = conta no mês da COMPRA (competência),
+// false = conta no mês do VENCIMENTO da fatura (caixa). Vale só pro orçamento (Dashboard/Controle do Ano);
+// a aba Cartões e o saldo do banco seguem sempre o vencimento.
+function regimeCartaoPorCompra() {
+  return !(Store.state && Store.state.profile && Store.state.profile.gastoCartaoPorCompra === false);
+}
+function cartaoItensDoMesRegime(cartaoId, mStr) {
+  return regimeCartaoPorCompra() ? cartaoItensForMonth(cartaoId, mStr) : cartaoItensFatura(cartaoId, mStr);
+}
+// custo real pro seu orçamento (segue o regime escolhido) — já desconta a parte rachada com outras pessoas
 function cartaoCustoRealForMonth(cartaoId, mStr) {
-  return cartaoItensForMonth(cartaoId, mStr).reduce((s, x) => s + x.item.valorMeu, 0);
+  return cartaoItensDoMesRegime(cartaoId, mStr).reduce((s, x) => s + x.item.valorMeu, 0);
+}
+// valor cheio do cartão atribuído ao mês conforme o regime (usado no Controle do Ano)
+function allCartoesValorDoMesRegime(mStr) {
+  return Store.state.cartoes.reduce((s, c) => s + cartaoItensDoMesRegime(c.id, mStr).reduce((s2, x) => s2 + x.item.valor, 0), 0);
 }
 function allCartoesFaturaForMonth(mStr) {
   return Store.state.cartoes.reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
