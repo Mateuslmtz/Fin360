@@ -798,7 +798,7 @@ function yearTable(year) {
     const ganhos = recebimentosForMonth(mStr).reduce((s, r) => s + r.valor, 0);
     const fixos = gastosFixosForMonth(mStr).filter((g) => !g.cartaoId).reduce((s, g) => s + g.valor, 0);
     const variaveis = gastosVariaveisForMonth(mStr).filter((g) => !g.cartaoId).reduce((s, g) => s + g.valor, 0);
-    const cartao = allCartoesFaturaForMonth(mStr);
+    const cartao = allCartoesValorDoMesRegime(mStr);
     const saldoMes = ganhos - fixos - variaveis - cartao;
     totalGanhos += ganhos; totalFixos += fixos; totalVar += variaveis; totalCartao += cartao; totalSaldoMes += saldoMes;
     // balanço = balanço do mês anterior + saldo deste mês — sempre rastreável pelas colunas ao lado
@@ -2726,6 +2726,20 @@ function pageConfiguracoes(container) {
       </div>
 
       <div class="panel">
+        <h3 style="margin-bottom:10px">${icon('card')} Gastos no cartão de crédito</h3>
+        <p class="row-sub" style="margin-bottom:14px">Escolha em que mês uma compra no cartão entra nos seus gastos (Dashboard e Controle do Ano). A aba <strong style="color:var(--text)">Cartões</strong> sempre mostra a compra na fatura do vencimento, independente desta opção.</p>
+        <div class="field" style="max-width:520px">
+          <div class="pill-group" id="cfg-regime-group" style="flex-wrap:wrap">
+            <button type="button" class="pill ${p.gastoCartaoPorCompra !== false ? 'active' : ''}" data-regime="compra">Mês da compra</button>
+            <button type="button" class="pill ${p.gastoCartaoPorCompra === false ? 'active' : ''}" data-regime="vencimento">Mês do vencimento</button>
+          </div>
+          <div class="row-sub" style="margin-top:8px">${p.gastoCartaoPorCompra !== false
+            ? 'Compra de julho que vence em agosto conta como gasto de <strong style="color:var(--text)">julho</strong> (quando você comprou).'
+            : 'Compra de julho que vence em agosto conta como gasto de <strong style="color:var(--text)">agosto</strong> (quando a fatura vence).'}</div>
+        </div>
+      </div>
+
+      <div class="panel">
         <h3 style="margin-bottom:6px">${icon('bag')} Categorias</h3>
         <p class="row-sub" style="margin-bottom:14px">Cadastre, edite e exclua as categorias usadas nos seus lançamentos — tudo em um só lugar.</p>
         <div class="grid-2">
@@ -2787,6 +2801,12 @@ function pageConfiguracoes(container) {
       toast('Moeda atualizada', 'success');
       render();
     };
+    document.getElementById('cfg-regime-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => {
+      Store.state.profile.gastoCartaoPorCompra = b.dataset.regime === 'compra';
+      Store.save();
+      toast(b.dataset.regime === 'compra' ? 'Gastos do cartão contam no mês da compra' : 'Gastos do cartão contam no mês do vencimento', 'success');
+      draw();
+    });
     document.getElementById('cfg-logout').onclick = () => {
       confirmModal({
         title: 'Sair da conta', text: 'Você precisará entrar novamente com seu e-mail e senha para acessar seus dados.', confirmLabel: 'Sair',
