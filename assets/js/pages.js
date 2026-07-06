@@ -2019,7 +2019,8 @@ function pageCartoes(container) {
   const draw = () => {
     const cartoes = Store.state.cartoes;
     if (!selectedCartaoId || !cartoes.find((c) => c.id === selectedCartaoId)) selectedCartaoId = cartoes[0] ? cartoes[0].id : null;
-    if (!ccPeriod.value) ccPeriod.value = currentMonthStr();
+    // abre já no mês da fatura em aberto (a compra de julho que vence em agosto aparece na fatura de agosto)
+    if (!ccPeriod.value) ccPeriod.value = selectedCartaoId ? cartaoFaturaAbertaMonth(selectedCartaoId) : currentMonthStr();
     const selectedFaturaMonth = ccPeriod.type === 'year' ? `${ccPeriod.value}-01` : ccPeriod.value;
     const editingCartao = editingCartaoId ? Store.get('cartoes', editingCartaoId) : null;
     if (editingCartao) novoCartaoCor = editingCartao.cor || BANK_CORES[0];
@@ -2030,9 +2031,9 @@ function pageCartoes(container) {
     const totalParcelas = cartoes.reduce((s, c) => s + parcelasAtivasCount(c.id), 0);
 
     const selected = cartoes.find((c) => c.id === selectedCartaoId);
-    // a fatura sempre soma pelo mês da compra/cobrança (sem deslocar por fechamento) — o mesmo número
-    // aparece aqui, no Dashboard, no Extrato e no Controle do Ano
-    const faturaItens = selected ? sortList(cartaoItensForMonth(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
+    // aqui a fatura é agrupada pelo mês do VENCIMENTO — uma compra de julho que vence em agosto aparece na
+    // fatura de agosto. (No orçamento do Dashboard/Controle do Ano ela conta no mês da compra, em julho.)
+    const faturaItens = selected ? sortList(cartaoItensFatura(selected.id, selectedFaturaMonth), ccFaturaSort, (x) => x.item.vencimentoISO, (x) => x.item.valor) : [];
     const faturaTotal = faturaItens.reduce((s, x) => s + x.item.valor, 0);
     const faturaCustoReal = faturaItens.reduce((s, x) => s + x.item.valorMeu, 0);
     const faturaPaga = selected && isCartaoFaturaPaga(selected.id, selectedFaturaMonth);
@@ -2200,7 +2201,7 @@ function pageCartoes(container) {
     }
     if (document.getElementById('cc-cancel-cartao')) document.getElementById('cc-cancel-cartao').onclick = () => { editingCartaoId = null; novoCartaoOpen = false; draw(); };
 
-    container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; ccPeriod = { type: 'month', value: currentMonthStr() }; draw(); });
+    container.querySelectorAll('[data-action="select-cartao"]').forEach((tr) => tr.onclick = () => { selectedCartaoId = tr.dataset.id; ccPeriod = { type: 'month', value: cartaoFaturaAbertaMonth(tr.dataset.id) }; draw(); });
     container.querySelectorAll('[data-action="edit-cartao"]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); editingCartaoId = b.dataset.id; novoCartaoOpen = true; draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     container.querySelectorAll('[data-action="delete-cartao"]').forEach((b) => b.onclick = (e) => {
       e.stopPropagation();

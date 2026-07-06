@@ -152,9 +152,11 @@ function gastoFixoConfigParaMes(gf, mStr) {
 // baixa própria — a "sua parte" (racha) usa gastoValorMeu, igual às compras de cartão de antes
 function gastoFixoOccurrenceExtras(gf, cfg, mStr) {
   if (gf.cartaoId) {
+    // o "pago" segue a fatura do MÊS DO VENCIMENTO (é quando você paga o cartão), não o mês da compra
+    const vencimentoISO = gastoFixoVencimentoISO(cfg, mStr, gf.cartaoId);
     return {
-      vencimentoISO: gastoFixoVencimentoISO(cfg, mStr, gf.cartaoId),
-      pago: isCartaoFaturaPaga(gf.cartaoId, mStr),
+      vencimentoISO,
+      pago: isCartaoFaturaPaga(gf.cartaoId, vencimentoISO.slice(0, 7)),
       pagamento: null,
       valorMeu: gastoValorMeu(gf),
     };
@@ -262,38 +264,68 @@ function gastosVariaveisForMonth(mStr) {
   return Store.state.gastosVariaveis
     .map((g) => ({ g, occurrence: gastoVariavelOccurrenceInMonth(g, mStr) }))
     .filter((x) => x.occurrence)
-    .map((x) => ({
-      ...x.g,
-      valor: x.occurrence.valor,
-      valorMeu: x.occurrence.valorMeu,
-      parcelaLabel: x.occurrence.parcelaLabel,
-      mesRef: mStr,
-      vencimentoISO: x.g.cartaoId ? cartaoVencimentoRealISO(x.g.cartaoId, mStr, Number(x.g.data.slice(8, 10))) : x.g.data,
-      pago: x.g.cartaoId ? isCartaoFaturaPaga(x.g.cartaoId, mStr) : x.g.status === 'pago',
-    }));
+    .map((x) => {
+      // pago segue a fatura do MÊS DO VENCIMENTO (quando o cartão é pago), não o mês da compra
+      const vencimentoISO = x.g.cartaoId ? cartaoVencimentoRealISO(x.g.cartaoId, mStr, Number(x.g.data.slice(8, 10))) : x.g.data;
+      return {
+        ...x.g,
+        valor: x.occurrence.valor,
+        valorMeu: x.occurrence.valorMeu,
+        parcelaLabel: x.occurrence.parcelaLabel,
+        mesRef: mStr,
+        vencimentoISO,
+        pago: x.g.cartaoId ? isCartaoFaturaPaga(x.g.cartaoId, vencimentoISO.slice(0, 7)) : x.g.status === 'pago',
+      };
+    });
 }
-/* ============ Resumo de fatura do cartão — soma os gastos fixos e variáveis vinculados a ele ============ */
-// o mês de referência aqui é sempre o mês em que a compra/cobrança foi feita — a fatura do cartão fecha
-// e conta junto com o mês da compra, não desloca pro mês seguinte
+/* ============ Cartão: dois agrupamentos diferentes ============
+   - COMPETÊNCIA (cartaoItensForMonth): itens pelo mês da COMPRA — é o que entra no seu orçamento do mês
+     ("fechar o mês" no Dashboard/Controle do Ano). Uma compra de julho conta em julho.
+   - FATURA (cartaoItensFatura): itens pelo mês do VENCIMENTO da fatura — é o que aparece na aba Cartões e
+     o que de fato sai do banco. A mesma compra de julho, se a fatura vence em agosto, cai na fatura de agosto. */
 function cartaoItensForMonth(cartaoId, mStr) {
   const fixos = gastosFixosForMonth(mStr).filter((g) => g.cartaoId === cartaoId).map((g) => ({ origem: 'fixo', item: g }));
   const variaveis = gastosVariaveisForMonth(mStr).filter((g) => g.cartaoId === cartaoId).map((g) => ({ origem: 'variavel', item: g }));
   return [...fixos, ...variaveis];
 }
-// fatura real do cartão — o que você de fato paga ao banco naquele mês (valor cheio, sem descontar racha)
-function cartaoFaturaForMonth(cartaoId, mStr) {
-  return cartaoItensForMonth(cartaoId, mStr).reduce((s, x) => s + x.item.valor, 0);
+// itens cuja fatura VENCE no mês vencMonth — varre alguns meses de competência anteriores (a fatura pode
+// englobar compras de até ~2 meses atrás) e fica só com os que caem nessa fatura
+function cartaoItensFatura(cartaoId, vencMonth) {
+  const itens = [];
+  for (let i = 3; i >= 0; i--) {
+    cartaoItensForMonth(cartaoId, monthAddStr(vencMonth, -i)).forEach((x) => {
+      if (x.item.vencimentoISO.slice(0, 7) === vencMonth) itens.push(x);
+    });
+  }
+  return itens;
 }
-// custo real pro seu orçamento pessoal — já desconta a parte rachada com outras pessoas
+// mês (YYYY-MM) da fatura que engloba uma cobrança feita no dia `day` do mês de competência `mStr`
+function cartaoFaturaMonthDe(cartaoId, mStr, day) {
+  return cartaoVencimentoRealISO(cartaoId, mStr, day).slice(0, 7);
+}
+// fatura real do cartão — o que você de fato paga ao banco no mês do vencimento (valor cheio, sem racha)
+function cartaoFaturaForMonth(cartaoId, mStr) {
+  return cartaoItensFatura(cartaoId, mStr).reduce((s, x) => s + x.item.valor, 0);
+}
+// mês da próxima fatura em aberto (com valor e ainda não paga) a partir do mês atual — pra abrir a aba nela
+function cartaoFaturaAbertaMonth(cartaoId) {
+  const atual = currentMonthStr();
+  for (let i = -1; i <= 13; i++) {
+    const m = monthAddStr(atual, i);
+    if (cartaoFaturaForMonth(cartaoId, m) > 0 && !isCartaoFaturaPaga(cartaoId, m)) return m;
+  }
+  return atual;
+}
+// custo real pro seu orçamento (COMPETÊNCIA, mês da compra) — já desconta a parte rachada com outras pessoas
 function cartaoCustoRealForMonth(cartaoId, mStr) {
   return cartaoItensForMonth(cartaoId, mStr).reduce((s, x) => s + x.item.valorMeu, 0);
 }
 function allCartoesFaturaForMonth(mStr) {
   return Store.state.cartoes.reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
 }
-// mantido por compatibilidade com quem já chamava a versão "sempre caixa" — hoje é sempre esse regime
+// custo real que sai do caixa quando a fatura é paga — agrupa pelo mês do VENCIMENTO (fatura), não da compra
 function cartaoCustoRealCaixaForMonth(cartaoId, mStr) {
-  return cartaoCustoRealForMonth(cartaoId, mStr);
+  return cartaoItensFatura(cartaoId, mStr).reduce((s, x) => s + x.item.valorMeu, 0);
 }
 // limite realmente comprometido: tudo que já foi lançado e ainda não foi quitado, igual um cartão de verdade —
 // gasto fixo conta enquanto a recorrência estiver ativa, gasto variável parcelado segura o limite de TODAS as
@@ -307,8 +339,10 @@ function cartaoLimiteUsado(cartaoId) {
     let mStr = inicio;
     let guard = 0;
     while (mStr <= fim && guard < 600) {
-      if (gf.ativo !== false && !isGastoFixoMesOculto(gf.id, mStr) && !isCartaoFaturaPaga(cartaoId, mStr)) {
-        usado += gastoFixoConfigParaMes(gf, mStr).valor;
+      const cfg = gastoFixoConfigParaMes(gf, mStr);
+      // "quitado" olha a fatura do mês do vencimento dessa cobrança, não do mês da compra
+      if (gf.ativo !== false && !isGastoFixoMesOculto(gf.id, mStr) && !isCartaoFaturaPaga(cartaoId, cartaoFaturaMonthDe(cartaoId, mStr, cfg.diaVencimento))) {
+        usado += cfg.valor;
       }
       mStr = monthAddStr(mStr, 1);
       guard++;
@@ -316,10 +350,11 @@ function cartaoLimiteUsado(cartaoId) {
   });
   Store.state.gastosVariaveis.filter((g) => g.cartaoId === cartaoId).forEach((g) => {
     const base = gastoVariavelBaseMonth(g);
+    const dia = Number(g.data.slice(8, 10));
     const n = g.tipo === 'parcelado' ? Math.max(1, g.parcelas || 1) : 1;
     for (let i = 0; i < n; i++) {
       const mStr = monthAddStr(base, i);
-      if (!isCartaoFaturaPaga(cartaoId, mStr)) usado += Math.round((g.valor / n) * 100) / 100;
+      if (!isCartaoFaturaPaga(cartaoId, cartaoFaturaMonthDe(cartaoId, mStr, dia))) usado += Math.round((g.valor / n) * 100) / 100;
     }
   });
   return usado;
