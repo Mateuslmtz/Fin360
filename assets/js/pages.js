@@ -527,6 +527,11 @@ function pageDashboard(container) {
       </div>
 
       <div class="panel">
+        <div class="panel-header"><div><h3>${icon('trendUp')} Receitas × Despesas</h3><div class="panel-sub">Evolução dos últimos 6 meses</div></div></div>
+        ${receitasDespesasChartHTML(period.type === 'month' ? period.value : currentMonthStr(), bankFilterOn ? dashBank : null)}
+      </div>
+
+      <div class="panel">
         <div class="panel-header">
           <div><h3>${icon('calendar')} Controle do Ano — Mês por mês</h3><div class="panel-sub">Projeção financeira: realizados, mês atual e meses futuros agendados</div></div>
           <select id="dash-year-select">${[...years].map((y) => `<option value="${y}" ${y === yearSel ? 'selected' : ''}>${y}</option>`).join('')}</select>
@@ -540,6 +545,56 @@ function pageDashboard(container) {
     document.getElementById('dash-year-select').onchange = (e) => { dashPeriod = { type: 'year', value: e.target.value }; draw(); };
   };
   draw();
+}
+
+function receitasDespesasChartHTML(anchorMonth, bankId) {
+  const months = [];
+  for (let i = 5; i >= 0; i--) months.push(monthAddStr(anchorMonth, -i));
+  const cartoes = Store.state.cartoes.filter((c) => !bankId || c.bankId === bankId);
+  const data = months.map((mStr) => {
+    // receitas: tudo lançado em recebimentos, exceto reembolsos (dinheiro que voltou, não é entrada nova)
+    const receitas = recebimentosForMonth(mStr)
+      .filter((r) => r.categoryId !== 'cat-reembolso' && (!bankId || r.bankId === bankId))
+      .reduce((s, r) => s + r.valor, 0);
+    // despesas: gastos fixos + variáveis diretos + custo do cartão pelo regime escolhido (mês da compra por padrão)
+    const despFixos = gastosFixosForMonth(mStr).filter((g) => !g.cartaoId && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+    const despVar = gastosVariaveisForMonth(mStr).filter((g) => !g.cartaoId && (!bankId || g.bankId === bankId)).reduce((s, g) => s + g.valor, 0);
+    const despCartao = cartoes.reduce((s, c) => s + cartaoCustoRealForMonth(c.id, mStr), 0);
+    return { mStr, receitas, despesas: despFixos + despVar + despCartao };
+  });
+
+  if (data.every((d) => d.receitas === 0 && d.despesas === 0)) {
+    return emptyState({ iconName: 'trendUp', title: 'Sem lançamentos nos últimos 6 meses.' });
+  }
+
+  const w = 1000, h = 320, padL = 66, padR = 16, padT = 24, padB = 40;
+  const plotB = h - padB, plotT = padT;
+  const maxVal = Math.max(...data.flatMap((d) => [d.receitas, d.despesas]), 1);
+  const groupW = (w - padL - padR) / data.length;
+  const barW = Math.min(50, groupW * 0.30);
+  const y = (v) => plotB - (v / maxVal) * (plotB - plotT);
+  const yTicks = [0, maxVal / 2, maxVal];
+  const compact = (v) => formatCurrency(v).replace('R$', '').trim();
+
+  return `
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:280px">
+      ${yTicks.map((t) => `<line x1="${padL}" y1="${y(t).toFixed(1)}" x2="${w - padR}" y2="${y(t).toFixed(1)}" stroke="var(--border-soft)" stroke-width="1"/><text x="0" y="${(y(t) + 5).toFixed(1)}" font-size="16" fill="var(--text-faint)">${compact(t)}</text>`).join('')}
+      ${data.map((d, i) => {
+        const cx = padL + groupW * (i + 0.5);
+        const xR = cx - barW - 3, xD = cx + 3;
+        const [yy, mm] = d.mStr.split('-').map(Number);
+        const label = `${monthLabel(mm - 1).slice(0, 3)}/${String(yy).slice(2)}`;
+        const receitaBar = d.receitas > 0 ? `<rect x="${xR.toFixed(1)}" y="${y(d.receitas).toFixed(1)}" width="${barW.toFixed(1)}" height="${(plotB - y(d.receitas)).toFixed(1)}" rx="3" fill="var(--success)"><title>${label} — Receitas: ${formatCurrency(d.receitas)}</title></rect>` : '';
+        const despesaBar = d.despesas > 0 ? `<rect x="${xD.toFixed(1)}" y="${y(d.despesas).toFixed(1)}" width="${barW.toFixed(1)}" height="${(plotB - y(d.despesas)).toFixed(1)}" rx="3" fill="var(--danger)"><title>${label} — Despesas: ${formatCurrency(d.despesas)}</title></rect>` : '';
+        return `${receitaBar}${despesaBar}<text x="${cx.toFixed(1)}" y="${h - 14}" font-size="16" fill="var(--text-muted)" text-anchor="middle">${label}</text>`;
+      }).join('')}
+      <line x1="${padL}" y1="${plotB.toFixed(1)}" x2="${w - padR}" y2="${plotB.toFixed(1)}" stroke="var(--border-soft)" stroke-width="1"/>
+    </svg>
+    <div style="display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--text-muted)">
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:5px"></span>Receitas</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:5px"></span>Despesas</span>
+    </div>
+  `;
 }
 
 function areaChartHTML(mStr, saldoInicial, bankId) {
