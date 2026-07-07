@@ -527,44 +527,6 @@ function pageDashboard(container) {
       </div>
 
       <div class="panel">
-        ${fixos.length === 0 ? emptyState({
-          iconName: 'checkCircle', title: 'Nenhum gasto fixo cadastrado', text: 'Cadastre suas contas recorrentes (aluguel, internet, etc) para acompanhar aqui.', actionLabel: 'Adicionar gasto fixo', actionId: 'dash-add-fixo',
-        }) : `
-          <div class="panel-header">
-            <div><h3>${icon('repeat')} Gastos fixos do mês</h3><div class="panel-sub">Recorrências automáticas — atualizam todo mês.</div></div>
-            <div style="display:flex;gap:22px">
-              <div><div class="stat-label" style="text-align:right">Total</div><strong>${formatCurrency(fixos.reduce((s, g) => s + g.valor, 0))}</strong></div>
-              <div><div class="stat-label" style="text-align:right">Pendentes</div><strong style="color:var(--warning)">${formatCurrency(fixos.filter((g) => !g.pago).reduce((s, g) => s + g.valor, 0))}</strong></div>
-            </div>
-          </div>
-          ${gastosFixosMiniList(fixos.slice(0, 5))}
-          <button class="btn btn-ghost btn-block" id="dash-add-fixo" style="margin-top:6px">Gerenciar gastos fixos</button>
-        `}
-      </div>
-
-      <div class="grid-2">
-        <div class="panel">
-          <div class="panel-header"><h3>${icon('card')} Seus cartões</h3><button class="btn btn-ghost btn-sm" id="dash-go-cartoes">Gerenciar</button></div>
-          ${Store.state.cartoes.length === 0 ? emptyState({ iconName: 'card', title: 'Você ainda não cadastrou nenhum cartão', actionLabel: 'Adicionar cartão', actionId: 'dash-add-cartao' }) : cardsMini(Store.state.cartoes)}
-        </div>
-        <div class="panel">
-          <div class="panel-header"><h3>${icon('piggy')} Seus cofrinhos</h3><button class="btn btn-ghost btn-sm" id="dash-go-cofrinhos">Gerenciar</button></div>
-          ${Store.state.cofrinhos.length === 0 ? emptyState({ iconName: 'piggy', title: 'Você ainda não tem cofrinhos ativos', actionLabel: 'Criar cofrinho', actionId: 'dash-add-cofrinho' }) : cofrinhosMini(Store.state.cofrinhos)}
-        </div>
-      </div>
-
-      <div class="grid-2">
-        <div class="panel">
-          <div class="panel-header"><div><h3>Distribuição por categoria</h3><div class="panel-sub">Como seus gastos se dividem</div></div></div>
-          ${catEntries.length === 0 ? `<div style="text-align:center;padding:30px 0"><div class="stat-label">Total</div><div class="stat-value" style="font-size:26px">${formatCurrency(0)}</div></div>` : categoryDonut(catEntries, catSum)}
-        </div>
-        <div class="panel">
-          <div class="panel-header"><div><h3>Últimas transações</h3><div class="panel-sub">Movimentações recentes</div></div></div>
-          ${allTx.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhuma transação ainda' }) : recentTxList(allTx.slice(0, 6))}
-        </div>
-      </div>
-
-      <div class="panel">
         <div class="panel-header">
           <div><h3>${icon('calendar')} Controle do Ano — Mês por mês</h3><div class="panel-sub">Projeção financeira: realizados, mês atual e meses futuros agendados</div></div>
           <select id="dash-year-select">${[...years].map((y) => `<option value="${y}" ${y === yearSel ? 'selected' : ''}>${y}</option>`).join('')}</select>
@@ -576,10 +538,6 @@ function pageDashboard(container) {
     wirePeriodControl('dash', period, draw);
     wireBankFilter('dash', (id) => { dashBank = id; }, draw);
     document.getElementById('dash-year-select').onchange = (e) => { dashPeriod = { type: 'year', value: e.target.value }; draw(); };
-    const go = (id, route) => { const el = document.getElementById(id); if (el) el.onclick = () => goRoute(route); };
-    go('dash-add-fixo', 'gastos-fixos'); go('dash-go-cartoes', 'cartoes'); go('dash-add-cartao', 'cartoes');
-    go('dash-go-cofrinhos', 'cofrinhos'); go('dash-add-cofrinho', 'cofrinhos');
-    wirePagoFixoActions(container, draw);
   };
   draw();
 }
