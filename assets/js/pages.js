@@ -908,7 +908,7 @@ function pageResumo(container) {
       <div class="panel">
         <div class="panel-header">
           <div>
-            <h3 style="font-size:18px">Olá, ${(Store.state.profile.name || 'Mateus').toUpperCase()} 👋</h3>
+            <h3 style="font-size:18px">Olá${Store.state.profile.name ? ', ' + Store.state.profile.name.toUpperCase() : ''} 👋</h3>
             <div class="panel-sub">Estas são suas movimentações de <strong>${resumoLabel(period.type)}</strong>.</div>
           </div>
           <div class="pill-group" id="resumo-period-group">
