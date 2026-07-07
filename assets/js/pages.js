@@ -527,11 +527,6 @@ function pageDashboard(container) {
       </div>
 
       <div class="panel">
-        <div class="panel-header"><div><h3>Evolução do saldo</h3><div class="panel-sub">Acumulado no período selecionado</div></div></div>
-        ${period.type === 'month' ? areaChartHTML(period.value, saldoBancosNoFimDoMes(monthAddStr(period.value, -1), bankFilterOn ? dashBank : null), bankFilterOn ? dashBank : null) : emptyState({ iconName: 'trendUp', title: 'Selecione "Este mês" ou "Escolher mês" para ver a evolução diária.' })}
-      </div>
-
-      <div class="panel">
         ${fixos.length === 0 ? emptyState({
           iconName: 'checkCircle', title: 'Nenhum gasto fixo cadastrado', text: 'Cadastre suas contas recorrentes (aluguel, internet, etc) para acompanhar aqui.', actionLabel: 'Adicionar gasto fixo', actionId: 'dash-add-fixo',
         }) : `
