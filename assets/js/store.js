@@ -328,9 +328,10 @@ function cartaoItensDoMesRegime(cartaoId, mStr) {
 function cartaoCustoRealForMonth(cartaoId, mStr) {
   return cartaoItensDoMesRegime(cartaoId, mStr).reduce((s, x) => s + x.item.valorMeu, 0);
 }
-// valor cheio do cartão atribuído ao mês conforme o regime (usado no Controle do Ano)
+// custo do cartão atribuído ao mês conforme o regime (usado no Controle do Ano) — só a sua parte do racha,
+// igual ao Dashboard, pra os dois baterem
 function allCartoesValorDoMesRegime(mStr) {
-  return Store.state.cartoes.reduce((s, c) => s + cartaoItensDoMesRegime(c.id, mStr).reduce((s2, x) => s2 + x.item.valor, 0), 0);
+  return Store.state.cartoes.reduce((s, c) => s + cartaoCustoRealForMonth(c.id, mStr), 0);
 }
 function allCartoesFaturaForMonth(mStr) {
   return Store.state.cartoes.reduce((s, c) => s + cartaoFaturaForMonth(c.id, mStr), 0);
