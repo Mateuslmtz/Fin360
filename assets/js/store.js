@@ -22,7 +22,7 @@ function defaultState() {
     hideValues: false,
     context: 'pessoal',
     collapsed: false,
-    profile: { name: 'Mateus', email: 'mateusgiacomollilemmertz@gmail.com', currency: 'BRL', gastoCartaoPorCompra: true },
+    profile: { name: '', email: '', currency: 'BRL', gastoCartaoPorCompra: true },
     categories: [
       { id: 'cat-alimentacao', name: 'Alimentação', color: '#22c55e', emoji: '🍽️', tipo: 'despesa' },
       { id: 'cat-assinaturas', name: 'Assinaturas', color: '#a855f7', emoji: '📺', tipo: 'despesa' },
