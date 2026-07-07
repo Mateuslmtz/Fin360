@@ -490,8 +490,17 @@ function pageDashboard(container) {
       ...receb.map((r) => ({ ...r, label: r.descricao, date: r.dataOcorrencia, kind: 'receb' })),
     ].sort((a, b) => (a.date < b.date ? 1 : -1));
 
+    // gastos por categoria: inclui fixos, variáveis e itens do cartão (todos carregam categoria); ignora estornos/negativos
+    const catGastos = [
+      ...months.flatMap((m) => gastosFixosForMonth(m)),
+      ...months.flatMap((m) => gastosVariaveisForMonth(m)),
+    ].filter((g) => {
+      if (g.valor <= 0) return false;
+      if (g.cartaoId) return !bankFilterOn || cartoesFiltrados.some((c) => c.id === g.cartaoId);
+      return !bankFilterOn || g.bankId === dashBank;
+    });
     const catTotals = {};
-    [...fixos, ...variaveis].forEach((g) => {
+    catGastos.forEach((g) => {
       const key = g.categoryId || 'sem';
       catTotals[key] = (catTotals[key] || 0) + g.valor;
     });
@@ -527,8 +536,13 @@ function pageDashboard(container) {
       </div>
 
       <div class="panel">
-        <div class="panel-header"><div><h3>${icon('trendUp')} Receitas × Despesas</h3><div class="panel-sub">Evolução dos últimos 6 meses</div></div></div>
+        <div class="panel-header"><div><h3>${icon('trendUp')} Receitas × Despesas (6 meses)</h3></div></div>
         ${receitasDespesasChartHTML(period.type === 'month' ? period.value : currentMonthStr(), bankFilterOn ? dashBank : null)}
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><div><h3>${icon('list')} Gastos por categoria</h3><div class="panel-sub">Distribuição ${perLabel}</div></div></div>
+        ${catEntries.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum gasto lançado no período.' }) : categoryDonut(catEntries, catSum)}
       </div>
 
       <div class="panel">
