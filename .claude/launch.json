@@ -6,6 +6,18 @@
       "runtimeExecutable": "powershell",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".claude/static-server.ps1"],
       "port": 5577
+    },
+    {
+      "name": "controle-importacao",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5678", "--directory", "G:\\Meu Drive\\3 - PROJETOS CLAUDE\\CONTROLE IMPORTAÇÃO"],
+      "port": 5678
+    },
+    {
+      "name": "transcritor-whatsapp",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5789", "--directory", "G:\\Meu Drive\\3 - PROJETOS CLAUDE\\Transcritor WhatsApp"],
+      "port": 5789
     }
   ]
 }
