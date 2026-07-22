@@ -2763,15 +2763,6 @@ function pageConfiguracoes(container) {
       </div>
 
       <div class="panel">
-        <h3 style="margin-bottom:10px">${icon('list')} Dados de exemplo</h3>
-        <p class="row-sub" style="margin-bottom:14px">Preencha o sistema com um cenário fictício completo — 6 meses de histórico, cartões, parcelamentos e cofrinhos — pra conhecer todas as telas antes de lançar os seus números. <strong style="color:var(--text)">Os dois botões apagam tudo que já existe.</strong></p>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary btn-sm" id="cfg-carregar-demo">Carregar dados de exemplo</button>
-          <button class="btn btn-ghost btn-sm" id="cfg-limpar-tudo">Limpar todos os dados</button>
-        </div>
-      </div>
-
-      <div class="panel">
         <h3 style="margin-bottom:6px">${icon('bag')} Categorias</h3>
         <p class="row-sub" style="margin-bottom:14px">Cadastre, edite e exclua as categorias usadas nos seus lançamentos — tudo em um só lugar.</p>
         <div class="grid-2">
@@ -2794,6 +2785,12 @@ function pageConfiguracoes(container) {
           <button class="btn btn-ghost btn-sm" id="cfg-import-btn">${icon('upload')} Importar Backup</button>
           <input type="file" id="cfg-import-file" accept="application/json" style="display:none" />
         </div>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:10px">${icon('list')} Dados de exemplo</h3>
+        <p class="row-sub" style="margin-bottom:14px">Preencha o sistema com um cenário fictício completo — 6 meses de histórico, cartões, parcelamentos, racha e cofrinhos — pra conhecer todas as telas antes de lançar os seus números. <strong style="color:var(--text)">Apaga tudo que já existe.</strong></p>
+        <button class="btn btn-ghost btn-sm" id="cfg-carregar-demo">Carregar dados de exemplo</button>
       </div>
 
       <div class="panel" style="border-color:var(--danger)">
@@ -2845,14 +2842,6 @@ function pageConfiguracoes(container) {
         text: 'Isso apaga tudo que você já lançou e coloca no lugar um cenário fictício com 6 meses de histórico. Não dá pra desfazer.',
         confirmLabel: 'Carregar exemplo', danger: true,
         onConfirm: () => { carregarDadosDemo(); toast('Dados de exemplo carregados', 'success'); goRoute('dashboard'); },
-      });
-    };
-    document.getElementById('cfg-limpar-tudo').onclick = () => {
-      confirmModal({
-        title: 'Limpar todos os dados',
-        text: 'Apaga bancos, cartões, lançamentos, cofrinhos e metas. Sua conta e suas categorias continuam. Não dá pra desfazer.',
-        confirmLabel: 'Apagar tudo', danger: true,
-        onConfirm: () => { limparTodosOsDados(); toast('Dados apagados', 'success'); goRoute('dashboard'); },
       });
     };
     document.getElementById('cfg-logout').onclick = () => {
