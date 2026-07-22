@@ -485,21 +485,31 @@ function pageDashboard(container) {
     const saldoMes = totalRecebimentosLancado - totalGastos;
     const perLabel = period.type === 'year' ? 'do ano' : 'do mês';
 
+    // um gasto entra nas visões abaixo se for do banco filtrado ou de um cartão do banco filtrado
+    const gastoVisivel = (g) => (g.cartaoId
+      ? (!bankFilterOn || cartoesFiltrados.some((c) => c.id === g.cartaoId))
+      : (!bankFilterOn || g.bankId === dashBank));
+    const fixosTodos = months.flatMap((m) => gastosFixosForMonth(m)).filter(gastoVisivel);
+    const variaveisTodos = months.flatMap((m) => gastosVariaveisForMonth(m)).filter(gastoVisivel);
+
+    // últimas movimentações: tudo que foi lançado, inclusive compras no cartão (que são a maioria).
+    // Em gasto fixo no cartão o vencimentoISO aponta pra fatura (mês seguinte), então a data do
+    // lançamento vem do mês de competência — senão a lista abre com itens do futuro no topo.
+    const hojeISO = todayISO();
     const allTx = [
-      ...fixos.map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'gasto' })),
-      ...variaveis.map((g) => ({ ...g, label: g.descricao, date: g.data, kind: 'gasto' })),
-      ...receb.map((r) => ({ ...r, label: r.descricao, date: r.dataOcorrencia, kind: 'receb' })),
-    ].sort((a, b) => (a.date < b.date ? 1 : -1));
+      ...fixosTodos.map((g) => ({
+        label: g.nome, categoryId: g.categoryId, valor: g.valor, kind: 'gasto',
+        date: `${g.mesRef}-${String(clampDayToMonth(g.mesRef, g.diaVencimento)).padStart(2, '0')}`,
+      })),
+      ...variaveisTodos.map((g) => ({
+        label: g.descricao, date: g.data, categoryId: g.categoryId,
+        valor: Math.abs(g.valor), kind: g.estorno ? 'receb' : 'gasto',
+      })),
+      ...receb.map((r) => ({ label: r.descricao, date: r.dataOcorrencia, valor: r.valor, categoryId: r.categoryId, kind: 'receb' })),
+    ].filter((t) => t.date <= hojeISO).sort((a, b) => (a.date < b.date ? 1 : -1));
 
     // gastos por categoria: inclui fixos, variáveis e itens do cartão (todos carregam categoria); ignora estornos/negativos
-    const catGastos = [
-      ...months.flatMap((m) => gastosFixosForMonth(m)),
-      ...months.flatMap((m) => gastosVariaveisForMonth(m)),
-    ].filter((g) => {
-      if (g.valor <= 0) return false;
-      if (g.cartaoId) return !bankFilterOn || cartoesFiltrados.some((c) => c.id === g.cartaoId);
-      return !bankFilterOn || g.bankId === dashBank;
-    });
+    const catGastos = [...fixosTodos, ...variaveisTodos].filter((g) => g.valor > 0);
     const catTotals = {};
     catGastos.forEach((g) => {
       const key = g.categoryId || 'sem';
@@ -541,9 +551,15 @@ function pageDashboard(container) {
         ${receitasDespesasChartHTML(period.type === 'month' ? period.value : currentMonthStr(), bankFilterOn ? dashBank : null)}
       </div>
 
-      <div class="panel">
-        <div class="panel-header"><div><h3>${icon('list')} Gastos por categoria</h3><div class="panel-sub">Distribuição ${perLabel}</div></div></div>
-        ${catEntries.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum gasto lançado no período.' }) : categoryDonut(catEntries, catSum)}
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-header"><div><h3>${icon('list')} Gastos por categoria</h3><div class="panel-sub">Distribuição ${perLabel}</div></div></div>
+          ${catEntries.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum gasto lançado no período.' }) : categoryDonut(catEntries, catSum)}
+        </div>
+        <div class="panel">
+          <div class="panel-header"><div><h3>${icon('repeat')} Últimos lançamentos</h3><div class="panel-sub">Movimentações mais recentes ${perLabel}</div></div></div>
+          ${allTx.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum lançamento no período.' }) : recentTxList(allTx.slice(0, 8))}
+        </div>
       </div>
 
       <div class="panel">
@@ -778,19 +794,23 @@ function categoryDonut(entries, sum) {
     return `${colors[i]} ${start.toFixed(2)}% ${acc.toFixed(2)}%`;
   }).join(', ');
   return `
-    <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
-      <div style="width:160px;height:160px;border-radius:50%;background:conic-gradient(${stops});flex-shrink:0;display:flex;align-items:center;justify-content:center">
-        <div style="width:96px;height:96px;border-radius:50%;background:var(--bg-card);display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <span class="stat-label">Total</span><strong style="font-size:15px">${formatCurrency(sum)}</strong>
+    <div style="display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+      <div style="width:200px;height:200px;border-radius:50%;background:conic-gradient(${stops});flex-shrink:0;display:flex;align-items:center;justify-content:center">
+        <div style="width:126px;height:126px;border-radius:50%;background:var(--bg-card);display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <span class="stat-label">Total</span><strong style="font-size:19px">${formatCurrency(sum)}</strong>
         </div>
       </div>
-      <div style="flex:1;min-width:180px">
+      <div style="flex:1;min-width:210px">
         ${entries.map(([catId, val], i) => {
           const cat = Store.categoryById(catId);
           const pct = sum > 0 ? ((val / sum) * 100).toFixed(1) : '0.0';
-          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px">
-            <span style="display:flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:50%;background:${colors[i]}"></span>${cat ? cat.name : 'Sem categoria'}</span>
-            <span class="row-sub">${pct}%</span>
+          return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;font-size:14px">
+            <span style="display:flex;align-items:baseline;gap:8px;min-width:0">
+              <span style="width:10px;height:10px;border-radius:50%;background:${colors[i]};flex-shrink:0;align-self:center"></span>
+              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cat ? cat.name : 'Sem categoria'}</span>
+              <strong style="font-size:13px;color:var(--text-muted)">${pct}%</strong>
+            </span>
+            <span class="row-sub" style="white-space:nowrap">${formatCurrency(val)}</span>
           </div>`;
         }).join('')}
       </div>
