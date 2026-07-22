@@ -1852,15 +1852,27 @@ function pageRecebimentos(container) {
   draw();
 }
 
+// como o recebimento se repete: único (uma vez), recorrente (todo mês) ou parcelado (N vezes)
+function recebimentoTipoTag(tipo) {
+  const mapa = {
+    recorrente: { label: 'Recorrente', cls: 'badge-primary' },
+    parcelado: { label: 'Parcelado', cls: 'badge-warning' },
+    unico: { label: 'Único', cls: 'badge-muted' },
+  };
+  const t = mapa[tipo] || mapa.unico;
+  return `<span class="badge ${t.cls}">${t.label}</span>`;
+}
+
 function recebimentosTable(items, sort) {
   return `
     <table class="list-table">
-      <thead><tr><th>Descrição</th><th>Categoria</th>${sortableThHTML('Data', 'data', sort)}<th>Parcela</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Descrição</th><th>Categoria</th><th>Tipo</th>${sortableThHTML('Data', 'data', sort)}<th>Parcela</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
       <tbody>
         ${items.map((r) => `
           <tr>
             <td><div class="row-title">${r.descricao}</div>${r.observacao ? `<div class="row-sub">${r.observacao}</div>` : ''}</td>
             <td>${categoryTag(r.categoryId)}</td>
+            <td>${recebimentoTipoTag(r.tipo)}</td>
             <td>${formatDateBR(r.mesRef + '-' + r.data.slice(8, 10))}</td>
             <td>${r.parcelaLabel}</td>
             <td class="amount-pos">${formatCurrency(r.valor)}</td>
