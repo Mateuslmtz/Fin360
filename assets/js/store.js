@@ -340,6 +340,14 @@ function allCartoesFaturaForMonth(mStr) {
 function cartaoCustoRealCaixaForMonth(cartaoId, mStr) {
   return cartaoItensFatura(cartaoId, mStr).reduce((s, x) => s + x.item.valorMeu, 0);
 }
+// quanto dos gastos que o mês `mStr` carrega (pelo regime escolhido) já foi de fato quitado: um item só
+// conta como pago quando a fatura que o contém foi paga. Tem que seguir o mesmo agrupamento do total do
+// mês, senão "já pago" mistura competências diferentes e "falta pagar" chega a ficar negativo.
+function cartaoCustoRealPagoDoMesRegime(cartaoId, mStr) {
+  return cartaoItensDoMesRegime(cartaoId, mStr)
+    .filter((x) => isCartaoFaturaPaga(cartaoId, x.item.vencimentoISO.slice(0, 7)))
+    .reduce((s, x) => s + x.item.valorMeu, 0);
+}
 // limite realmente comprometido: tudo que já foi lançado e ainda não foi quitado, igual um cartão de verdade —
 // gasto fixo conta enquanto a recorrência estiver ativa, gasto variável parcelado segura o limite de TODAS as
 // parcelas que faltam (inclusive as de meses futuros). Pagar uma fatura libera de volta a parte dela.

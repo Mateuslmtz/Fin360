@@ -465,8 +465,9 @@ function pageDashboard(container) {
     const receb = months.flatMap((m) => recebimentosForMonth(m)).filter((r) => !bankFilterOn || r.bankId === dashBank);
     const cartoesFiltrados = Store.state.cartoes.filter((c) => !bankFilterOn || c.bankId === dashBank);
     const custoRealCartoes = months.reduce((s, m) => s + cartoesFiltrados.reduce((s2, c) => s2 + cartaoCustoRealForMonth(c.id, m), 0), 0);
-    // "pago" do cartão sempre pelo ciclo de fatura (caixa), já que é quando o dinheiro de fato sai do banco
-    const custoRealCartoesPago = months.reduce((s, m) => s + cartoesFiltrados.filter((c) => isCartaoFaturaPaga(c.id, m)).reduce((s2, c) => s2 + cartaoCustoRealCaixaForMonth(c.id, m), 0), 0);
+    // "pago" segue o mesmo agrupamento do total de gastos (regime escolhido): a compra só é considerada
+    // quitada quando a fatura que a contém foi paga
+    const custoRealCartoesPago = months.reduce((s, m) => s + cartoesFiltrados.reduce((s2, c) => s2 + cartaoCustoRealPagoDoMesRegime(c.id, m), 0), 0);
 
     const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes;
     const totalRecebimentosLancado = receb.reduce((s, r) => s + r.valor, 0);
@@ -2762,6 +2763,15 @@ function pageConfiguracoes(container) {
       </div>
 
       <div class="panel">
+        <h3 style="margin-bottom:10px">${icon('list')} Dados de exemplo</h3>
+        <p class="row-sub" style="margin-bottom:14px">Preencha o sistema com um cenário fictício completo — 6 meses de histórico, cartões, parcelamentos e cofrinhos — pra conhecer todas as telas antes de lançar os seus números. <strong style="color:var(--text)">Os dois botões apagam tudo que já existe.</strong></p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" id="cfg-carregar-demo">Carregar dados de exemplo</button>
+          <button class="btn btn-ghost btn-sm" id="cfg-limpar-tudo">Limpar todos os dados</button>
+        </div>
+      </div>
+
+      <div class="panel">
         <h3 style="margin-bottom:6px">${icon('bag')} Categorias</h3>
         <p class="row-sub" style="margin-bottom:14px">Cadastre, edite e exclua as categorias usadas nos seus lançamentos — tudo em um só lugar.</p>
         <div class="grid-2">
@@ -2829,6 +2839,22 @@ function pageConfiguracoes(container) {
       toast(b.dataset.regime === 'compra' ? 'Gastos do cartão contam no mês da compra' : 'Gastos do cartão contam no mês do vencimento', 'success');
       draw();
     });
+    document.getElementById('cfg-carregar-demo').onclick = () => {
+      confirmModal({
+        title: 'Carregar dados de exemplo',
+        text: 'Isso apaga tudo que você já lançou e coloca no lugar um cenário fictício com 6 meses de histórico. Não dá pra desfazer.',
+        confirmLabel: 'Carregar exemplo', danger: true,
+        onConfirm: () => { carregarDadosDemo(); toast('Dados de exemplo carregados', 'success'); goRoute('dashboard'); },
+      });
+    };
+    document.getElementById('cfg-limpar-tudo').onclick = () => {
+      confirmModal({
+        title: 'Limpar todos os dados',
+        text: 'Apaga bancos, cartões, lançamentos, cofrinhos e metas. Sua conta e suas categorias continuam. Não dá pra desfazer.',
+        confirmLabel: 'Apagar tudo', danger: true,
+        onConfirm: () => { limparTodosOsDados(); toast('Dados apagados', 'success'); goRoute('dashboard'); },
+      });
+    };
     document.getElementById('cfg-logout').onclick = () => {
       confirmModal({
         title: 'Sair da conta', text: 'Você precisará entrar novamente com seu e-mail e senha para acessar seus dados.', confirmLabel: 'Sair',
