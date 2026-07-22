@@ -218,15 +218,3 @@ function carregarDadosDemo() {
   Store.state.banks.forEach((b) => { b.balance = saldos[b.id]; });
   Store.save();
 }
-
-// Zera os lançamentos, mantendo a conta, o tema e as categorias.
-function limparTodosOsDados() {
-  const perfil = Store.state.profile;
-  const tema = Store.state.theme;
-  const categorias = Store.state.categories;
-  Store.state = defaultState();
-  Store.state.profile = perfil;
-  Store.state.theme = tema;
-  Store.state.categories = categorias;
-  Store.save();
-}
