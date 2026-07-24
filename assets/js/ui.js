@@ -32,7 +32,11 @@ function renderSidebar(activeRoute) {
   `).join('');
 
   nav.querySelectorAll('.nav-item').forEach((btn) => {
-    btn.addEventListener('click', () => { location.hash = '#/' + btn.dataset.route; });
+    btn.addEventListener('click', () => {
+      // fecha a lateral no celular mesmo se a aba clicada for a atual (aí não há hashchange pra fechar)
+      document.getElementById('app-shell').classList.remove('mobile-open');
+      location.hash = '#/' + btn.dataset.route;
+    });
   });
 }
 
@@ -89,6 +93,8 @@ function applyShellState() {
     Store.state.collapsed = document.getElementById('app-shell').classList.contains('collapsed');
     Store.save();
   };
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (backdrop) backdrop.onclick = () => document.getElementById('app-shell').classList.remove('mobile-open');
 }
 
 /* ============ Stat card ============ */
