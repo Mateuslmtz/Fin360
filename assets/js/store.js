@@ -890,6 +890,14 @@ function formatDateBR(iso) {
   return `${d}/${m}/${y}`;
 }
 
+// data para célula de tabela: no celular o ano some, pra coluna caber sem rolar
+function formatDateCell(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}<span class="col-year">/${y}</span>`;
+}
+
 function monthLabel(monthIdx) {
   const labels = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   return labels[monthIdx];
