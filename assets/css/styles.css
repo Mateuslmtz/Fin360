@@ -539,6 +539,8 @@ textarea { resize: vertical; min-height: 60px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
+.sidebar-backdrop { display: none; }
+
 @media (max-width: 720px) {
   .sidebar { position: fixed; left: -280px; z-index: 40; box-shadow: 0 0 40px rgba(0,0,0,0.4); transition: left 0.2s; }
   .app-shell.mobile-open .sidebar { left: 0; }
@@ -546,6 +548,29 @@ textarea { resize: vertical; min-height: 60px; }
   .page-content { padding: 18px; }
   .topbar { padding: 0 16px; }
   .field-row-3 { grid-template-columns: 1fr; }
+
+  /* no celular a seta de recolher não faz sentido — quem abre/fecha é o botão de menu */
+  .collapse-btn { display: none; }
+
+  /* mesmo se o app foi recolhido no desktop, no celular a lateral abre sempre completa (com textos),
+     senão fica só ícones e confunde */
+  .app-shell.collapsed .sidebar { width: 256px; padding: 18px 14px; }
+  .app-shell.collapsed .brand-text,
+  .app-shell.collapsed .nav-label,
+  .app-shell.collapsed .nav-divider span,
+  .app-shell.collapsed .nav-ia-badge,
+  .app-shell.collapsed .sidebar-version { display: revert; }
+  .app-shell.collapsed .nav-item { justify-content: flex-start; }
+  .app-shell.collapsed .sidebar-top { flex-direction: row; }
+  .app-shell.collapsed .brand { flex: 1; margin-left: 0; }
+  .app-shell.collapsed .brand-logo-img { display: block; }
+  .app-shell.collapsed .brand-logo-mini { display: none; }
+
+  /* fundo escuro: tocar fecha a lateral */
+  .app-shell.mobile-open .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 39;
+    background: rgba(0,0,0,0.55);
+  }
 }
 
 /* ============ Tela de login / cadastro ============ */
