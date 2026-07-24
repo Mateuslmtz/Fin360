@@ -720,12 +720,12 @@ function pagoFixoStatusHTML(g, mStr) {
     return `<span class="badge ${g.pago ? 'badge-success' : 'badge-warning'}" title="Pago junto com a fatura do cartão — veja em Cartões de crédito">${g.pago ? 'Pago (fatura)' : 'Na fatura'}</span>`;
   }
   if (g.pago) {
-    return `<div style="display:inline-flex;align-items:center;gap:8px">
+    return `<div class="status-cell" style="display:inline-flex;align-items:center;gap:8px">
       <span class="badge badge-success">Pago</span>
       <button type="button" class="btn btn-ghost btn-sm" data-action="reopen-fixo" data-id="${g.id}" data-mes="${mStr}">Reabrir</button>
     </div>`;
   }
-  return `<div style="display:inline-flex;align-items:center;gap:8px">
+  return `<div class="status-cell" style="display:inline-flex;align-items:center;gap:8px">
     <span class="badge badge-warning">A pagar</span>
     <button type="button" class="btn-pay" data-action="pay-fixo" data-id="${g.id}" data-mes="${mStr}">${icon('checkCircle')} Pagar</button>
   </div>`;
@@ -1275,16 +1275,16 @@ function pageGastosFixos(container) {
 
 function gastosFixosTable(list, mStr, sort) {
   return `
-    <table class="list-table">
-      <thead><tr><th>Nome</th><th>Categoria</th>${sortableThHTML('Vencimento', 'data', sort)}<th>Pagamento</th><th>Banco</th>${sortableThHTML('Valor', 'valor', sort)}<th style="text-align:center">Status</th><th></th></tr></thead>
+    <div class="table-wrap"><table class="list-table">
+      <thead><tr><th>Nome</th><th class="col-opt">Categoria</th>${sortableThHTML('Vencimento', 'data', sort)}<th class="col-opt">Pagamento</th><th class="col-opt">Banco</th>${sortableThHTML('Valor', 'valor', sort)}<th style="text-align:center">Status</th><th></th></tr></thead>
       <tbody>
         ${list.map((g) => `
           <tr>
             <td>${categoryAvatar(g.categoryId)}<div style="display:inline-block;vertical-align:middle;margin-left:10px"><div class="row-title">${g.nome}${g.fimMes ? `<span class="badge badge-primary" style="margin-left:8px" title="Parcela ${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1} de ${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}">${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}</span>` : ''}</div>${g.ativo === false ? '<span class="badge badge-muted">Inativo</span>' : ''}</div></td>
-            <td>${categoryTag(g.categoryId)}</td>
-            <td>${g.cartaoId ? '<span class="row-sub">—</span>' : formatDateBR(g.vencimentoISO)}</td>
-            <td>${g.pagamento ? formatDateBR(g.pagamento.data) : '<span class="row-sub">—</span>'}</td>
-            <td>${bancoOuCartaoLabel(g)}</td>
+            <td class="col-opt">${categoryTag(g.categoryId)}</td>
+            <td>${g.cartaoId ? '<span class="row-sub">—</span>' : formatDateCell(g.vencimentoISO)}</td>
+            <td class="col-opt">${g.pagamento ? formatDateBR(g.pagamento.data) : '<span class="row-sub">—</span>'}</td>
+            <td class="col-opt">${bancoOuCartaoLabel(g)}</td>
             <td><strong>${formatCurrency(gastoFixoValorEfetivo(g))}</strong></td>
             <td style="text-align:center">${pagoFixoStatusHTML(g, mStr)}</td>
             <td><div class="row-actions">
@@ -1294,7 +1294,7 @@ function gastosFixosTable(list, mStr, sort) {
             </div></td>
           </tr>`).join('')}
       </tbody>
-    </table>
+    </table></div>
   `;
 }
 
@@ -1503,15 +1503,15 @@ function pagoVariavelStatusHTML(g) {
 }
 function gastosVariaveisTable(list, sort) {
   return `
-    <table class="list-table">
-      <thead><tr><th>Descrição</th><th>Categoria</th>${sortableThHTML('Data', 'data', sort)}<th>Banco</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
+    <div class="table-wrap"><table class="list-table">
+      <thead><tr><th>Descrição</th><th class="col-opt">Categoria</th>${sortableThHTML('Data', 'data', sort)}<th class="col-opt">Banco</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
       <tbody>
         ${list.map((g) => `
           <tr>
             <td><div class="row-title">${g.descricao}${g.estorno ? `<span class="badge badge-success" style="margin-left:8px">Estorno</span>` : ''}${g.parcelaLabel ? `<span class="badge badge-primary" style="margin-left:8px">${g.parcelaLabel}</span>` : ''}</div>${g.observacao ? `<div class="row-sub">${g.observacao}</div>` : ''}</td>
-            <td>${categoryTag(g.categoryId)}</td>
-            <td>${formatDateBR(g.data)}</td>
-            <td>${bancoOuCartaoLabel(g)}</td>
+            <td class="col-opt">${categoryTag(g.categoryId)}</td>
+            <td>${formatDateCell(g.data)}</td>
+            <td class="col-opt">${bancoOuCartaoLabel(g)}</td>
             <td><strong class="${g.estorno ? 'amount-pos' : ''}">${formatCurrency(g.valor)}</strong></td>
             <td>${pagoVariavelStatusHTML(g)}</td>
             <td><div class="row-actions">
@@ -1520,7 +1520,7 @@ function gastosVariaveisTable(list, sort) {
             </div></td>
           </tr>`).join('')}
       </tbody>
-    </table>
+    </table></div>
   `;
 }
 
@@ -1710,7 +1710,7 @@ function transferenciasHTML() {
       <div class="panel">
         <h3 style="margin-bottom:14px">Histórico de transferências</h3>
         ${transfs.length === 0 ? emptyState({ iconName: 'repeat', title: 'Nenhuma transferência registrada.' }) : `
-          <table class="list-table">
+          <div class="table-wrap"><table class="list-table">
             <thead><tr><th>De</th><th>Para</th><th>Data</th><th>Valor</th></tr></thead>
             <tbody>${transfs.map((t) => `<tr>
               <td>${(Store.bankById(t.deId) || {}).name || '—'}</td>
@@ -1718,7 +1718,7 @@ function transferenciasHTML() {
               <td>${formatDateBR(t.data)}</td>
               <td><strong>${formatCurrency(t.valor)}</strong></td>
             </tr>`).join('')}</tbody>
-          </table>
+          </table></div>
         `}
       </div>
     </div>
@@ -1865,16 +1865,16 @@ function recebimentoTipoTag(tipo) {
 
 function recebimentosTable(items, sort) {
   return `
-    <table class="list-table">
-      <thead><tr><th>Descrição</th><th>Categoria</th><th>Tipo</th>${sortableThHTML('Data', 'data', sort)}<th>Parcela</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
+    <div class="table-wrap"><table class="list-table">
+      <thead><tr><th>Descrição</th><th class="col-opt">Categoria</th><th class="col-opt">Tipo</th>${sortableThHTML('Data', 'data', sort)}<th class="col-opt">Parcela</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
       <tbody>
         ${items.map((r) => `
           <tr>
             <td><div class="row-title">${r.descricao}</div>${r.observacao ? `<div class="row-sub">${r.observacao}</div>` : ''}</td>
-            <td>${categoryTag(r.categoryId)}</td>
-            <td>${recebimentoTipoTag(r.tipo)}</td>
-            <td>${formatDateBR(r.mesRef + '-' + r.data.slice(8, 10))}</td>
-            <td>${r.parcelaLabel}</td>
+            <td class="col-opt">${categoryTag(r.categoryId)}</td>
+            <td class="col-opt">${recebimentoTipoTag(r.tipo)}</td>
+            <td>${formatDateCell(r.mesRef + '-' + r.data.slice(8, 10))}</td>
+            <td class="col-opt">${r.parcelaLabel}</td>
             <td class="amount-pos">${formatCurrency(r.valor)}</td>
             <td><button class="badge ${r.recebido ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-receb" data-id="${r.id}" data-mes="${r.mesRef}">${r.recebido ? 'Recebido' : 'Pendente'}</button></td>
             <td><div class="row-actions">
@@ -1883,7 +1883,7 @@ function recebimentosTable(items, sort) {
             </div></td>
           </tr>`).join('')}
       </tbody>
-    </table>
+    </table></div>
   `;
 }
 
@@ -2156,8 +2156,8 @@ function pageCartoes(container) {
               ${statCard({ label: 'Limite total', value: formatCurrency(totalLimite), tone: 'cyan', iconName: 'wallet' })}
             </div>
             ${cartoes.length === 0 ? emptyState({ iconName: 'card', title: 'Você ainda não cadastrou nenhum cartão', text: 'Use o formulário "Novo cartão" ao lado.' }) : `
-              <table class="list-table">
-                <thead><tr><th>Cartão</th><th>Banco</th><th>Fatura</th><th>Vencim.</th><th>Parcelas</th><th>A pagar</th><th>Limite uso</th><th>Ações</th></tr></thead>
+              <div class="table-wrap"><table class="list-table">
+                <thead><tr><th>Cartão</th><th class="col-opt">Banco</th><th class="col-opt">Fatura</th><th>Vencim.</th><th class="col-opt">Parcelas</th><th>A pagar</th><th class="col-opt">Limite uso</th><th>Ações</th></tr></thead>
                 <tbody>
                   ${cartoes.map((c) => {
                     const fatura = cartaoFaturaForMonth(c.id, mAtual);
@@ -2165,12 +2165,12 @@ function pageCartoes(container) {
                     const pct = c.limite > 0 ? Math.min(100, Math.round((limiteUsadoRow / c.limite) * 100)) : 0;
                     return `<tr style="cursor:pointer;${c.id === selectedCartaoId ? 'background:var(--primary-soft)' : ''}" data-action="select-cartao" data-id="${c.id}">
                       <td><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:4px;background:${c.cor || 'var(--primary)'};display:inline-block"></span><strong>${c.nome}</strong></div></td>
-                      <td>${(Store.bankById(c.bankId) || {}).name || '—'}</td>
-                      <td>${monthLabel(Number(mAtual.slice(5,7))-1).slice(0,3).toLowerCase()}. de ${mAtual.slice(2,4)}</td>
+                      <td class="col-opt">${(Store.bankById(c.bankId) || {}).name || '—'}</td>
+                      <td class="col-opt">${monthLabel(Number(mAtual.slice(5,7))-1).slice(0,3).toLowerCase()}. de ${mAtual.slice(2,4)}</td>
                       <td>dia ${c.diaVencimento || '—'}</td>
-                      <td>${parcelasAtivasCount(c.id)}</td>
+                      <td class="col-opt">${parcelasAtivasCount(c.id)}</td>
                       <td class="amount-neg">${formatCurrency(fatura)}</td>
-                      <td style="min-width:90px"><div class="progress-track" style="margin-bottom:3px"><div class="progress-fill" style="width:${pct}%;background:${pct > 80 ? 'var(--danger)' : 'var(--primary)'}"></div></div><span class="row-sub">${pct}%</span></td>
+                      <td class="col-opt" style="min-width:90px"><div class="progress-track" style="margin-bottom:3px"><div class="progress-fill" style="width:${pct}%;background:${pct > 80 ? 'var(--danger)' : 'var(--primary)'}"></div></div><span class="row-sub">${pct}%</span></td>
                       <td><div class="row-actions">
                         <button class="btn-icon" data-action="edit-cartao" data-id="${c.id}">${icon('edit')}</button>
                         <button class="btn-icon" data-action="delete-cartao" data-id="${c.id}">${icon('trash')}</button>
@@ -2178,7 +2178,7 @@ function pageCartoes(container) {
                     </tr>`;
                   }).join('')}
                 </tbody>
-              </table>
+              </table></div>
             `}
           </div>
 
@@ -2207,25 +2207,25 @@ function pageCartoes(container) {
               ${statCard({ label: 'Seu custo real', value: formatCurrency(faturaCustoReal), sub: faturaCustoReal < faturaTotal ? `${formatCurrency(faturaTotal - faturaCustoReal)} são de racha` : 'Sem valores rachados', tone: 'cyan', iconName: 'sparkles' })}
             </div>
             ${faturaItens.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhum item nessa fatura.', text: 'Lance compras em Gastos Fixos ou Gastos Variáveis escolhendo este cartão.' }) : `
-              <table class="list-table">
-                <thead><tr><th>Descrição</th><th>Categoria</th><th>Lançamento</th><th>Vencimento</th><th>Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
+              <div class="table-wrap"><table class="list-table">
+                <thead><tr><th>Descrição</th><th class="col-opt">Categoria</th><th>Lançamento</th><th class="col-opt">Vencimento</th><th class="col-opt">Parcela</th>${sortableThHTML('Valor da fatura', 'valor', ccFaturaSort)}<th>Sua parte</th><th></th></tr></thead>
                 <tbody>
                   ${faturaItens.map((x) => {
                     const dividido = gastoValorDividido(x.item);
                     return `
                     <tr>
                       <td class="row-title">${cartaoItemDescricao(x)}${x.item.estorno ? `<span class="badge badge-success" style="margin-left:8px">Estorno</span>` : ''}${dividido > 0 ? `<div class="row-sub">${icon('sparkles')} Rachado com ${x.item.divisoes.map((d) => d.nome).join(', ')}</div>` : ''}</td>
-                      <td>${categoryTag(x.item.categoryId)}</td>
-                      <td>${formatDateBR(cartaoItemDataLancamento(x))}</td>
-                      <td>${formatDateBR(x.item.vencimentoISO)}</td>
-                      <td>${cartaoItemParcelaLabel(x)}</td>
+                      <td class="col-opt">${categoryTag(x.item.categoryId)}</td>
+                      <td>${formatDateCell(cartaoItemDataLancamento(x))}</td>
+                      <td class="col-opt">${formatDateBR(x.item.vencimentoISO)}</td>
+                      <td class="col-opt">${cartaoItemParcelaLabel(x)}</td>
                       <td><strong class="${x.item.estorno ? 'amount-pos' : ''}">${formatCurrency(x.item.valor)}</strong></td>
                       <td>${x.item.estorno || dividido > 0 ? `<span class="amount-pos">${formatCurrency(x.item.valorMeu)}</span>` : formatCurrency(x.item.valorMeu)}</td>
                       <td><button class="btn-icon" data-action="ir-lancamento" data-route="${cartaoItemOrigemRoute(x)}" title="Editar em ${cartaoItemOrigemLabel(x)}">${icon('edit')}</button></td>
                     </tr>`;
                   }).join('')}
                 </tbody>
-              </table>
+              </table></div>
             `}
           </div>` : ''}
         </div>
@@ -2419,19 +2419,19 @@ function pageExtrato(container) {
       <div class="panel">
         <div class="panel-header"><h3>${txs.length} movimentações</h3><button class="btn btn-ghost btn-sm" id="ex-export">${icon('download')} Exportar</button></div>
         ${txs.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhuma movimentação encontrada com os filtros aplicados.' }) : `
-          <table class="list-table">
-            <thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Banco</th><th>Categoria</th><th>Status</th><th>Valor</th></tr></thead>
+          <div class="table-wrap"><table class="list-table">
+            <thead><tr><th>Data</th><th>Descrição</th><th class="col-opt">Tipo</th><th class="col-opt">Banco</th><th class="col-opt">Categoria</th><th>Status</th><th>Valor</th></tr></thead>
             <tbody>${txs.map((t) => `
               <tr>
-                <td>${formatDateBR(t.data)}</td>
+                <td>${formatDateCell(t.data)}</td>
                 <td class="row-title">${t.descricao}</td>
-                <td><span class="badge ${t.sinal === 1 ? 'badge-success' : 'badge-muted'}">${t.tipo}</span></td>
-                <td>${(Store.bankById(t.bankId) || {}).name || '—'}</td>
-                <td>${categoryTag(t.categoryId)}</td>
+                <td class="col-opt"><span class="badge ${t.sinal === 1 ? 'badge-success' : 'badge-muted'}">${t.tipo}</span></td>
+                <td class="col-opt">${(Store.bankById(t.bankId) || {}).name || '—'}</td>
+                <td class="col-opt">${categoryTag(t.categoryId)}</td>
                 <td>${t.status === 'pago' || t.status === 'recebido' ? '<span class="badge badge-success">' + (t.status === 'pago' ? 'pago' : 'recebido') + '</span>' : '<span class="badge badge-warning">pendente</span>'}</td>
                 <td class="${t.sinal === 1 ? 'amount-pos' : 'amount-neg'}">${t.sinal === 1 ? '+' : '-'} ${formatCurrency(t.valor)}</td>
               </tr>`).join('')}</tbody>
-          </table>
+          </table></div>
         `}
       </div>
     `;
