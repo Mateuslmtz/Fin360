@@ -852,6 +852,8 @@ const Store = {
       this.agendarSync(15000);
     } finally {
       this._sincronizando = false;
+      // o aviso na tela precisa refletir o resultado, senão a falha fica invisível
+      if (typeof atualizarStatusSync === 'function') atualizarStatusSync();
       if (this._pendente) { this._pendente = false; this.agendarSync(500); }
     }
   },
@@ -873,7 +875,8 @@ const Store = {
   },
 
   reset() {
-    this.state = defaultState();
+    // apagar os dados não é motivo pra virar o tema do aparelho de cabeça pra baixo
+    this.state = Object.assign(defaultState(), readPrefs());
     this.save();
   },
 
