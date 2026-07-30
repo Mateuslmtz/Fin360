@@ -166,8 +166,13 @@ function hideAuthScreen() {
 }
 
 async function logout() {
-  await Auth.logout();
+  // a ordem importa: storageKey() depende da sessão, então limpar o cache tem que
+  // vir ANTES de encerrar a sessão — senão apaga a chave errada e os dados
+  // financeiros do usuário ficam para trás no aparelho
   localStorage.removeItem(storageKey());
+  await Auth.logout();
+  Store.versao = null;
+  Store.conflito = false;
   showAuthScreen('login');
 }
 

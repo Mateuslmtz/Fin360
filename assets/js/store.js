@@ -662,10 +662,12 @@ function parcelasAtivasCount(cartaoId) {
 
 const Store = {
   state: null,
-  versao: null,        // versão que lemos do servidor; null = a linha ainda não existe
-  carregando: false,   // durante o load, save() só grava local (não sincroniza)
-  offline: false,      // não conseguimos falar com o servidor neste carregamento
-  conflito: false,     // outro aparelho gravou depois de nós — sincronização suspensa
+  versao: null,          // versão que lemos do servidor; null = a linha ainda não existe
+  carregando: false,     // durante o load, save() só grava local (não sincroniza)
+  offline: false,        // não conseguimos falar com o servidor neste carregamento
+  conflito: false,       // outro aparelho gravou depois de nós — sincronização suspensa
+  sessaoExpirou: false,  // a sessão morreu: precisa entrar de novo (≠ falta de internet)
+  _sujo: false,          // há alteração local ainda não confirmada pelo servidor
 
   readLocal() {
     try {
@@ -690,6 +692,7 @@ const Store = {
     this.carregando = true;
     this.conflito = false;
     this.offline = false;
+    this.sessaoExpirou = false;
 
     const local = this.readLocal();
     let remoto = null;
@@ -698,7 +701,11 @@ const Store = {
       try {
         remoto = await Sb.fetchEstado();
       } catch (e) {
-        this.offline = true;
+        // Se a sessão morreu no meio (refresh token expirado ou revogado), o Sb já
+        // limpou ela. Isso NÃO é falta de internet — é preciso entrar de novo, e
+        // mostrar "sem conexão" aqui deixaria a pessoa presa num app que não salva.
+        this.sessaoExpirou = !Sb.isLoggedIn();
+        this.offline = !this.sessaoExpirou;
       }
     }
 
@@ -811,6 +818,7 @@ const Store = {
     this.writeLocal();
     writePrefs(this.state);
     if (this.carregando) return;
+    this._sujo = true;
     this.agendarSync();
   },
 
@@ -835,6 +843,7 @@ const Store = {
       if (r.ok) {
         this.versao = r.versao;
         this.offline = false;
+        this._sujo = false;
       } else if (r.motivo === 'conflito') {
         // Alguém gravou depois de nós (outra aba, outro aparelho). NÃO sobrescrevemos:
         // fazer isso apagaria o lançamento que a outra ponta acabou de salvar.
@@ -861,7 +870,10 @@ const Store = {
   // Se a aba fechar com gravação pendente, tenta enviar antes de morrer.
   // keepalive deixa a requisição terminar mesmo com a página fechando.
   flushAoSair() {
-    if (!this._timer || !Sb.isLoggedIn() || this.conflito || this.versao === null) return;
+    // _sujo, não _timer: clearTimeout não zera a variável, então checar o timer
+    // dispararia gravação redundante mesmo sem nada pendente — e cada gravação
+    // incrementa a versão, o que poderia gerar conflito falso em outra aba
+    if (!this._sujo || !Sb.isLoggedIn() || this.conflito || this.versao === null) return;
     clearTimeout(this._timer);
     const uid = Sb.userId();
     try {
