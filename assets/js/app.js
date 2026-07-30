@@ -32,6 +32,19 @@ function render() {
 async function bootApp() {
   hideAuthScreen();
   await Store.load();
+
+  // sessão morreu enquanto o app carregava: mandar pro login em vez de deixar a
+  // pessoa usando um app que não salva nada
+  if (Store.sessaoExpirou) {
+    showAuthScreen('login');
+    const erro = document.getElementById('auth-error');
+    if (erro) {
+      erro.textContent = 'Sua sessão expirou. Entre de novo.';
+      erro.style.display = 'block';
+    }
+    return;
+  }
+
   const user = Auth.currentUser();
   if (user) {
     // o nome e o e-mail moram na conta do servidor; o perfil local só espelha
