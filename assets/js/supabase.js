@@ -126,8 +126,16 @@ const Sb = {
     return msg || 'Não foi possível completar a operação. Tente de novo.';
   },
 
+  // Para onde o link do e-mail (confirmação/recuperação) deve trazer a pessoa de volta.
+  // Sem isso o Supabase usa o "Site URL" do projeto, que aponta pra outro lugar e a
+  // pessoa cai numa página de erro depois de confirmar. Precisa estar na lista de
+  // Redirect URLs permitidas do projeto, senão o Supabase ignora e volta pro Site URL.
+  redirectTo() {
+    return encodeURIComponent(window.location.origin + window.location.pathname);
+  },
+
   async signUp(nome, email, senha) {
-    const r = await this.raw('/auth/v1/signup', {
+    const r = await this.raw('/auth/v1/signup?redirect_to=' + this.redirectTo(), {
       method: 'POST',
       headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email, password: senha, data: { nome: nome } }),
@@ -169,7 +177,7 @@ const Sb = {
   },
 
   async resetPassword(email) {
-    const r = await this.raw('/auth/v1/recover', {
+    const r = await this.raw('/auth/v1/recover?redirect_to=' + this.redirectTo(), {
       method: 'POST',
       headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email }),
