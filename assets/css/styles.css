@@ -631,3 +631,17 @@ html:not([data-theme='light']) .auth-logo-claro { display: none; }
 .auth-hint a { color: var(--primary); text-decoration: none; }
 .auth-hint a:hover { text-decoration: underline; }
 .auth-titulo { font-size: 17px; font-weight: 800; margin-bottom: 18px; }
+
+/* Aviso de que as alterações não estão subindo pro servidor. Fica na tela enquanto o
+   problema existir — toast desaparece e a pessoa continuaria lançando sem saber. */
+.sync-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid transparent; border-radius: 999px;
+  padding: 5px 11px; font-size: 11.5px; font-weight: 700;
+  cursor: pointer; max-width: 200px;
+}
+.sync-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.sync-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-badge.aviso { color: var(--warning, #f5a623); background: rgba(245, 166, 35, 0.13); border-color: rgba(245, 166, 35, 0.35); }
+.sync-badge.erro { color: var(--danger); background: var(--danger-soft, rgba(240, 72, 72, 0.14)); border-color: rgba(240, 72, 72, 0.4); }
+@media (max-width: 720px) { .sync-badge span { display: none; } .sync-badge { padding: 7px; } }

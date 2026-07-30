@@ -156,6 +156,18 @@ const Sb = {
     this.clearSession();
   },
 
+  // Os links de e-mail (confirmação e recuperação) devolvem só os tokens, sem os dados
+  // do usuário. Buscamos aqui para completar a sessão.
+  async fetchUser() {
+    const r = await this.auth('/auth/v1/user', { method: 'GET' });
+    if (r.ok && r.body && r.body.id) {
+      this.session.user = r.body;
+      localStorage.setItem(SB_SESSION_KEY, JSON.stringify(this.session));
+      return r.body;
+    }
+    return null;
+  },
+
   async resetPassword(email) {
     const r = await this.raw('/auth/v1/recover', {
       method: 'POST',

@@ -44,6 +44,7 @@ function renderTopbar(route) {
   const item = navItemByRoute(route);
   document.getElementById('page-title').textContent = item.label;
   document.getElementById('page-subtitle').textContent = item.subtitle;
+  atualizarStatusSync();
 
   const menuBtn = document.getElementById('menu-btn');
   menuBtn.innerHTML = icon('menu');
@@ -83,6 +84,48 @@ function renderTopbar(route) {
   if (window.innerWidth <= 720) {
     document.getElementById('app-shell').classList.remove('mobile-open');
   }
+}
+
+/* Estado da sincronização, sempre visível quando há problema.
+   Some quando tudo está no lugar — aviso que fica na tela sem motivo vira ruído
+   e a pessoa passa a ignorar o que importa. */
+function atualizarStatusSync() {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+
+  if (Store.conflito) {
+    el.style.display = '';
+    el.className = 'sync-badge erro';
+    el.innerHTML = '<span>Não está salvando</span>';
+    el.title = 'Seus dados foram alterados em outro aparelho. Clique para recarregar e ver a versão mais recente. O que você lançou desde então pode não ter sido salvo.';
+    el.onclick = () => {
+      confirmModal({
+        title: 'Recarregar para sincronizar',
+        text: 'Seus dados foram alterados em outro aparelho ou em outra aba. Recarregar traz a versão mais recente do servidor — o que você lançou nesta aba depois disso pode não ter sido salvo e talvez precise ser lançado de novo.',
+        confirmLabel: 'Recarregar', danger: true,
+        onConfirm: () => location.reload(),
+      });
+    };
+    return;
+  }
+
+  if (Store.offline && Sb.isLoggedIn()) {
+    el.style.display = '';
+    el.className = 'sync-badge aviso';
+    el.innerHTML = '<span>Sem conexão</span>';
+    el.title = 'Sem conexão com o servidor. Você pode continuar usando: está tudo salvo neste aparelho e sobe sozinho quando a internet voltar.';
+    el.onclick = () => {
+      toast('Está tudo salvo neste aparelho. Assim que a internet voltar, sobe sozinho.', 'info');
+      Store.agendarSync(0);
+    };
+    return;
+  }
+
+  el.style.display = 'none';
+  el.className = 'sync-badge';
+  el.innerHTML = '';
+  el.title = '';
+  el.onclick = null;
 }
 
 function applyShellState() {
