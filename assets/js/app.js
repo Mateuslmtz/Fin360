@@ -29,18 +29,24 @@ function render() {
   ROUTES[route](container);
 }
 
-function bootApp() {
+async function bootApp() {
   hideAuthScreen();
-  Store.load();
+  await Store.load();
   const user = Auth.currentUser();
   if (user) {
-    Store.state.profile.name = user.name;
-    Store.state.profile.email = user.email;
-    Store.save();
+    // o nome e o e-mail moram na conta do servidor; o perfil local só espelha
+    if (Store.state.profile.name !== user.name || Store.state.profile.email !== user.email) {
+      Store.state.profile.name = user.name;
+      Store.state.profile.email = user.email;
+      Store.save();
+    }
   }
   applyShellState();
   if (!location.hash) location.hash = '#/dashboard';
   render();
+  if (Store.offline) {
+    toast('Sem conexão com o servidor. Você pode usar o app normalmente — as alterações sobem quando a internet voltar.', 'info');
+  }
   const aportes = Store.processAportesAutomaticos();
   if (aportes.length) {
     aportes.forEach((a) => toast(`Aporte automático de ${formatCurrency(a.valor)} feito em "${a.nome}"`, 'success'));
@@ -49,11 +55,23 @@ function bootApp() {
 }
 
 window.addEventListener('hashchange', render);
-window.addEventListener('DOMContentLoaded', () => {
+
+// gravação pendente não pode morrer junto com a aba
+window.addEventListener('pagehide', () => Store.flushAoSair());
+
+window.addEventListener('DOMContentLoaded', async () => {
   Auth.load();
-  if (!Auth.isLoggedIn()) {
-    showAuthScreen(Auth.data.accounts.length ? 'login' : 'register');
+
+  // link de e-mail (confirmação de cadastro ou recuperação de senha)
+  const tipoLink = await consumirTokenDaURL();
+  if (tipoLink === 'recovery') {
+    showAuthScreen('reset');
     return;
   }
-  bootApp();
+
+  if (!Auth.isLoggedIn()) {
+    showAuthScreen('login');
+    return;
+  }
+  await bootApp();
 });

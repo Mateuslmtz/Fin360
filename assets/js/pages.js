@@ -2845,16 +2845,21 @@ function pageConfiguracoes(container) {
       render();
     };
     document.getElementById('cfg-save-senha').onclick = async () => {
-      const senha = document.getElementById('cfg-senha').value;
+      const campo = document.getElementById('cfg-senha');
+      const senha = campo.value;
       if (senha.length < 6) { toast('A senha precisa ter no mínimo 6 caracteres', 'danger'); return; }
-      const account = Auth.currentUser();
-      if (!account) { toast('Sessão inválida', 'danger'); return; }
-      const salt = randomHex(16);
-      account.passwordHash = await hashPassword(senha, salt);
-      account.salt = salt;
-      Auth.persist();
-      toast('Senha alterada com sucesso', 'success');
-      document.getElementById('cfg-senha').value = '';
+      if (!Auth.isLoggedIn()) { toast('Sessão inválida. Entre de novo.', 'danger'); return; }
+      const btn = document.getElementById('cfg-save-senha');
+      btn.disabled = true;
+      try {
+        await Sb.updatePassword(senha);
+        toast('Senha alterada com sucesso', 'success');
+        campo.value = '';
+      } catch (err) {
+        toast(err.message, 'danger');
+      } finally {
+        btn.disabled = false;
+      }
     };
     document.getElementById('cfg-save-moeda').onclick = () => {
       Store.state.profile.currency = document.getElementById('cfg-moeda').value;

@@ -626,4 +626,8 @@ html:not([data-theme='light']) .auth-logo-claro { display: none; }
 .auth-form { text-align: left; }
 .auth-submit { width: 100%; margin-top: 4px; }
 .auth-error { color: var(--danger); font-size: 12.5px; margin: -4px 0 12px; text-align: left; }
+.auth-ok { color: var(--success); font-size: 12.5px; line-height: 1.5; margin: -4px 0 12px; text-align: left; }
 .auth-hint { font-size: 11.5px; color: var(--text-faint); margin-top: 16px; }
+.auth-hint a { color: var(--primary); text-decoration: none; }
+.auth-hint a:hover { text-decoration: underline; }
+.auth-titulo { font-size: 17px; font-weight: 800; margin-bottom: 18px; }

@@ -1,10 +1,32 @@
-/* Fin360 — estado da aplicação + persistência local (protótipo, sem backend) */
+/* Fin360 — estado da aplicação. O dado vive no Supabase; o localStorage virou cache
+   (faz o app abrir instantâneo e continuar funcionando sem internet). */
 
 const STORAGE_KEY_BASE = 'fin360_state_v3';
+const PREFS_KEY = 'fin360_prefs_v1';
 
 function storageKey() {
-  const userId = (typeof Auth !== 'undefined' && Auth.currentUserId()) || 'default';
+  const userId = (typeof Sb !== 'undefined' && Sb.userId()) || 'default';
   return `${STORAGE_KEY_BASE}_${userId}`;
+}
+
+/* Tema, menu recolhido e ocultar valores são preferências do APARELHO, não da conta:
+   quem usa o celular no escuro e o PC no claro não quer que um mude o outro. Ficam
+   fora do estado sincronizado — assim trocar o tema também não gera gravação na rede. */
+const PREFS_CAMPOS = ['theme', 'hideValues', 'collapsed'];
+
+function readPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writePrefs(state) {
+  const p = {};
+  PREFS_CAMPOS.forEach((k) => { p[k] = state[k]; });
+  localStorage.setItem(PREFS_KEY, JSON.stringify(p));
 }
 
 function uid() {
@@ -640,17 +662,69 @@ function parcelasAtivasCount(cartaoId) {
 
 const Store = {
   state: null,
+  versao: null,        // versão que lemos do servidor; null = a linha ainda não existe
+  carregando: false,   // durante o load, save() só grava local (não sincroniza)
+  offline: false,      // não conseguimos falar com o servidor neste carregamento
+  conflito: false,     // outro aparelho gravou depois de nós — sincronização suspensa
 
-  load() {
+  readLocal() {
     try {
       const raw = localStorage.getItem(storageKey());
-      this.state = raw ? Object.assign(defaultState(), JSON.parse(raw)) : defaultState();
+      return raw ? JSON.parse(raw) : null;
     } catch (e) {
-      this.state = defaultState();
+      return null;
     }
+  },
+
+  writeLocal() {
+    try {
+      localStorage.setItem(storageKey(), JSON.stringify(this.state));
+    } catch (e) {
+      /* cota cheia ou modo privado: o servidor continua sendo a fonte da verdade */
+    }
+  },
+
+  // Busca no servidor e cai no cache local se não der. As migrações continuam
+  // rodando na mesma ordem de antes, depois do estado estar montado.
+  async load() {
+    this.carregando = true;
+    this.conflito = false;
+    this.offline = false;
+
+    const local = this.readLocal();
+    let remoto = null;
+
+    if (Sb.isLoggedIn()) {
+      try {
+        remoto = await Sb.fetchEstado();
+      } catch (e) {
+        this.offline = true;
+      }
+    }
+
+    if (remoto) {
+      this.state = Object.assign(defaultState(), remoto.estado);
+      this.versao = remoto.versao;
+    } else {
+      // três casos caem aqui: primeiro login (sem linha no servidor), sem internet,
+      // ou sem sessão. Em todos, o cache local é o melhor ponto de partida.
+      this.state = Object.assign(defaultState(), local || {});
+      this.versao = null;
+    }
+
+    // preferências do aparelho sobrescrevem o que veio do servidor
+    Object.assign(this.state, readPrefs());
+
     this.migrateCategorias();
     this.migrarCartaoComprasParaGastos();
     this.reconcileLegacyLedger();
+
+    this.writeLocal();
+    this.carregando = false;
+
+    // primeiro login com dados no servidor ausentes: sobe o que temos
+    if (Sb.isLoggedIn() && !this.offline && !remoto) this.agendarSync(0);
+
     return this.state;
   },
 
@@ -731,8 +805,71 @@ const Store = {
     if (changed) this.save();
   },
 
+  // Continua SÍNCRONA de propósito: os 28 pontos que chamam save() no app não mudaram.
+  // Grava local na hora (nada é perdido se a aba fechar) e agenda o envio ao servidor.
   save() {
-    localStorage.setItem(storageKey(), JSON.stringify(this.state));
+    this.writeLocal();
+    writePrefs(this.state);
+    if (this.carregando) return;
+    this.agendarSync();
+  },
+
+  // Junta várias gravações seguidas numa só requisição. Digitar num formulário dispara
+  // save() a cada tecla; sem isso seria uma requisição por tecla.
+  _timer: null,
+  _sincronizando: false,
+  _pendente: false,
+
+  agendarSync(atraso) {
+    if (!Sb.isLoggedIn() || this.conflito) return;
+    clearTimeout(this._timer);
+    this._timer = setTimeout(() => this.sync(), atraso === undefined ? 1500 : atraso);
+  },
+
+  async sync() {
+    if (!Sb.isLoggedIn() || this.conflito) return;
+    if (this._sincronizando) { this._pendente = true; return; }
+    this._sincronizando = true;
+    try {
+      const r = await Sb.saveEstado(this.state, this.versao);
+      if (r.ok) {
+        this.versao = r.versao;
+        this.offline = false;
+      } else if (r.motivo === 'conflito') {
+        // Alguém gravou depois de nós (outra aba, outro aparelho). NÃO sobrescrevemos:
+        // fazer isso apagaria o lançamento que a outra ponta acabou de salvar.
+        // Suspende a sincronização e avisa — quem decide é o usuário, recarregando.
+        this.conflito = true;
+        if (typeof toast === 'function') {
+          toast('Seus dados foram alterados em outro aparelho. Recarregue a página para ver a versão mais recente.', 'danger');
+        }
+      } else {
+        this.offline = true;
+        this.agendarSync(15000); // tenta de novo mais tarde; o dado está salvo local
+      }
+    } catch (e) {
+      this.offline = true;
+      this.agendarSync(15000);
+    } finally {
+      this._sincronizando = false;
+      if (this._pendente) { this._pendente = false; this.agendarSync(500); }
+    }
+  },
+
+  // Se a aba fechar com gravação pendente, tenta enviar antes de morrer.
+  // keepalive deixa a requisição terminar mesmo com a página fechando.
+  flushAoSair() {
+    if (!this._timer || !Sb.isLoggedIn() || this.conflito || this.versao === null) return;
+    clearTimeout(this._timer);
+    const uid = Sb.userId();
+    try {
+      fetch(`${SB_URL}/rest/v1/estado_usuario?user_id=eq.${uid}&versao=eq.${this.versao}`, {
+        method: 'PATCH',
+        headers: Sb.headers(),
+        body: JSON.stringify({ estado: this.state, versao: this.versao + 1, atualizado_em: new Date().toISOString() }),
+        keepalive: true,
+      });
+    } catch (e) { /* melhor esforço */ }
   },
 
   reset() {
