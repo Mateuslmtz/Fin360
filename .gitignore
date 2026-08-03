@@ -2,3 +2,10 @@
 fin360-backup-*.json
 PLANO.md
 Logo/
+anuncio.html
+anuncio-final-*.png
+
+# Vídeos de marketing: arquivos grandes demais para o Git (o original tem
+# 218 MB e o GitHub recusa acima de 100 MB). Ficam só no Google Drive.
+VÍDEO PARA MARKETING/
+*.mp4
