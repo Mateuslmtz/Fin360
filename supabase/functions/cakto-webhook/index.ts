@@ -141,18 +141,33 @@ Deno.serve(async (req) => {
   let status: string | null = null;
   let acessoAte: string | null = null;
   let resultado = 'ignorado';
+  let aviso = '';
 
   switch (tipo) {
     case 'purchase_approved':
     case 'subscription_created':
     case 'subscription_renewed': {
-      // Se a Cakto informar a próxima cobrança, usamos ela. Senão, 31 dias:
-      // erra para o lado de manter o acesso.
+      // O fim do acesso pago é a data da PRÓXIMA COBRANÇA. No payload real da
+      // Cakto ela vem em subscription.next_payment_date (conferido no teste).
+      //
+      // NÃO usar due_date: aquilo é o vencimento da cobrança ATUAL, que numa
+      // compra aprovada é hoje. Usá-lo dava acesso até hoje — nenhum acesso.
       const proxima = buscar(item, [
-        'subscription.nextPayment', 'subscription.next_billing_date',
-        'subscription.nextBillingDate', 'nextPayment', 'next_billing_date', 'due_date',
+        'subscription.next_payment_date',
+        'subscription.nextPaymentDate',
+        'next_payment_date',
       ]);
-      acessoAte = proxima ? String(proxima).slice(0, 10) : emDias(31);
+      // Sem a data, usamos o ciclo que a própria Cakto informa (ou 31 dias).
+      const ciclo = Number(buscar(item, ['subscription.recurrence_period'])) || 31;
+      acessoAte = proxima ? String(proxima).slice(0, 10) : emDias(ciclo);
+
+      // Rede de segurança: pagamento aprovado JAMAIS pode virar acesso vencido.
+      // Se a conta der hoje ou antes, o campo lido está errado — dar um ciclo a
+      // mais é muito melhor do que trancar quem acabou de pagar.
+      if (acessoAte <= emDias(0)) {
+        aviso = ` | ATENCAO: data calculada ${acessoAte} nao serve; usei ${ciclo} dias`;
+        acessoAte = emDias(ciclo);
+      }
       status = 'ativa';
       resultado = 'liberado';
       break;
@@ -225,7 +240,8 @@ Deno.serve(async (req) => {
       ` | itens na venda: ${itens.length}` +
       ` | oferta: ${item?.offer_type ?? '?'}` +
       ` | produto: ${item?.product?.name ?? '?'}` +
-      ` | acesso ate: ${acessoAte ?? 'inalterado'}`,
+      ` | acesso ate: ${acessoAte ?? 'inalterado'}` +
+      aviso,
   );
 
   return new Response(JSON.stringify({ ok: true, resultado }), {
