@@ -2761,7 +2761,7 @@ function pageConfiguracoes(container) {
           <div class="field" style="flex:1;min-width:220px;margin-bottom:0"><label>Nova senha</label><input type="password" id="cfg-senha" placeholder="mínimo 6 caracteres" /></div>
           <button class="btn btn-primary btn-sm" id="cfg-save-senha">Alterar senha</button>
         </div>
-        <p class="row-sub" style="margin-top:10px">A senha é validada localmente neste navegador (protótipo sem servidor ainda).</p>
+        <p class="row-sub" style="margin-top:10px">A troca é feita no servidor e vale em todos os seus aparelhos. Você continua conectado aqui.</p>
       </div>
 
       <div class="panel">
