@@ -196,6 +196,24 @@ const Sb = {
 
   // ---- estado financeiro ----
 
+  // O banco recusa a gravação de quem está sem assinatura em dia (policy com
+  // tem_acesso()). Isso chega como 403 / código 42501. Precisa ser distinguido de
+  // falha de rede, senão o app diz "sem conexão" e tenta de novo pra sempre.
+  ehRecusaPorAssinatura(r) {
+    if (r.status !== 403 && r.status !== 401) return false;
+    const c = r.body && (r.body.code || r.body.error_code);
+    const m = String((r.body && (r.body.message || r.body.msg)) || '').toLowerCase();
+    return c === '42501' || m.includes('row-level security') || m.includes('violates row-level');
+  },
+
+  // Situação da assinatura de quem está logado. null = não tem nenhuma.
+  async minhaAssinatura() {
+    if (!this.isLoggedIn()) return null;
+    const r = await this.auth('/rest/v1/assinaturas?select=status,acesso_ate,plataforma&limit=1', { method: 'GET' });
+    if (!r.ok || !Array.isArray(r.body) || r.body.length === 0) return null;
+    return r.body[0];
+  },
+
   // devolve { estado, versao } ou null se ainda não existe linha
   async fetchEstado() {
     const uid = this.userId();
@@ -222,6 +240,7 @@ const Sb = {
       });
       if (r.ok && Array.isArray(r.body) && r.body[0]) return { ok: true, versao: r.body[0].versao };
       if (r.status === 409) return { ok: false, motivo: 'conflito' }; // linha criada por outra aba
+      if (this.ehRecusaPorAssinatura(r)) return { ok: false, motivo: 'assinatura' };
       return { ok: false, motivo: 'erro', detalhe: r.body };
     }
 
@@ -233,6 +252,7 @@ const Sb = {
         body: JSON.stringify({ estado: estado, versao: versaoEsperada + 1, atualizado_em: new Date().toISOString() }),
       }
     );
+    if (this.ehRecusaPorAssinatura(r)) return { ok: false, motivo: 'assinatura' };
     if (!r.ok) return { ok: false, motivo: 'erro', detalhe: r.body };
     // 0 linhas afetadas = a versão no servidor não é mais a que a gente tinha
     if (!Array.isArray(r.body) || r.body.length === 0) return { ok: false, motivo: 'conflito' };

@@ -667,6 +667,7 @@ const Store = {
   offline: false,        // não conseguimos falar com o servidor neste carregamento
   conflito: false,       // outro aparelho gravou depois de nós — sincronização suspensa
   sessaoExpirou: false,  // a sessão morreu: precisa entrar de novo (≠ falta de internet)
+  semAssinatura: false,  // o banco recusou a gravação: assinatura fora do prazo
   _sujo: false,          // há alteração local ainda não confirmada pelo servidor
 
   readLocal() {
@@ -829,13 +830,13 @@ const Store = {
   _pendente: false,
 
   agendarSync(atraso) {
-    if (!Sb.isLoggedIn() || this.conflito) return;
+    if (!Sb.isLoggedIn() || this.conflito || this.semAssinatura) return;
     clearTimeout(this._timer);
     this._timer = setTimeout(() => this.sync(), atraso === undefined ? 1500 : atraso);
   },
 
   async sync() {
-    if (!Sb.isLoggedIn() || this.conflito) return;
+    if (!Sb.isLoggedIn() || this.conflito || this.semAssinatura) return;
     if (this._sincronizando) { this._pendente = true; return; }
     this._sincronizando = true;
     try {
@@ -851,6 +852,13 @@ const Store = {
         this.conflito = true;
         if (typeof toast === 'function') {
           toast('Seus dados foram alterados em outro aparelho. Recarregue a página para ver a versão mais recente.', 'danger');
+        }
+      } else if (r.motivo === 'assinatura') {
+        // O banco recusou porque a assinatura não está em dia. Não adianta tentar de
+        // novo: só volta a gravar quando o pagamento entrar. Ler continua liberado.
+        this.semAssinatura = true;
+        if (typeof toast === 'function') {
+          toast('Sua assinatura não está em dia. Você continua vendo tudo, mas não consegue lançar até regularizar.', 'danger');
         }
       } else {
         this.offline = true;
