@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
   // 1. Autenticidade. A Cakto manda o secret DENTRO do corpo (não é assinatura
   //    HMAC no cabeçalho). Sem esta checagem, qualquer um que descobrir a URL
   //    manda "compra aprovada" e ganha acesso vitalício de graça.
-  const recebido = String(buscar(corpo, ['secret', 'data.secret']) ?? '');
+  const recebido = String(buscar(corpo, ['secret']) ?? '');
   if (!segredoConfere(recebido, SEGREDO)) {
     // Sem detalhe na resposta: não confirmar para um atacante o que ele acertou.
     console.warn('webhook recusado: secret nao confere');
@@ -75,15 +75,35 @@ Deno.serve(async (req) => {
     { auth: { persistSession: false } },
   );
 
-  const tipo = String(buscar(corpo, ['event', 'type', 'event_type', 'data.event']) ?? 'desconhecido');
-  const transacao = buscar(corpo, ['id', 'data.id', 'refId', 'data.refId', 'transaction_id']);
-  const email = buscar(corpo, [
-    'customer.email', 'data.customer.email', 'buyer.email', 'data.buyer.email', 'email', 'data.email',
-  ]);
-  // Um id por ENTREGA do evento. Se a Cakto não mandar, montamos um estável a
-  // partir de tipo + transação, para o reenvio do mesmo evento ser barrado.
+  const tipo = String(buscar(corpo, ['event', 'type', 'event_type']) ?? 'desconhecido');
+
+  // No modo "Agrupado" a Cakto manda UMA lista com todos os itens da venda: a
+  // oferta principal e os order bumps juntos. Precisamos do item que é a
+  // assinatura — pegar o bump por engano registraria a transação errada.
+  const itens: any[] = Array.isArray(corpo?.data)
+    ? corpo.data
+    : (corpo?.data ? [corpo.data] : [corpo]);
+
+  const PRODUTO_ID = Deno.env.get('CAKTO_PRODUCT_ID') ?? '';
+  const item =
+    // 1º: o item do produto configurado, se soubermos qual é
+    (PRODUTO_ID
+      ? itens.find((i) => i?.product?.id === PRODUTO_ID || i?.product?.short_id === PRODUTO_ID)
+      : null)
+    // 2º: a oferta principal (bump nunca é 'main')
+    ?? itens.find((i) => i?.offer_type === 'main')
+    // 3º: último recurso
+    ?? itens[0]
+    ?? {};
+
+  const transacao = buscar(item, ['id', 'refId']);
+  const email = buscar(item, ['customer.email', 'buyer.email', 'email']);
+
+  // Chave de deduplicação: tipo do evento + id da transação. O mesmo evento
+  // reenviado traz o mesmo id e é barrado; uma renovação do mês seguinte é
+  // outra transação e passa normalmente.
   const eventoId = String(
-    buscar(corpo, ['event_id', 'eventId', 'data.event_id']) ?? `${tipo}:${transacao ?? 'sem-id'}`,
+    buscar(corpo, ['event_id', 'eventId']) ?? `${tipo}:${transacao ?? 'sem-id'}`,
   );
 
   const registrar = async (resultado: string, detalhe?: string) => {
@@ -109,7 +129,7 @@ Deno.serve(async (req) => {
   if (!email) {
     // Sem e-mail não há como ligar a compra a uma conta. Registramos as CHAVES
     // que vieram (sem os valores) para eu corrigir o caminho de leitura.
-    await registrar('erro', 'sem e-mail no payload; chaves recebidas: ' + Object.keys(corpo || {}).join(','));
+    await registrar('erro', `sem e-mail; itens=${itens.length}; chaves do item: ` + Object.keys(item || {}).join(','));
     // 200 de propósito: com erro a Cakto reenviaria para sempre um evento que
     // nunca vai funcionar. Fica registrado para conserto.
     return new Response(JSON.stringify({ ok: false, erro: 'sem e-mail' }), {
@@ -128,9 +148,9 @@ Deno.serve(async (req) => {
     case 'subscription_renewed': {
       // Se a Cakto informar a próxima cobrança, usamos ela. Senão, 31 dias:
       // erra para o lado de manter o acesso.
-      const proxima = buscar(corpo, [
-        'nextPayment', 'data.nextPayment', 'subscription.nextPayment',
-        'next_billing_date', 'data.next_billing_date',
+      const proxima = buscar(item, [
+        'subscription.nextPayment', 'subscription.next_billing_date',
+        'subscription.nextBillingDate', 'nextPayment', 'next_billing_date', 'due_date',
       ]);
       acessoAte = proxima ? String(proxima).slice(0, 10) : emDias(31);
       status = 'ativa';
@@ -199,7 +219,14 @@ Deno.serve(async (req) => {
   );
   if (u) await db.from('assinaturas').update({ user_id: u.id }).eq('email', String(email).trim().toLowerCase());
 
-  await registrar(resultado, u ? 'conta ja existe, vinculada' : 'conta ainda nao criada');
+  await registrar(
+    resultado,
+    `${u ? 'conta ja existe, vinculada' : 'conta ainda nao criada'}` +
+      ` | itens na venda: ${itens.length}` +
+      ` | oferta: ${item?.offer_type ?? '?'}` +
+      ` | produto: ${item?.product?.name ?? '?'}` +
+      ` | acesso ate: ${acessoAte ?? 'inalterado'}`,
+  );
 
   return new Response(JSON.stringify({ ok: true, resultado }), {
     status: 200, headers: { 'Content-Type': 'application/json' },
