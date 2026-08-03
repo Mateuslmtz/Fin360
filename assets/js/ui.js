@@ -93,6 +93,24 @@ function atualizarStatusSync() {
   const el = document.getElementById('sync-badge');
   if (!el) return;
 
+  // Assinatura vencida vem primeiro: é o motivo mais específico e o único que a
+  // pessoa resolve pagando. Mostrar "sem conexão" aqui mandaria ela pro lugar errado.
+  if (Store.semAssinatura) {
+    el.style.display = '';
+    el.className = 'sync-badge erro';
+    el.innerHTML = '<span>Assinatura vencida</span>';
+    el.title = 'Sua assinatura não está em dia. Você continua vendo todos os seus dados, mas não consegue lançar nada novo até regularizar.';
+    el.onclick = () => {
+      confirmModal({
+        title: 'Assinatura vencida',
+        text: 'Você continua com acesso a tudo que já lançou — nada foi apagado. Mas, enquanto o pagamento não entrar, não dá pra criar ou alterar lançamentos. Assim que a assinatura for regularizada, o app volta ao normal sozinho.',
+        confirmLabel: 'Entendi',
+        onConfirm: () => {},
+      });
+    };
+    return;
+  }
+
   if (Store.conflito) {
     el.style.display = '';
     el.className = 'sync-badge erro';
