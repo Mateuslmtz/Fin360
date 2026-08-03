@@ -668,6 +668,7 @@ const Store = {
   conflito: false,       // outro aparelho gravou depois de nós — sincronização suspensa
   sessaoExpirou: false,  // a sessão morreu: precisa entrar de novo (≠ falta de internet)
   semAssinatura: false,  // o banco recusou a gravação: assinatura fora do prazo
+  assinatura: null,      // a assinatura encontrada (null = nenhuma, e-mail não confere)
   _sujo: false,          // há alteração local ainda não confirmada pelo servidor
 
   readLocal() {
@@ -857,8 +858,15 @@ const Store = {
         // O banco recusou porque a assinatura não está em dia. Não adianta tentar de
         // novo: só volta a gravar quando o pagamento entrar. Ler continua liberado.
         this.semAssinatura = true;
+        // Descobre QUAL é o caso: nunca teve assinatura (provavelmente cadastrou com
+        // um e-mail diferente do da compra) ou teve e venceu. A mensagem muda tudo:
+        // "assinatura vencida" para quem nunca comprou manda a pessoa pro lugar errado.
+        try { this.assinatura = await Sb.minhaAssinatura(); } catch (e) { this.assinatura = null; }
         if (typeof toast === 'function') {
-          toast('Sua assinatura não está em dia. Você continua vendo tudo, mas não consegue lançar até regularizar.', 'danger');
+          toast(this.assinatura
+            ? 'Sua assinatura não está em dia. Você continua vendo tudo, mas não consegue lançar até regularizar.'
+            : 'Não encontramos uma assinatura para este e-mail. Se você já comprou, entre com o mesmo e-mail que usou na compra.',
+            'danger');
         }
       } else {
         this.offline = true;

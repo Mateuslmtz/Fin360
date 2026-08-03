@@ -96,14 +96,22 @@ function atualizarStatusSync() {
   // Assinatura vencida vem primeiro: é o motivo mais específico e o único que a
   // pessoa resolve pagando. Mostrar "sem conexão" aqui mandaria ela pro lugar errado.
   if (Store.semAssinatura) {
+    // Dois casos bem diferentes. Quem comprou e cadastrou com outro e-mail precisa
+    // saber disso — dizer "vencida" para quem nunca teve assinatura manda a pessoa
+    // procurar problema no cartão quando o problema é o e-mail.
+    const venceu = !!Store.assinatura;
     el.style.display = '';
     el.className = 'sync-badge erro';
-    el.innerHTML = '<span>Assinatura vencida</span>';
-    el.title = 'Sua assinatura não está em dia. Você continua vendo todos os seus dados, mas não consegue lançar nada novo até regularizar.';
+    el.innerHTML = '<span>' + (venceu ? 'Assinatura vencida' : 'Sem assinatura') + '</span>';
+    el.title = venceu
+      ? 'Sua assinatura não está em dia. Você continua vendo todos os seus dados, mas não consegue lançar nada novo até regularizar.'
+      : 'Não encontramos assinatura para este e-mail. Se você já comprou, entre com o mesmo e-mail que usou na compra.';
     el.onclick = () => {
       confirmModal({
-        title: 'Assinatura vencida',
-        text: 'Você continua com acesso a tudo que já lançou — nada foi apagado. Mas, enquanto o pagamento não entrar, não dá pra criar ou alterar lançamentos. Assim que a assinatura for regularizada, o app volta ao normal sozinho.',
+        title: venceu ? 'Assinatura vencida' : 'Nenhuma assinatura para este e-mail',
+        text: venceu
+          ? 'Você continua com acesso a tudo que já lançou — nada foi apagado. Mas, enquanto o pagamento não entrar, não dá pra criar ou alterar lançamentos. Assim que a assinatura for regularizada, o app volta ao normal sozinho.'
+          : 'Você está usando o Fin360° com o e-mail ' + (Sb.userEmail() || 'desta conta') + ', e não há nenhuma assinatura ligada a ele.\n\nSe você já comprou, o mais provável é que tenha usado outro e-mail na compra. Saia e entre com aquele e-mail — o acesso é liberado na hora, sem precisar comprar de novo.',
         confirmLabel: 'Entendi',
         onConfirm: () => {},
       });
