@@ -54,7 +54,11 @@ function renderAuthScreen(mode) {
 
       <form id="auth-form" class="auth-form">
         ${isRegister ? `<div class="field"><label>Nome</label><input type="text" id="auth-name" placeholder="Seu nome" autocomplete="name" /></div>` : ''}
-        ${!isReset ? `<div class="field"><label>E-mail</label><input type="email" id="auth-email" placeholder="voce@email.com" autocomplete="email" /></div>` : ''}
+        ${!isReset ? `<div class="field">
+          <label>E-mail</label>
+          <input type="email" id="auth-email" placeholder="voce@email.com" autocomplete="email" />
+          ${isRegister ? `<p class="field-aviso">Use o <strong>mesmo e-mail da sua compra</strong>. É ele que libera seu acesso.</p>` : ''}
+        </div>` : ''}
         ${!isForgot ? `<div class="field"><label>${isReset ? 'Nova senha' : 'Senha'}</label><input type="password" id="auth-password" placeholder="••••••••" autocomplete="${isLogin ? 'current-password' : 'new-password'}" /></div>` : ''}
         ${isRegister || isReset ? `<div class="field"><label>Confirmar senha</label><input type="password" id="auth-password2" placeholder="••••••••" autocomplete="new-password" /></div>` : ''}
         <p class="auth-error" id="auth-error" style="display:none"></p>
@@ -64,7 +68,7 @@ function renderAuthScreen(mode) {
 
       ${isLogin ? `<p class="auth-hint"><a href="#" id="auth-forgot-link">Esqueci minha senha</a></p>` : ''}
       ${isForgot || isReset ? `<p class="auth-hint"><a href="#" id="auth-back-link">Voltar para o login</a></p>` : ''}
-      ${isRegister ? `<p class="auth-hint">Você vai receber um e-mail para confirmar o cadastro.</p>` : ''}
+      ${isRegister ? `<p class="auth-hint">Você vai receber um e-mail para confirmar o cadastro.<br>Cadastrou com o e-mail errado? Basta sair e entrar de novo com o e-mail da compra — sem comprar outra vez.</p>` : ''}
     </div>
   `;
 
