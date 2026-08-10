@@ -69,6 +69,13 @@ function renderAuthScreen(mode) {
       ${isLogin ? `<p class="auth-hint"><a href="#" id="auth-forgot-link">Esqueci minha senha</a></p>` : ''}
       ${isForgot || isReset ? `<p class="auth-hint"><a href="#" id="auth-back-link">Voltar para o login</a></p>` : ''}
       ${isRegister ? `<p class="auth-hint">Você vai receber um e-mail para confirmar o cadastro.<br>Cadastrou com o e-mail errado? Basta sair e entrar de novo com o e-mail da compra — sem comprar outra vez.</p>` : ''}
+
+      <p class="auth-legal">
+        ${isRegister ? 'Ao criar sua conta, você concorda com os ' : ''}
+        <a href="termos.html" target="_blank" rel="noopener">Termos de Uso</a>
+        ${isRegister ? ' e com a ' : ' · '}
+        <a href="privacidade.html" target="_blank" rel="noopener">Política de Privacidade</a>${isRegister ? '.' : ''}
+      </p>
     </div>
   `;
 

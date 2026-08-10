@@ -631,6 +631,14 @@ html:not([data-theme='light']) .auth-logo-claro { display: none; }
 .auth-hint a { color: var(--primary); text-decoration: none; }
 .auth-hint a:hover { text-decoration: underline; }
 .auth-titulo { font-size: 17px; font-weight: 800; margin-bottom: 18px; }
+/* Aceite dos termos: fica logo abaixo do botao, colado nele, porque e o clique
+   no botao que representa o aceite — separar os dois enfraquece o consentimento. */
+.auth-legal {
+  font-size: 11.5px; line-height: 1.6; color: var(--text-faint);
+  margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--border-soft);
+}
+.auth-legal a { color: var(--text-muted); text-decoration: underline; }
+.auth-legal a:hover { color: var(--primary); }
 
 /* Aviso ao lado do campo de e-mail no cadastro. Fica aqui, e não numa página
    anterior, porque a pessoa precisa ler no instante em que digita o e-mail —

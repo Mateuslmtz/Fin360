@@ -2825,6 +2825,15 @@ function pageConfiguracoes(container) {
         <button class="btn btn-ghost btn-sm" id="cfg-carregar-demo">Carregar dados de exemplo</button>
       </div>
 
+      <div class="panel">
+        <h3 style="margin-bottom:10px">${icon('lock')} Privacidade e Termos</h3>
+        <p class="row-sub" style="margin-bottom:14px">Seus dados ficam em servidor no Brasil e não são vendidos nem usados para publicidade. Para pedir a exclusão da sua conta e de todos os seus dados, escreva para <a href="mailto:contato@fin360app.com.br" style="color:var(--primary)">contato@fin360app.com.br</a>.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn btn-ghost btn-sm" href="privacidade.html" target="_blank" rel="noopener">Política de Privacidade</a>
+          <a class="btn btn-ghost btn-sm" href="termos.html" target="_blank" rel="noopener">Termos de Uso</a>
+        </div>
+      </div>
+
       <div class="panel" style="border-color:var(--danger)">
         <h3 style="margin-bottom:10px;color:var(--danger)">${icon('alertTriangle')} Zona de risco</h3>
         <p class="row-sub" style="margin-bottom:14px">Apague todos os dados financeiros e comece do zero. Seu perfil e categorias permanecem intactos — apenas transações, bancos, cartões, metas e demais dados são removidos.</p>

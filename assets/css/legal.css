@@ -1,0 +1,168 @@
+/* Fin360 — estilo das páginas legais (Política de Privacidade e Termos de Uso).
+   Arquivo próprio, separado do styles.css: aquele carrega o layout inteiro do app
+   (sidebar, modais, gráficos) que estas páginas não usam. Aqui só o necessário
+   para ler texto longo com conforto. */
+
+:root {
+  --bg: #0a0e1f;
+  --bg-card: #131a36;
+  --border: #232a4d;
+  --text: #f5f7fa;
+  --text-muted: #8b93ac;
+  --primary: #3866ff;
+  --primary-soft: rgba(56, 102, 255, 0.14);
+}
+
+/* O app abre no escuro, então o escuro é o padrão daqui também: quem clica
+   em "Política de Privacidade" dentro do app não leva um flash branco na cara.
+   Quem usa o sistema no claro recebe a versão clara. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f3f5fb;
+    --bg-card: #ffffff;
+    --border: #e3e7f4;
+    --text: #131933;
+    --text-muted: #697091;
+    --primary: #1e3fcc;
+    --primary-soft: rgba(56, 102, 255, 0.08);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.legal-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+
+.legal-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 24px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.legal-topo img { height: 34px; width: auto; display: block; }
+
+.legal-voltar {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.legal-voltar:hover { color: var(--primary); }
+
+h1 {
+  font-size: 30px;
+  line-height: 1.25;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.legal-data {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0 0 36px;
+}
+
+h2 {
+  font-size: 20px;
+  line-height: 1.35;
+  margin: 44px 0 12px;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 20px;
+}
+
+h3 {
+  font-size: 16px;
+  margin: 28px 0 8px;
+}
+
+p { margin: 0 0 14px; }
+
+ul { margin: 0 0 16px; padding-left: 22px; }
+li { margin-bottom: 8px; }
+
+a { color: var(--primary); }
+
+strong { font-weight: 600; }
+
+/* Blocos de destaque para o que o leitor precisa mesmo enxergar: o que NÃO
+   coletamos, o prazo de arrependimento, o aviso de que isto não é consultoria. */
+.destaque {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 0 0 20px;
+}
+.destaque p:last-child { margin-bottom: 0; }
+
+.legal-rodape {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Sumário: documento legal sem índice não é lido, é rolado até o fim. */
+.sumario {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 8px;
+}
+.sumario p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.sumario ol { margin: 0; padding-left: 20px; }
+.sumario li { margin-bottom: 5px; }
+.sumario a { text-decoration: none; }
+.sumario a:hover { text-decoration: underline; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 20px;
+  font-size: 15px;
+}
+th, td {
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+th { background: var(--primary-soft); font-weight: 600; }
+
+/* A tabela de subcontratados é larga demais para caber em tela de celular;
+   rola sozinha em vez de esticar a página inteira. */
+.tabela-rolavel { overflow-x: auto; }
+.tabela-rolavel table { min-width: 460px; }
+
+@media (max-width: 600px) {
+  .legal-wrap { padding: 24px 16px 64px; }
+  h1 { font-size: 25px; }
+  h2 { font-size: 18px; margin-top: 36px; }
+}
