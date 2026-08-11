@@ -676,6 +676,18 @@ function assinaturaEmDia(a) {
   return String(a.acesso_ate) >= new Date().toISOString().slice(0, 10);
 }
 
+/* Quantos dias ainda restam de acesso. Como a trava é `acesso_ate >= current_date`,
+   o próprio dia do acesso_ate ainda é válido — por isso 0 significa "último dia", e
+   não "já venceu". Devolve null quando não há assinatura em dia para contar.
+   Em UTC, pelo mesmo motivo de assinaturaEmDia(): a data do aparelho vira o dia
+   seguinte às 21h no Brasil e o aviso apareceria um dia antes do que deveria. */
+function diasParaVencer(a) {
+  if (!assinaturaEmDia(a)) return null;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const dia = 24 * 60 * 60 * 1000;
+  return Math.round((Date.parse(a.acesso_ate + 'T00:00:00Z') - Date.parse(hoje + 'T00:00:00Z')) / dia);
+}
+
 const Store = {
   state: null,
   versao: null,          // versão que lemos do servidor; null = a linha ainda não existe

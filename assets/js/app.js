@@ -65,6 +65,9 @@ async function bootApp() {
     aportes.forEach((a) => toast(`Aporte automático de ${formatCurrency(a.valor)} feito em "${a.nome}"`, 'success'));
     render();
   }
+
+  // depois do render, para a janela não aparecer sobre uma tela ainda em branco
+  avisarRenovacaoNaEntrada();
 }
 
 window.addEventListener('hashchange', render);

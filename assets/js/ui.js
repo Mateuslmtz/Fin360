@@ -114,6 +114,59 @@ function avisarSemAssinatura() {
   });
 }
 
+/* A partir de quantos dias antes do fim o app começa a avisar. São dois números
+   porque servem a coisas diferentes: o selo fica na tela o tempo todo e pode ser
+   ignorado, então avisa cedo; a janela interrompe a pessoa, então só aparece quando
+   já está em cima da hora. Quem paga por Pix manual precisa desse prazo para pagar
+   e o dinheiro compensar antes do corte. */
+const RENOV_DIAS_SELO = 5;
+const RENOV_DIAS_JANELA = 3;
+
+/* Texto único do prazo, para o selo e a janela nunca discordarem entre si. */
+function textoPrazoRenovacao(dias) {
+  if (dias <= 0) return 'Hoje é o último dia';
+  if (dias === 1) return 'Vence amanhã';
+  return 'Vence em ' + dias + ' dias';
+}
+
+/* Aviso de renovação. A mensagem serve para os dois tipos de cliente de propósito:
+   não temos como saber, pela linha da assinatura, se a pessoa paga no cartão (renova
+   sozinho) ou por Pix avulso (precisa pagar na mão). Como não dá para saber, o texto
+   diz o que fazer em cada caso em vez de chutar um dos dois — chutar "pague agora"
+   para quem está no cartão faz a pessoa comprar duas vezes. */
+function avisarRenovacaoProxima() {
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay && overlay.classList.contains('open')) return;
+  const dias = diasParaVencer(Store.assinatura);
+  if (dias === null) return;
+  const data = Store.assinatura.acesso_ate.split('-').reverse().join('/');
+  confirmModal({
+    title: textoPrazoRenovacao(dias),
+    text: 'Seu acesso ao Fin360° vai até ' + data + '.\n\n'
+      + 'Se você paga no cartão ou no Pix automático, não precisa fazer nada: a cobrança acontece sozinha e o acesso continua.\n\n'
+      + 'Se você paga por Pix a cada mês, este é o momento de pagar. Passando a data, nada é apagado — você continua vendo tudo que já lançou, mas não consegue lançar nada novo até o pagamento entrar.',
+    confirmLabel: 'Pagar agora',
+    onConfirm: () => window.open(CHECKOUT_FIN360, '_blank', 'noopener'),
+  });
+}
+
+/* Uma vez por dia, e não uma vez por carregamento: quem abre o app cinco vezes no
+   dia não pode levar cinco janelas na cara. A marca é por conta, senão duas pessoas
+   no mesmo aparelho abafariam o aviso uma da outra. */
+function avisarRenovacaoNaEntrada() {
+  const dias = diasParaVencer(Store.assinatura);
+  if (dias === null || dias > RENOV_DIAS_JANELA) return;
+  const chave = 'fin360_aviso_renov_' + ((typeof Sb !== 'undefined' && Sb.userId()) || 'default');
+  const hoje = new Date().toISOString().slice(0, 10);
+  try {
+    if (localStorage.getItem(chave) === hoje) return;
+    localStorage.setItem(chave, hoje);
+  } catch (e) {
+    /* modo privado ou cota cheia: melhor avisar de novo do que não avisar */
+  }
+  avisarRenovacaoProxima();
+}
+
 /* Estado da sincronização, sempre visível quando há problema.
    Some quando tudo está no lugar — aviso que fica na tela sem motivo vira ruído
    e a pessoa passa a ignorar o que importa. */
@@ -166,6 +219,19 @@ function atualizarStatusSync() {
       toast('Está tudo salvo neste aparelho. Assim que a internet voltar, sobe sozinho.', 'info');
       Store.agendarSync(0);
     };
+    return;
+  }
+
+  // Por último: os de cima são problemas acontecendo agora, este é um prazo chegando.
+  // Fica no selo porque a janela aparece só uma vez por dia — sem isso, quem fechou
+  // a janela de manhã não teria mais nenhum lembrete do vencimento.
+  const diasRenov = diasParaVencer(Store.assinatura);
+  if (diasRenov !== null && diasRenov <= RENOV_DIAS_SELO) {
+    el.style.display = '';
+    el.className = 'sync-badge aviso';
+    el.innerHTML = '<span>' + textoPrazoRenovacao(diasRenov) + '</span>';
+    el.title = 'Seu acesso vai até ' + Store.assinatura.acesso_ate.split('-').reverse().join('/') + '. Clique para ver o que fazer.';
+    el.onclick = avisarRenovacaoProxima;
     return;
   }
 
