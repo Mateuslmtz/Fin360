@@ -475,6 +475,9 @@ function addGastoVariavel(payload) {
   if (payload.cartaoId) return Store.add('gastosVariaveis', Object.assign({ status: 'pendente' }, payload));
   const autoPago = payload.data <= todayISO();
   const item = Store.add('gastosVariaveis', Object.assign({ status: autoPago ? 'pago' : 'pendente' }, payload, autoPago ? { ledgerApplied: true } : {}));
+  // add() devolve null quando a assinatura não está em dia. Sem esta saída, o saldo do
+  // banco seria debitado por um gasto que não existe.
+  if (!item) return null;
   if (autoPago) Store.applyBankDelta(payload.bankId, -payload.valor);
   return item;
 }
@@ -660,6 +663,19 @@ function parcelasAtivasCount(cartaoId) {
   return Store.state.gastosVariaveis.filter((g) => g.cartaoId === cartaoId && g.tipo === 'parcelado' && gastoVariavelOccurrenceInMonth(g, mStr)).length;
 }
 
+/* Espelha a função tem_acesso() do banco, que é quem manda de verdade:
+     status in ('ativa','atrasada') and acesso_ate >= current_date
+   A regra está copiada literalmente, não reinterpretada: se as duas divergirem, ou o
+   app bloqueia quem pagou (pior) ou deixa passar quem não pagou. 'atrasada' continua
+   valendo — é a tolerância de 3 dias que o webhook concede em falha de renovação. */
+function assinaturaEmDia(a) {
+  if (!a || !a.acesso_ate) return false;
+  if (a.status !== 'ativa' && a.status !== 'atrasada') return false;
+  // current_date do Postgres é UTC. Comparar com a data local do aparelho faria a
+  // trava cair um dia antes para quem está no Brasil depois das 21h.
+  return String(a.acesso_ate) >= new Date().toISOString().slice(0, 10);
+}
+
 const Store = {
   state: null,
   versao: null,          // versão que lemos do servidor; null = a linha ainda não existe
@@ -708,6 +724,22 @@ const Store = {
         // mostrar "sem conexão" aqui deixaria a pessoa presa num app que não salva.
         this.sessaoExpirou = !Sb.isLoggedIn();
         this.offline = !this.sessaoExpirou;
+      }
+
+      // Situação da assinatura ANTES de liberar qualquer edição. Descobrir isso só
+      // quando o servidor recusa a gravação é tarde demais: a pessoa já digitou o
+      // lançamento, já viu ele na tela e acredita que salvou — e só percebe que
+      // perdeu tudo quando troca de aparelho.
+      if (!this.sessaoExpirou) {
+        try {
+          this.assinatura = await Sb.minhaAssinatura();
+          this.semAssinatura = !assinaturaEmDia(this.assinatura);
+        } catch (e) {
+          // Sem resposta do servidor não dá para afirmar que a pessoa está sem
+          // assinatura. Na dúvida, liberar: quem barra de verdade é o banco, e
+          // bloquear um cliente em dia por causa de instabilidade é bem pior.
+          this.semAssinatura = false;
+        }
       }
     }
 
@@ -936,7 +968,21 @@ const Store = {
   },
 
   // ---- generic collection helpers ----
+
+  /* Trava de assinatura. Mora aqui, e não em cada tela, porque TODA alteração passa
+     por add/update/remove — guardar tela por tela deixaria a porta aberta na primeira
+     tela nova que alguém escrevesse. Barra ANTES de mexer no state: assim o lançamento
+     não chega nem a aparecer, em vez de aparecer e sumir depois. */
+  bloqueadoSemAssinatura() {
+    // as migrações do próprio load() chamam add(); não são edição do usuário
+    if (this.carregando) return false;
+    if (!this.semAssinatura) return false;
+    if (typeof avisarSemAssinatura === 'function') avisarSemAssinatura();
+    return true;
+  },
+
   add(collection, item) {
+    if (this.bloqueadoSemAssinatura()) return null;
     item.id = item.id || uid();
     item.createdAt = item.createdAt || Date.now();
     this.state[collection].push(item);
@@ -944,6 +990,7 @@ const Store = {
     return item;
   },
   update(collection, id, patch) {
+    if (this.bloqueadoSemAssinatura()) return null;
     const list = this.state[collection];
     const idx = list.findIndex((i) => i.id === id);
     if (idx > -1) {
@@ -954,6 +1001,7 @@ const Store = {
     return null;
   },
   remove(collection, id) {
+    if (this.bloqueadoSemAssinatura()) return;
     this.state[collection] = this.state[collection].filter((i) => i.id !== id);
     this.save();
   },

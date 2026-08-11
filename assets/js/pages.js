@@ -280,6 +280,7 @@ function wireCollapsibleNewCategory(prefix, onChange, opts) {
       onChange && onChange();
     } else {
       const cat = Store.add('categories', { name, emoji, color: nextCategoryColor(), tipo });
+      if (!cat) return;
       toast('Categoria adicionada', 'success');
       onChange && onChange(cat.id);
     }
@@ -1828,6 +1829,7 @@ function pageRecebimentos(container) {
       if (editing) { updateRecebimento(editing.id, payload); toast('Recebimento atualizado', 'success'); editingRecebId = null; }
       else {
         const novo = Store.add('recebimentos', payload);
+        if (!novo) return;
         if (data <= todayISO()) toggleRecebimentoRecebido(novo.id, data.slice(0, 7));
         toast('Recebimento registrado', 'success');
       }
@@ -2261,7 +2263,7 @@ function pageCartoes(container) {
           diaVencimento: parseInt(document.getElementById('cc-vencimento').value, 10) || null,
         };
         if (editingCartao) { Store.update('cartoes', editingCartao.id, payload); toast('Cartão atualizado', 'success'); editingCartaoId = null; }
-        else { const c = Store.add('cartoes', payload); toast('Cartão cadastrado', 'success'); selectedCartaoId = c.id; }
+        else { const c = Store.add('cartoes', payload); if (!c) return; toast('Cartão cadastrado', 'success'); selectedCartaoId = c.id; }
         novoCartaoOpen = false;
         draw();
       };

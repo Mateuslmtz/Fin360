@@ -86,6 +86,34 @@ function renderTopbar(route) {
   }
 }
 
+/* Checkout principal da Cakto (mensal). Fica numa constante só, com nome, porque é o
+   endereço que aparece em todo lugar que oferece a assinatura — espalhar a URL pelo
+   código garante que um dia um deles fica pra trás e manda o cliente pra lugar nenhum.
+   Existe também o anual (pay.cakto.com.br/csyhakt, R$ 147); o mensal é a oferta
+   principal e é ele que o app oferece. */
+const CHECKOUT_FIN360 = 'https://pay.cakto.com.br/387daej_1018241';
+
+/* Chamado quando a pessoa tenta lançar sem assinatura em dia. É a única porta de
+   saída da trava do Store, então é aqui que a oferta aparece — não adianta barrar
+   sem dizer como resolver. Os dois casos são bem diferentes e a mensagem errada
+   manda a pessoa procurar problema no lugar errado: quem nunca assinou precisa
+   comprar; quem cadastrou com outro e-mail só precisa entrar com o e-mail certo. */
+function avisarSemAssinatura() {
+  // uma tela que altera vários registros de uma vez chamaria isto em sequência;
+  // sem esta saída a pessoa fecharia a mesma janela cinco vezes seguidas
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay && overlay.classList.contains('open')) return;
+  const venceu = !!Store.assinatura;
+  confirmModal({
+    title: venceu ? 'Sua assinatura venceu' : 'Assine para lançar',
+    text: venceu
+      ? 'Nada foi apagado — você continua vendo tudo que já lançou. Mas não dá para criar nem alterar lançamentos enquanto o pagamento não entrar. Assim que ele cair, o app volta ao normal sozinho, sem você precisar fazer nada.'
+      : 'Você está usando o Fin360° com o e-mail ' + (Sb.userEmail() || 'desta conta') + ', e não há nenhuma assinatura ligada a ele.\n\nSe você já comprou, o mais provável é que tenha usado outro e-mail na compra. Saia e entre com aquele e-mail — o acesso é liberado na hora, sem precisar comprar de novo.\n\nSe ainda não assinou, dá para assinar agora e voltar a lançar em seguida.',
+    confirmLabel: venceu ? 'Regularizar agora' : 'Assinar agora',
+    onConfirm: () => window.open(CHECKOUT_FIN360, '_blank', 'noopener'),
+  });
+}
+
 /* Estado da sincronização, sempre visível quando há problema.
    Some quando tudo está no lugar — aviso que fica na tela sem motivo vira ruído
    e a pessoa passa a ignorar o que importa. */
@@ -106,16 +134,10 @@ function atualizarStatusSync() {
     el.title = venceu
       ? 'Sua assinatura não está em dia. Você continua vendo todos os seus dados, mas não consegue lançar nada novo até regularizar.'
       : 'Não encontramos assinatura para este e-mail. Se você já comprou, entre com o mesmo e-mail que usou na compra.';
-    el.onclick = () => {
-      confirmModal({
-        title: venceu ? 'Assinatura vencida' : 'Nenhuma assinatura para este e-mail',
-        text: venceu
-          ? 'Você continua com acesso a tudo que já lançou — nada foi apagado. Mas, enquanto o pagamento não entrar, não dá pra criar ou alterar lançamentos. Assim que a assinatura for regularizada, o app volta ao normal sozinho.'
-          : 'Você está usando o Fin360° com o e-mail ' + (Sb.userEmail() || 'desta conta') + ', e não há nenhuma assinatura ligada a ele.\n\nSe você já comprou, o mais provável é que tenha usado outro e-mail na compra. Saia e entre com aquele e-mail — o acesso é liberado na hora, sem precisar comprar de novo.',
-        confirmLabel: 'Entendi',
-        onConfirm: () => {},
-      });
-    };
+    // mesma janela da trava de lançamento: um texto só, e com o caminho pra resolver.
+    // Antes aqui havia um "Entendi" que só fechava — informava o problema e abandonava
+    // a pessoa nele.
+    el.onclick = avisarSemAssinatura;
     return;
   }
 
@@ -323,6 +345,7 @@ function quickAddCategory(onAdded, tipo) {
     const name = document.getElementById('qc-name').value.trim();
     if (!name) { toast('Dê um nome para a categoria', 'danger'); return; }
     const cat = Store.add('categories', { name, color: nextCategoryColor(), emoji: document.getElementById('qc-emoji').value || '🏷️', tipo: tipo || 'despesa' });
+    if (!cat) return; // sem assinatura: o aviso já apareceu, não confirmar sucesso
     overlay.classList.remove('open');
     toast('Categoria adicionada', 'success');
     onAdded && onAdded(cat.id);
@@ -348,6 +371,7 @@ function quickAddBank(onAdded) {
     const name = document.getElementById('qb-name').value.trim();
     if (!name) { toast('Dê um nome para o banco', 'danger'); return; }
     const bank = Store.add('banks', { name, balance: parseFloat(document.getElementById('qb-balance').value) || 0 });
+    if (!bank) return;
     overlay.classList.remove('open');
     toast('Banco adicionado', 'success');
     onAdded && onAdded(bank.id);
