@@ -86,12 +86,14 @@ function renderTopbar(route) {
   }
 }
 
-/* Checkout principal da Cakto (mensal). Fica numa constante só, com nome, porque é o
-   endereço que aparece em todo lugar que oferece a assinatura — espalhar a URL pelo
-   código garante que um dia um deles fica pra trás e manda o cliente pra lugar nenhum.
-   Existe também o anual (pay.cakto.com.br/csyhakt, R$ 147); o mensal é a oferta
-   principal e é ele que o app oferece. */
-const CHECKOUT_FIN360 = 'https://pay.cakto.com.br/387daej_1018241';
+/* Para onde o app manda quem precisa assinar ou renovar. Aponta para a seção de
+   preços do site, e não para um checkout: existem três planos (mensal, trimestral
+   e anual) e mandar direto para um deles é escolher pela pessoa — quem queria o
+   anual acabaria pagando mensal sem perceber que havia opção.
+   Fica numa constante só, com nome, porque é o endereço que aparece em todo lugar
+   que oferece a assinatura; espalhar a URL pelo código garante que um dia um deles
+   fica pra trás e manda o cliente pra lugar nenhum. */
+const CHECKOUT_FIN360 = 'https://fin360app.com.br/#preco';
 
 /* Chamado quando a pessoa tenta lançar sem assinatura em dia. É a única porta de
    saída da trava do Store, então é aqui que a oferta aparece — não adianta barrar
