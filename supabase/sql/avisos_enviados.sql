@@ -22,3 +22,10 @@ create unique index if not exists avisos_enviados_unico
 -- service_role (ignora RLS). Ligar RLS sem criar nenhuma policy é justamente o
 -- que queremos: fecha para anon e para usuário logado, e não atrapalha a função.
 alter table public.avisos_enviados enable row level security;
+
+-- Sem estes grants a função levava "permission denied for table avisos_enviados"
+-- e nenhum e-mail saía. service_role ignora RLS, mas GRANT é outra camada, e uma
+-- tabela criada pelo editor de SQL não nasce com ela. anon e authenticated ficam
+-- de fora de propósito: nada no app precisa ler esta tabela.
+grant select, insert, delete on table public.avisos_enviados to service_role;
+grant usage, select on sequence public.avisos_enviados_id_seq to service_role;
