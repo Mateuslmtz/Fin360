@@ -192,8 +192,75 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── Alerta para o dono ──────────────────────────────────────────────────────
+  // Um webhook que falha é invisível: a Cakto marca a venda como paga, o cliente
+  // não recebe acesso, e o registro do erro fica numa tabela que ninguém abre. O
+  // primeiro sinal seria a pessoa reclamando — ou pedindo reembolso sem reclamar.
+  //
+  // Vai para a caixa de contato em vez de uma variável nova: é menos uma coisa
+  // para configurar errado, e é a caixa que ele já lê todo dia.
+  //
+  // Tudo aqui é embrulhado: alerta que quebra não pode derrubar o envio para os
+  // clientes, que é a função principal desta rotina.
+  let alertas = 0;
+  try {
+    const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: erros } = await db
+      .from('webhook_eventos')
+      .select('tipo, email, resultado, detalhe, recebido_em')
+      .eq('resultado', 'erro')
+      .gte('recebido_em', ontem)
+      .order('recebido_em', { ascending: false })
+      .limit(20);
+
+    const problemas: string[] = [];
+
+    for (const e of erros ?? []) {
+      problemas.push(
+        `[webhook] ${String(e.recebido_em).slice(0, 16).replace('T', ' ')} — evento "${e.tipo}"` +
+        ` de ${e.email ?? 'e-mail desconhecido'} falhou.\n  Motivo: ${e.detalhe ?? 'sem detalhe'}`,
+      );
+    }
+
+    // A própria rotina de hoje: e-mail que o Resend recusou não chegou em ninguém.
+    if (falhas > 0) {
+      problemas.push(
+        `[aviso de vencimento] ${falhas} e-mail(s) não saíram na execução de hoje.` +
+        `\n  O detalhe está no log da função aviso-renovacao, no painel do Supabase.`,
+      );
+    }
+
+    if (problemas.length) {
+      const corpo =
+        'Isto é um aviso automático do Fin360°, só para você.\n\n' +
+        `Nas últimas 24 horas apareceram ${problemas.length} problema(s):\n\n` +
+        problemas.join('\n\n') +
+        '\n\n---\n' +
+        'O que costuma estar por trás:\n' +
+        '• "sem e-mail" — a Cakto mandou uma venda sem endereço, e não há como ligar a compra a uma conta.\n' +
+        '• erro de gravação — o banco recusou; a venda pode não ter liberado acesso.\n\n' +
+        'Vale conferir em Minhas Vendas na Cakto se a pessoa pagou, e se ela aparece na tabela assinaturas.\n' +
+        'Enquanto houver problema registrado, este aviso se repete todo dia.';
+
+      const r = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: REMETENTE, to: [RESPONDER_PARA],
+          subject: `Fin360°: ${problemas.length} problema(s) nas últimas 24h`,
+          text: corpo,
+        }),
+      });
+      if (r.ok) alertas = problemas.length;
+      else console.error(`alerta nao saiu (${r.status}): ` + (await r.text()).slice(0, 200));
+    }
+  } catch (e) {
+    // Falhar aqui não pode contaminar o resultado do envio aos clientes.
+    console.error('alerta falhou: ' + String(e).slice(0, 200));
+  }
+
   // Sem e-mails no corpo da resposta: ela aparece no log de execução do Cron.
-  const resumo = { ok: true, encontrados: alvos.length, enviados, repetidos, falhas };
+  const resumo = { ok: true, encontrados: alvos.length, enviados, repetidos, falhas, alertas };
   console.log(JSON.stringify(resumo));
   return new Response(JSON.stringify(resumo), {
     status: 200, headers: { 'Content-Type': 'application/json' },
