@@ -218,12 +218,31 @@ Deno.serve(async (req) => {
   };
   if (acessoAte) linha.acesso_ate = acessoAte;
 
-  const { error } = await db.from('assinaturas').upsert(linha, { onConflict: 'email' });
+  // O upsert insere-ou-atualiza, e para inserir precisa da linha COMPLETA: sem
+  // acesso_ate ele bate na restrição not-null da tabela e falha inteiro. Foi o que
+  // acontecia em todo cancelamento — o evento chegava, dava erro e nada era gravado.
+  //
+  // Cancelamento é o único caso sem data nova, justamente porque preserva o período
+  // já pago. E é também o único que só faz sentido sobre uma assinatura existente:
+  // ninguém cancela o que nunca comprou. Então ali basta atualizar.
+  const { error, count } = acessoAte
+    ? await db.from('assinaturas').upsert(linha, { onConflict: 'email' })
+    : await db.from('assinaturas').update(linha)
+        .eq('email', String(email).trim().toLowerCase())
+        .select('email', { count: 'exact' });
 
   if (error) {
     await registrar('erro', error.message);
     // 500 aqui é proposital: foi falha NOSSA, e queremos que a Cakto reenvie.
     return new Response(JSON.stringify({ ok: false }), { status: 500 });
+  }
+
+  // Update que não achou ninguém não é erro de banco, então passaria silencioso.
+  // Registrar: cancelamento de assinatura que não existe aqui significa que a
+  // compra correspondente nunca chegou, e isso merece um olhar.
+  if (!acessoAte && count === 0) {
+    await registrar('erro', `cancelamento sem assinatura correspondente para ${email}`);
+    return new Response(JSON.stringify({ ok: false, erro: 'sem assinatura' }), { status: 200 });
   }
 
   // 5. Se a conta já existe, liga o user_id agora — assim o acesso vale mesmo

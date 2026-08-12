@@ -664,13 +664,16 @@ function parcelasAtivasCount(cartaoId) {
 }
 
 /* Espelha a função tem_acesso() do banco, que é quem manda de verdade:
-     status in ('ativa','atrasada') and acesso_ate >= current_date
+     status in ('ativa','atrasada','cancelada') and acesso_ate >= current_date
    A regra está copiada literalmente, não reinterpretada: se as duas divergirem, ou o
-   app bloqueia quem pagou (pior) ou deixa passar quem não pagou. 'atrasada' continua
-   valendo — é a tolerância de 3 dias que o webhook concede em falha de renovação. */
+   app bloqueia quem pagou (pior) ou deixa passar quem não pagou.
+   'atrasada' é a tolerância de 3 dias que o webhook concede em falha de renovação.
+   'cancelada' entra porque cancelar significa "não renove mais", e não "devolva o que
+   eu já paguei": quem pagou o ano usa o ano. Quem corta é a data, e só ela — no
+   reembolso o webhook põe a data em hoje, então esse caso continua cortando. */
 function assinaturaEmDia(a) {
   if (!a || !a.acesso_ate) return false;
-  if (a.status !== 'ativa' && a.status !== 'atrasada') return false;
+  if (a.status !== 'ativa' && a.status !== 'atrasada' && a.status !== 'cancelada') return false;
   // current_date do Postgres é UTC. Comparar com a data local do aparelho faria a
   // trava cair um dia antes para quem está no Brasil depois das 21h.
   return String(a.acesso_ate) >= new Date().toISOString().slice(0, 10);
