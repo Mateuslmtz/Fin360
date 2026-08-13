@@ -86,7 +86,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (!Auth.isLoggedIn()) {
-    showAuthScreen('login');
+    // quem vem da página de boas-vindas acabou de comprar e ainda não tem conta:
+    // abrir direto no cadastro poupa um clique e evita cair no "Entrar" por engano
+    const querCadastro = new URLSearchParams(location.search).has('cadastro');
+    showAuthScreen(querCadastro ? 'register' : 'login');
     return;
   }
   await bootApp();
