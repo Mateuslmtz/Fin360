@@ -1,0 +1,90 @@
+<meta charset="utf-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:1080px; height:1350px; overflow:hidden; }
+body {
+  background:#0a0e1f;
+  font-family:"Segoe UI","Segoe UI Variable",Arial,sans-serif;
+  color:#f5f7fa;
+  -webkit-font-smoothing:antialiased;
+}
+.canvas {
+  position:relative; width:1080px; height:1350px;
+  padding:74px 76px 70px;
+  display:flex; flex-direction:column;
+  background:
+    radial-gradient(900px 620px at 84% -8%, rgba(56,102,255,.30), transparent 62%),
+    radial-gradient(760px 540px at -12% 104%, rgba(30,63,204,.24), transparent 60%),
+    #0a0e1f;
+  overflow:hidden;
+}
+.grid {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.032) 1px, transparent 1px);
+  background-size:90px 90px;
+  mask-image:radial-gradient(680px 620px at 50% 42%, #000 30%, transparent 78%);
+}
+.canvas > * { position:relative; z-index:1; }
+.logo { width:126px; height:auto; display:block; }
+.top { display:flex; align-items:center; justify-content:space-between; }
+.tag {
+  font-size:20px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+  color:#8b93ac; border:1px solid #232a4d; border-radius:999px; padding:11px 22px;
+  background:rgba(19,26,54,.7);
+}
+h1 { font-size:86px; line-height:1.03; font-weight:800; letter-spacing:-.028em; }
+h1 .az { color:#5b84ff; }
+.sub { font-size:30px; line-height:1.42; color:#9aa3bd; font-weight:400; max-width:820px; }
+.card { background:#131a36; border:1px solid #232a4d; border-radius:20px; }
+.foot {
+  margin-top:auto; padding-top:40px; display:flex; align-items:center;
+  justify-content:space-between; border-top:1px solid #1a2140;
+}
+.site { font-size:29px; font-weight:700; color:#f5f7fa; letter-spacing:-.01em; }
+.cta {
+  font-size:24px; font-weight:700; color:#cfd8ff;
+  background:rgba(56,102,255,.16); border:1px solid rgba(56,102,255,.45);
+  border-radius:999px; padding:15px 30px;
+}
+
+.h { margin-top:60px; }
+.price { display:flex; align-items:baseline; gap:16px; }
+.price b { font-size:132px; font-weight:800; letter-spacing:-.045em; line-height:1; }
+.price i { font-style:normal; font-size:36px; color:#8b93ac; font-weight:600; }
+h1 { font-size:62px; margin-top:26px; }
+.list { margin-top:52px; display:flex; flex-direction:column; gap:16px; }
+.it { display:flex; align-items:center; gap:20px; padding:24px 30px; font-size:29px; font-weight:600; }
+.ck { width:38px; height:38px; border-radius:50%; flex:none; background:rgba(34,197,94,.15);
+  border:1px solid rgba(34,197,94,.5); color:#22c55e; font-size:22px; font-weight:800;
+  display:flex; align-items:center; justify-content:center; }
+.gar { margin-top:40px; padding:26px 32px; border-radius:20px; font-size:26px; line-height:1.45;
+  color:#cfd8ff; background:rgba(56,102,255,.10); border:1px solid rgba(56,102,255,.35); }
+
+</style>
+<div class="canvas">
+  <div class="grid"></div>
+  <div class="top">
+    <img class="logo" src="logo-branca.png">
+    <div class="tag">Assinatura</div>
+  </div>
+  
+  <div class="h">
+    <div class="price"><b>R$ 19,90</b><i>por mês</i></div>
+    <h1>Tudo incluso.<br><span class="az">Sem pegadinha.</span></h1>
+  </div>
+  <div class="list">
+    <div class="card it"><div class="ck">✓</div>Cartões, gastos fixos e variáveis</div>
+    <div class="card it"><div class="ck">✓</div>Metas de poupança e reserva de emergência</div>
+    <div class="card it"><div class="ck">✓</div>Contas divididas com outras pessoas</div>
+    <div class="card it"><div class="ck">✓</div>Funciona no celular e no computador</div>
+  </div>
+  <div class="gar"><b>7 dias de garantia.</b> Não gostou, devolvemos o valor.
+  Cancela quando quiser, sem falar com ninguém.</div>
+
+  <div class="foot">
+    <div class="site">fin360app.com.br</div>
+    <div class="cta">Assinar</div>
+  </div>
+</div>
