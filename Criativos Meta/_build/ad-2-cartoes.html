@@ -1,0 +1,111 @@
+<meta charset="utf-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:1080px; height:1350px; overflow:hidden; }
+body {
+  background:#0a0e1f;
+  font-family:"Segoe UI","Segoe UI Variable",Arial,sans-serif;
+  color:#f5f7fa;
+  -webkit-font-smoothing:antialiased;
+}
+.canvas {
+  position:relative; width:1080px; height:1350px;
+  padding:74px 76px 70px;
+  display:flex; flex-direction:column;
+  background:
+    radial-gradient(900px 620px at 84% -8%, rgba(56,102,255,.30), transparent 62%),
+    radial-gradient(760px 540px at -12% 104%, rgba(30,63,204,.24), transparent 60%),
+    #0a0e1f;
+  overflow:hidden;
+}
+.grid {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.032) 1px, transparent 1px);
+  background-size:90px 90px;
+  mask-image:radial-gradient(680px 620px at 50% 42%, #000 30%, transparent 78%);
+}
+.canvas > * { position:relative; z-index:1; }
+.logo { width:126px; height:auto; display:block; }
+.top { display:flex; align-items:center; justify-content:space-between; }
+.tag {
+  font-size:20px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+  color:#8b93ac; border:1px solid #232a4d; border-radius:999px; padding:11px 22px;
+  background:rgba(19,26,54,.7);
+}
+h1 { font-size:86px; line-height:1.03; font-weight:800; letter-spacing:-.028em; }
+h1 .az { color:#5b84ff; }
+.sub { font-size:30px; line-height:1.42; color:#9aa3bd; font-weight:400; max-width:830px; }
+.card { background:#131a36; border:1px solid #232a4d; border-radius:20px; }
+.foot {
+  margin-top:auto; padding-top:40px; display:flex; align-items:center;
+  justify-content:space-between; border-top:1px solid #1a2140;
+}
+.site { font-size:29px; font-weight:700; color:#f5f7fa; letter-spacing:-.01em; }
+.cta {
+  font-size:26px; font-weight:800; color:#ffffff;
+  background:#3866ff; border:1px solid #5b84ff;
+  border-radius:999px; padding:17px 36px;
+}
+
+.h { margin-top:40px; }
+h1 { font-size:76px; }
+.sub { margin-top:22px; }
+.list { margin-top:40px; display:flex; flex-direction:column; gap:16px; }
+.row { padding:24px 32px; display:flex; align-items:center; gap:24px; }
+.chip { width:62px; height:44px; border-radius:9px; flex:none; }
+.nm { font-size:31px; font-weight:700; }
+.dt { font-size:21px; color:#8b93ac; margin-top:7px; }
+.amt { margin-left:auto; text-align:right; }
+.amt b { font-size:37px; font-weight:800; letter-spacing:-.02em; display:block; }
+.amt span { font-size:19px; color:#5b6489; letter-spacing:.1em; text-transform:uppercase; font-weight:600; }
+.tot { margin-top:20px; padding:24px 32px; border-radius:20px;
+  background:rgba(56,102,255,.10); border:1px solid rgba(56,102,255,.40);
+  display:flex; align-items:center; justify-content:space-between; }
+.tot .l { font-size:27px; font-weight:700; color:#cfd8ff; }
+.tot .v { font-size:46px; font-weight:800; letter-spacing:-.02em; color:#f5f7fa; }
+
+</style>
+<div class="canvas">
+  <div class="grid"></div>
+  <div class="top">
+    <img class="logo" src="logo-branca.png">
+    <div class="tag">Cartões de crédito</div>
+  </div>
+  
+  <div class="h">
+    <h1>3 cartões.<br>3 vencimentos.<br><span class="az">1 número só.</span></h1>
+    <div class="sub">A fatura vai somando enquanto ela fecha. O total aparece antes
+    de chegar, não no dia do vencimento.</div>
+  </div>
+  <div class="list">
+    <div class="card row">
+      <div class="chip" style="background:linear-gradient(135deg,#8b3df5,#5b1fb0)"></div>
+      <div><div class="nm">Nubank Roxinho</div><div class="dt">Fecha 03/09 · vence 10/09</div></div>
+      <div class="amt"><b style="color:#f5a623">R$ 1.284,63</b><span>Fatura aberta</span></div>
+    </div>
+    <div class="card row">
+      <div class="chip" style="background:linear-gradient(135deg,#ff8a3d,#d95b12)"></div>
+      <div><div class="nm">Inter Gold</div><div class="dt">Fecha 28/08 · vence 05/09</div></div>
+      <div class="amt"><b style="color:#f5a623">R$ 612,40</b><span>Fatura aberta</span></div>
+    </div>
+    <div class="card row">
+      <div class="chip" style="background:linear-gradient(135deg,#3866ff,#12318f)"></div>
+      <div><div class="nm">Caixa Elo</div><div class="dt">Fechou 20/08 · vence 27/08</div></div>
+      <div class="amt"><b style="color:#f04848">R$ 389,17</b><span>A pagar</span></div>
+    </div>
+  </div>
+  <div class="tot"><div class="l">Total comprometido</div><div class="v">R$ 2.286,20</div></div>
+
+  <div class="foot">
+    <div class="site">fin360app.com.br</div>
+    <div class="cta">Conhecer o Fin360</div>
+  </div>
+</div>
+<script>
+/* medicao de estouro: o rodape tem que terminar dentro dos 1350px.
+   ler com: chrome --headless --dump-dom | grep title  */
+document.title = "FUNDO:" + Math.round(
+  document.querySelector(".foot").getBoundingClientRect().bottom);
+</script>

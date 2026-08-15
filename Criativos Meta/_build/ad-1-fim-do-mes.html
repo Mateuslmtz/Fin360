@@ -1,0 +1,97 @@
+<meta charset="utf-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:1080px; height:1350px; overflow:hidden; }
+body {
+  background:#0a0e1f;
+  font-family:"Segoe UI","Segoe UI Variable",Arial,sans-serif;
+  color:#f5f7fa;
+  -webkit-font-smoothing:antialiased;
+}
+.canvas {
+  position:relative; width:1080px; height:1350px;
+  padding:74px 76px 70px;
+  display:flex; flex-direction:column;
+  background:
+    radial-gradient(900px 620px at 84% -8%, rgba(56,102,255,.30), transparent 62%),
+    radial-gradient(760px 540px at -12% 104%, rgba(30,63,204,.24), transparent 60%),
+    #0a0e1f;
+  overflow:hidden;
+}
+.grid {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.032) 1px, transparent 1px);
+  background-size:90px 90px;
+  mask-image:radial-gradient(680px 620px at 50% 42%, #000 30%, transparent 78%);
+}
+.canvas > * { position:relative; z-index:1; }
+.logo { width:126px; height:auto; display:block; }
+.top { display:flex; align-items:center; justify-content:space-between; }
+.tag {
+  font-size:20px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+  color:#8b93ac; border:1px solid #232a4d; border-radius:999px; padding:11px 22px;
+  background:rgba(19,26,54,.7);
+}
+h1 { font-size:86px; line-height:1.03; font-weight:800; letter-spacing:-.028em; }
+h1 .az { color:#5b84ff; }
+.sub { font-size:30px; line-height:1.42; color:#9aa3bd; font-weight:400; max-width:830px; }
+.card { background:#131a36; border:1px solid #232a4d; border-radius:20px; }
+.foot {
+  margin-top:auto; padding-top:40px; display:flex; align-items:center;
+  justify-content:space-between; border-top:1px solid #1a2140;
+}
+.site { font-size:29px; font-weight:700; color:#f5f7fa; letter-spacing:-.01em; }
+.cta {
+  font-size:26px; font-weight:800; color:#ffffff;
+  background:#3866ff; border:1px solid #5b84ff;
+  border-radius:999px; padding:17px 36px;
+}
+
+.h { margin-top:70px; }
+h1 { font-size:80px; }
+.sub { margin-top:28px; }
+.mock { margin-top:64px; display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+.kpi { padding:38px 34px 40px; }
+.kpi .lab { font-size:21px; letter-spacing:.13em; text-transform:uppercase; color:#8b93ac; font-weight:600; }
+.kpi .val { font-size:56px; font-weight:800; margin-top:16px; letter-spacing:-.02em; }
+.kpi .hint { font-size:21px; color:#5b6489; margin-top:12px; }
+.kpi.destaque { border-color:rgba(56,102,255,.55); background:rgba(56,102,255,.10); }
+.g { color:#22c55e; } .r { color:#f04848; } .b { color:#5b84ff; } .c { color:#22d3ee; }
+
+</style>
+<div class="canvas">
+  <div class="grid"></div>
+  <div class="top">
+    <img class="logo" src="logo-branca.png">
+    <div class="tag">Controle financeiro</div>
+  </div>
+  
+  <div class="h">
+    <h1>Ele mostra quanto sobra<br><span class="az">antes do mês acabar.</span></h1>
+    <div class="sub">O Fin360 junta o que entrou, o que já saiu e o que ainda vai sair —
+    e projeta o saldo do dia 30 sozinho.</div>
+  </div>
+  <div class="mock">
+    <div class="card kpi"><div class="lab">Saldo hoje</div>
+      <div class="val c">R$ 8.027,30</div><div class="hint">Somando todas as contas</div></div>
+    <div class="card kpi"><div class="lab">Ainda vai sair</div>
+      <div class="val r">R$ 2.383,28</div><div class="hint">Fixos, faturas e agendados</div></div>
+    <div class="card kpi"><div class="lab">Ainda vai entrar</div>
+      <div class="val g">R$ 3.121,98</div><div class="hint">Salário e recebimentos</div></div>
+    <div class="card kpi destaque"><div class="lab">Saldo no dia 30</div>
+      <div class="val b">R$ 8.766,00</div><div class="hint">Projeção automática</div></div>
+  </div>
+
+  <div class="foot">
+    <div class="site">fin360app.com.br</div>
+    <div class="cta">Conhecer o Fin360</div>
+  </div>
+</div>
+<script>
+/* medicao de estouro: o rodape tem que terminar dentro dos 1350px.
+   ler com: chrome --headless --dump-dom | grep title  */
+document.title = "FUNDO:" + Math.round(
+  document.querySelector(".foot").getBoundingClientRect().bottom);
+</script>

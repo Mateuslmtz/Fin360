@@ -1,9 +1,10 @@
 // Fin360 — avisa por e-mail quem está perto de perder o acesso.
 //
-// POR QUE ISTO EXISTE: quem paga por Pix avulso não tem cobrança automática. Sem
-// um lembrete, a assinatura simplesmente para de funcionar e a pessoa descobre
-// tentando lançar um gasto. O aviso dentro do app só chega em quem abre o app —
-// e justamente quem está esquecendo de pagar é quem não está abrindo.
+// POR QUE ISTO EXISTE: o acesso é de um ano, pago de uma vez, e NÃO renova sozinho.
+// Sem um lembrete, ele simplesmente para de funcionar e a pessoa descobre tentando
+// lançar um gasto — um ano depois de comprar, quando já nem lembra que comprou. O
+// aviso dentro do app só chega em quem abre o app, e justamente quem está prestes a
+// deixar vencer é quem não está abrindo.
 //
 // Roda uma vez por dia, disparada pelo Cron do Supabase.
 //
@@ -16,7 +17,11 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 // Quantos dias antes do fim o e-mail sai. Dois disparos, não cinco: o primeiro dá
 // tempo de resolver, o segundo pega quem leu o primeiro e deixou pra depois.
 // Mais que isso vira spam e a pessoa cria o hábito de não abrir.
-const DIAS_DE_AVISO = [3, 1];
+//
+// Sete dias, e não três: renovar exige uma compra feita à mão, e uma semana é o
+// prazo de quem só vai abrir o e-mail no fim de semana. Antes, com a assinatura
+// renovando sozinha no cartão, o aviso era quase um formalismo.
+const DIAS_DE_AVISO = [7, 1];
 
 // Teto de segurança. Se uma consulta der errado e voltar a base inteira, é melhor
 // a função parar do que disparar mil e-mails e queimar o domínio.
@@ -53,32 +58,35 @@ function escapar(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* O texto serve para os dois tipos de cliente de propósito. A linha da assinatura
-   não diz se a pessoa paga no cartão (renova sozinho) ou por Pix avulso (precisa
-   pagar na mão) — e mandar "pague agora" para quem está no cartão faz a pessoa
-   comprar duas vezes e pedir reembolso. Então o e-mail explica os dois casos. */
+/* Um caminho só, porque agora só existe um: comprar mais um ano. Antes este texto
+   precisava cobrir cartão e Pix avulso ao mesmo tempo, já que a assinatura podia
+   renovar sozinha — e mandar "pague agora" para quem estava no cartão fazia a
+   pessoa comprar duas vezes e pedir reembolso.
+
+   A frase sobre não perder os dias que faltam não é enfeite: sem ela a pessoa
+   espera vencer para não "desperdiçar" o que pagou, e quem espera esquece. */
 function montarEmail(dias: number, acessoAte: string, checkout: string) {
   const quando = dias === 1 ? 'amanhã' : `em ${dias} dias`;
-  const assunto = `Sua assinatura do Fin360° vence ${quando}`;
+  const assunto = `Seu acesso ao Fin360° vence ${quando}`;
 
   const linhas = [
-    `Seu acesso ao Fin360° vai até ${porExtenso(acessoAte)}.`,
-    'Se você paga no cartão ou no Pix automático, não precisa fazer nada: a cobrança acontece sozinha e o acesso continua normalmente.',
-    'Se você paga por Pix a cada mês, este é o momento de pagar.',
-    'Passando a data, nada é apagado. Você continua entrando e vendo tudo que já lançou — só não consegue lançar nada novo até o pagamento entrar. Assim que ele cai, o app volta ao normal sozinho.',
+    `Seu ano de acesso ao Fin360° vai até ${porExtenso(acessoAte)}.`,
+    'Para continuar lançando, é só comprar mais um ano. Não existe cobrança automática: nada é cobrado de você sem que você peça.',
+    'Renovando agora, você não perde os dias que faltam — eles são somados ao ano novo.',
+    'Passando a data, nada é apagado. Você continua entrando e vendo tudo que já lançou — só não consegue lançar nada novo até renovar. Assim que o pagamento cai, o app volta ao normal sozinho.',
   ];
 
   const texto =
     linhas.join('\n\n') +
-    `\n\nPagar: ${checkout}` +
+    `\n\nRenovar: ${checkout}` +
     `\nAbrir o app: ${APP_URL}` +
     `\n\nSe precisar de alguma coisa, é só responder este e-mail.\nFin360°`;
 
   const html =
     `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1f2430;max-width:520px">` +
-    `<p style="font-size:18px;font-weight:600;margin:0 0 18px">Sua assinatura vence ${escapar(quando)}</p>` +
+    `<p style="font-size:18px;font-weight:600;margin:0 0 18px">Seu acesso vence ${escapar(quando)}</p>` +
     linhas.map((l) => `<p style="margin:0 0 14px">${escapar(l)}</p>`).join('') +
-    `<p style="margin:24px 0"><a href="${escapar(checkout)}" style="background:#4f46e5;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-weight:600">Pagar agora</a></p>` +
+    `<p style="margin:24px 0"><a href="${escapar(checkout)}" style="background:#4f46e5;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-weight:600">Renovar por mais um ano</a></p>` +
     `<p style="margin:0 0 14px"><a href="${APP_URL}" style="color:#4f46e5">Abrir o Fin360°</a></p>` +
     `<p style="margin:24px 0 0;font-size:13px;color:#6b7280">Se precisar de alguma coisa, é só responder este e-mail.</p>` +
     `</div>`;

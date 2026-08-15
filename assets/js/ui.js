@@ -86,19 +86,19 @@ function renderTopbar(route) {
   }
 }
 
-/* Para onde o app manda quem precisa assinar ou renovar. Aponta para a seção de
-   preços do site, e não para um checkout: existem três planos (mensal, trimestral
-   e anual) e mandar direto para um deles é escolher pela pessoa — quem queria o
-   anual acabaria pagando mensal sem perceber que havia opção.
+/* Para onde o app manda quem precisa comprar ou renovar o acesso. Aponta para a
+   seção de preços do site, e não para o checkout direto, porque é lá que estão o
+   preço, a garantia e o que está incluído — cair direto na tela de pagamento sem
+   ter lido nada faz a pessoa desistir com o cartão na mão.
    Fica numa constante só, com nome, porque é o endereço que aparece em todo lugar
-   que oferece a assinatura; espalhar a URL pelo código garante que um dia um deles
+   que oferece o acesso; espalhar a URL pelo código garante que um dia um deles
    fica pra trás e manda o cliente pra lugar nenhum. */
 const CHECKOUT_FIN360 = 'https://fin360app.com.br/#preco';
 
-/* Chamado quando a pessoa tenta lançar sem assinatura em dia. É a única porta de
+/* Chamado quando a pessoa tenta lançar sem acesso em dia. É a única porta de
    saída da trava do Store, então é aqui que a oferta aparece — não adianta barrar
    sem dizer como resolver. Os dois casos são bem diferentes e a mensagem errada
-   manda a pessoa procurar problema no lugar errado: quem nunca assinou precisa
+   manda a pessoa procurar problema no lugar errado: quem nunca comprou precisa
    comprar; quem cadastrou com outro e-mail só precisa entrar com o e-mail certo. */
 function avisarSemAssinatura() {
   // uma tela que altera vários registros de uma vez chamaria isto em sequência;
@@ -107,11 +107,11 @@ function avisarSemAssinatura() {
   if (overlay && overlay.classList.contains('open')) return;
   const venceu = !!Store.assinatura;
   confirmModal({
-    title: venceu ? 'Sua assinatura venceu' : 'Assine para lançar',
+    title: venceu ? 'Seu ano de acesso terminou' : 'Libere o Fin360° para lançar',
     text: venceu
-      ? 'Nada foi apagado — você continua vendo tudo que já lançou. Mas não dá para criar nem alterar lançamentos enquanto o pagamento não entrar. Assim que ele cair, o app volta ao normal sozinho, sem você precisar fazer nada.'
-      : 'Você está usando o Fin360° com o e-mail ' + (Sb.userEmail() || 'desta conta') + ', e não há nenhuma assinatura ligada a ele.\n\nSe você já comprou, o mais provável é que tenha usado outro e-mail na compra. Saia e entre com aquele e-mail — o acesso é liberado na hora, sem precisar comprar de novo.\n\nSe ainda não assinou, dá para assinar agora e voltar a lançar em seguida.',
-    confirmLabel: venceu ? 'Regularizar agora' : 'Assinar agora',
+      ? 'Nada foi apagado — você continua vendo tudo que já lançou. Mas não dá para criar nem alterar lançamentos enquanto o pagamento não entrar.\n\nRenovando, você ganha mais um ano e volta exatamente de onde parou: seus lançamentos, contas e cofrinhos continuam todos aqui. Assim que o pagamento cai, o app volta ao normal sozinho.'
+      : 'Você está usando o Fin360° com o e-mail ' + (Sb.userEmail() || 'desta conta') + ', e não há nenhum acesso ligado a ele.\n\nSe você já comprou, o mais provável é que tenha usado outro e-mail na compra. Saia e entre com aquele e-mail — o acesso é liberado na hora, sem precisar comprar de novo.\n\nSe ainda não comprou, são R$ 47,90 uma vez só, com 1 ano de uso e 7 dias de garantia.',
+    confirmLabel: venceu ? 'Renovar por mais um ano' : 'Liberar meu acesso',
     onConfirm: () => window.open(CHECKOUT_FIN360, '_blank', 'noopener'),
   });
 }
@@ -119,10 +119,14 @@ function avisarSemAssinatura() {
 /* A partir de quantos dias antes do fim o app começa a avisar. São dois números
    porque servem a coisas diferentes: o selo fica na tela o tempo todo e pode ser
    ignorado, então avisa cedo; a janela interrompe a pessoa, então só aparece quando
-   já está em cima da hora. Quem paga por Pix manual precisa desse prazo para pagar
-   e o dinheiro compensar antes do corte. */
-const RENOV_DIAS_SELO = 5;
-const RENOV_DIAS_JANELA = 3;
+   já está em cima da hora.
+
+   Os prazos são folgados porque NADA é automático: o acesso é de um ano, comprado
+   de uma vez, e no fim dele a pessoa precisa comprar de novo por vontade própria.
+   Avisar em cima da hora, como fazia sentido numa assinatura que renovava sozinha,
+   só serviria para a pessoa ser travada num dia de uso normal. */
+const RENOV_DIAS_SELO = 15;
+const RENOV_DIAS_JANELA = 5;
 
 /* Texto único do prazo, para o selo e a janela nunca discordarem entre si. */
 function textoPrazoRenovacao(dias) {
@@ -131,11 +135,13 @@ function textoPrazoRenovacao(dias) {
   return 'Vence em ' + dias + ' dias';
 }
 
-/* Aviso de renovação. A mensagem serve para os dois tipos de cliente de propósito:
-   não temos como saber, pela linha da assinatura, se a pessoa paga no cartão (renova
-   sozinho) ou por Pix avulso (precisa pagar na mão). Como não dá para saber, o texto
-   diz o que fazer em cada caso em vez de chutar um dos dois — chutar "pague agora"
-   para quem está no cartão faz a pessoa comprar duas vezes. */
+/* Aviso de fim do ano de acesso. Diz uma coisa só, porque agora só existe um
+   caminho: comprar de novo. Antes o texto precisava cobrir cartão e Pix avulso ao
+   mesmo tempo, já que a assinatura podia renovar sozinha — e mandar "pague agora"
+   para quem estava no cartão fazia a pessoa comprar duas vezes. Isso acabou.
+
+   A frase sobre não perder dias existe porque ela muda o comportamento: sem isso a
+   pessoa espera vencer para não "desperdiçar", e quem espera acaba esquecendo. */
 function avisarRenovacaoProxima() {
   const overlay = document.getElementById('modal-overlay');
   if (overlay && overlay.classList.contains('open')) return;
@@ -144,10 +150,11 @@ function avisarRenovacaoProxima() {
   const data = Store.assinatura.acesso_ate.split('-').reverse().join('/');
   confirmModal({
     title: textoPrazoRenovacao(dias),
-    text: 'Seu acesso ao Fin360° vai até ' + data + '.\n\n'
-      + 'Se você paga no cartão ou no Pix automático, não precisa fazer nada: a cobrança acontece sozinha e o acesso continua.\n\n'
-      + 'Se você paga por Pix a cada mês, este é o momento de pagar. Passando a data, nada é apagado — você continua vendo tudo que já lançou, mas não consegue lançar nada novo até o pagamento entrar.',
-    confirmLabel: 'Pagar agora',
+    text: 'Seu ano de acesso ao Fin360° vai até ' + data + '.\n\n'
+      + 'Para continuar lançando, é só comprar mais um ano. Não existe cobrança automática: nada é cobrado de você sem que você peça.\n\n'
+      + 'Comprando agora você não perde os dias que faltam — eles são somados ao ano novo.\n\n'
+      + 'Se a data passar, nada é apagado: você continua entrando e vendo tudo que já lançou, só não consegue lançar nada novo até renovar.',
+    confirmLabel: 'Renovar por mais um ano',
     onConfirm: () => window.open(CHECKOUT_FIN360, '_blank', 'noopener'),
   });
 }
@@ -176,19 +183,19 @@ function atualizarStatusSync() {
   const el = document.getElementById('sync-badge');
   if (!el) return;
 
-  // Assinatura vencida vem primeiro: é o motivo mais específico e o único que a
+  // Acesso vencido vem primeiro: é o motivo mais específico e o único que a
   // pessoa resolve pagando. Mostrar "sem conexão" aqui mandaria ela pro lugar errado.
   if (Store.semAssinatura) {
     // Dois casos bem diferentes. Quem comprou e cadastrou com outro e-mail precisa
-    // saber disso — dizer "vencida" para quem nunca teve assinatura manda a pessoa
+    // saber disso — dizer "vencido" para quem nunca comprou manda a pessoa
     // procurar problema no cartão quando o problema é o e-mail.
     const venceu = !!Store.assinatura;
     el.style.display = '';
     el.className = 'sync-badge erro';
-    el.innerHTML = '<span>' + (venceu ? 'Assinatura vencida' : 'Sem assinatura') + '</span>';
+    el.innerHTML = '<span>' + (venceu ? 'Acesso vencido' : 'Sem acesso') + '</span>';
     el.title = venceu
-      ? 'Sua assinatura não está em dia. Você continua vendo todos os seus dados, mas não consegue lançar nada novo até regularizar.'
-      : 'Não encontramos assinatura para este e-mail. Se você já comprou, entre com o mesmo e-mail que usou na compra.';
+      ? 'Seu ano de acesso terminou. Você continua vendo todos os seus dados, mas não consegue lançar nada novo até renovar.'
+      : 'Não encontramos acesso para este e-mail. Se você já comprou, entre com o mesmo e-mail que usou na compra.';
     // mesma janela da trava de lançamento: um texto só, e com o caminho pra resolver.
     // Antes aqui havia um "Entendi" que só fechava — informava o problema e abandonava
     // a pessoa nele.

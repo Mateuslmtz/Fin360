@@ -198,8 +198,8 @@ h1 {{ font-size:88px; }}
 
 # ---------------------------------------------------------------- POST 4
 posts["post-4-preco"] = dict(
-    tag="Assinatura",
-    cta="Assinar",
+    tag="Pagamento único",
+    cta="Quero o meu",
     extra="""
 .h {{ margin-top:60px; }}
 .price {{ display:flex; align-items:baseline; gap:16px; }}
@@ -216,8 +216,8 @@ h1 {{ font-size:62px; margin-top:26px; }}
 """,
     body="""
   <div class="h">
-    <div class="price"><b>R$ 19,90</b><i>por mês</i></div>
-    <h1>Tudo incluso.<br><span class="az">Sem pegadinha.</span></h1>
+    <div class="price"><b>R$ 47,90</b><i>uma vez só</i></div>
+    <h1>1 ano de acesso.<br><span class="az">Sem mensalidade.</span></h1>
   </div>
   <div class="list">
     <div class="card it"><div class="ck">✓</div>Cartões, gastos fixos e variáveis</div>
@@ -226,7 +226,7 @@ h1 {{ font-size:62px; margin-top:26px; }}
     <div class="card it"><div class="ck">✓</div>Funciona no celular e no computador</div>
   </div>
   <div class="gar"><b>7 dias de garantia.</b> Não gostou, devolvemos o valor.
-  Cancela quando quiser, sem falar com ninguém.</div>
+  Paga uma vez e pronto — não vem cobrança nenhuma depois.</div>
 """)
 
 # ----------------------------------------------------------------

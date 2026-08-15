@@ -1,4 +1,9 @@
--- Fin360 — painel de admin: lista de assinantes para o dono do produto.
+-- Fin360 — painel de admin: lista de clientes para o dono do produto.
+--
+-- ⚠ SUPERADO por admin_dono_sem_email.sql (15/08/2026). Este arquivo fica como registro
+-- da versão anterior; NÃO rodar. A checagem por e-mail escrito dentro da função foi
+-- trocada por uma tabela public.admin_donos, porque este repositório é público e o
+-- endereço pessoal do dono estava publicado aqui. O e-mail abaixo foi apagado por isso.
 --
 -- SECURITY DEFINER porque precisa ler auth.users (last_sign_in_at, email_confirmed_at),
 -- que 'authenticated' não enxerga diretamente (a tabela não é exposta via PostgREST).
@@ -28,7 +33,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if coalesce(auth.jwt() ->> 'email', '') <> 'email-do-dono-removido' then
+  if coalesce(auth.jwt() ->> 'email', '') <> 'EMAIL-DO-DONO-REMOVIDO' then
     raise exception 'acesso negado';
   end if;
 

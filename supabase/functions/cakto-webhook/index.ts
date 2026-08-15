@@ -11,6 +11,22 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const DIAS_TOLERANCIA = 3;
 
+// O que se vende hoje: UM ANO de acesso por pagamento único. Não renova sozinho —
+// no fim do prazo a pessoa compra de novo, e o webhook simplesmente soma outro ano.
+//
+// Os eventos de assinatura continuam tratados abaixo porque quem comprou o produto
+// recorrente ANTES da mudança segue renovando na Cakto, e cortar essa gente para
+// simplificar o código seria cortar cliente pagante.
+
+// Um ano de CALENDÁRIO, não 365 dias: os Termos prometem "12 meses", e somar 365
+// dias entrega um dia a menos toda vez que fevereiro de 29 dias cai no meio. Quem
+// comprar em 29/02 ganha 01/03 do ano seguinte — a sobra fica com o cliente.
+function somarUmAno(iso: string): string {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCFullYear(d.getUTCFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // Comparação em tempo constante. Comparar com === vaza informação pelo tempo de
 // resposta e permite descobrir o secret caractere por caractere.
 function segredoConfere(a: string, b: string): boolean {
@@ -137,7 +153,16 @@ Deno.serve(async (req) => {
     });
   }
 
-  // 3. O que este evento faz com o acesso.
+  // 3. O acesso que a pessoa já tem, se tiver. Serve para ESTENDER em vez de
+  //    reiniciar: quem compra o ano seguinte antes de vencer não pode perder os
+  //    dias que ainda faltavam — isso é dinheiro pago que sumiria.
+  const { data: atual } = await db
+    .from('assinaturas')
+    .select('acesso_ate')
+    .eq('email', String(email).trim().toLowerCase())
+    .maybeSingle();
+
+  // 4. O que este evento faz com o acesso.
   let status: string | null = null;
   let acessoAte: string | null = null;
   let resultado = 'ignorado';
@@ -147,35 +172,65 @@ Deno.serve(async (req) => {
     case 'purchase_approved':
     case 'subscription_created':
     case 'subscription_renewed': {
-      // O fim do acesso pago é a data da PRÓXIMA COBRANÇA. No payload real da
-      // Cakto ela vem em subscription.next_payment_date (conferido no teste).
+      // Dois produtos caem aqui e precisam de contas diferentes. O que separa NÃO é
+      // o nome do evento: a Cakto manda 'purchase_approved' nos dois casos. É a
+      // presença de uma assinatura no payload — ou o evento ser, ele mesmo, um
+      // evento de assinatura.
       //
-      // NÃO usar due_date: aquilo é o vencimento da cobrança ATUAL, que numa
-      // compra aprovada é hoje. Usá-lo dava acesso até hoje — nenhum acesso.
-      const proxima = buscar(item, [
-        'subscription.next_payment_date',
-        'subscription.nextPaymentDate',
-        'next_payment_date',
-      ]);
-      // Sem a data, usamos o ciclo que a própria Cakto informa (ou 31 dias).
-      const ciclo = Number(buscar(item, ['subscription.recurrence_period'])) || 31;
-      acessoAte = proxima ? String(proxima).slice(0, 10) : emDias(ciclo);
+      // A pergunta é feita assim, e não por "veio a data da próxima cobrança?",
+      // porque a resposta errada é cara: uma renovação mensal cujo payload viesse
+      // sem a data cairia no caminho do pagamento único e daria UM ANO de graça
+      // para quem pagou R$ 19,90. Melhor errar dando 31 dias.
+      const ehAssinatura = !!buscar(item, ['subscription'])
+        || tipo === 'subscription_created'
+        || tipo === 'subscription_renewed';
 
-      // Rede de segurança: pagamento aprovado JAMAIS pode virar acesso vencido.
-      // Se a conta der hoje ou antes, o campo lido está errado — dar um ciclo a
-      // mais é muito melhor do que trancar quem acabou de pagar.
-      if (acessoAte <= emDias(0)) {
-        aviso = ` | ATENCAO: data calculada ${acessoAte} nao serve; usei ${ciclo} dias`;
-        acessoAte = emDias(ciclo);
+      if (ehAssinatura) {
+        // ASSINATURA (produto antigo, ainda ativo para quem comprou antes): o fim do
+        // acesso pago é a data da PRÓXIMA COBRANÇA, que vem em
+        // subscription.next_payment_date (conferido no payload real).
+        //
+        // NÃO usar due_date: aquilo é o vencimento da cobrança ATUAL, que numa
+        // compra aprovada é hoje. Usá-lo dava acesso até hoje — nenhum acesso.
+        const proxima = buscar(item, [
+          'subscription.next_payment_date',
+          'subscription.nextPaymentDate',
+          'next_payment_date',
+        ]);
+        // Sem a data, usamos o ciclo que a própria Cakto informa (ou 31 dias).
+        const ciclo = Number(buscar(item, ['subscription.recurrence_period'])) || 31;
+        acessoAte = proxima ? String(proxima).slice(0, 10) : emDias(ciclo);
+
+        // Rede de segurança: pagamento aprovado JAMAIS pode virar acesso vencido.
+        // Se a conta der hoje ou antes, o campo lido está errado — dar um ciclo a
+        // mais é muito melhor do que trancar quem acabou de pagar.
+        if (acessoAte <= emDias(0)) {
+          aviso = ` | ATENCAO: data calculada ${acessoAte} nao serve; usei ${ciclo} dias`;
+          acessoAte = emDias(ciclo);
+        }
+      } else {
+        // PAGAMENTO ÚNICO (o produto de hoje): um ano de acesso.
+        //
+        // A contagem parte do que a pessoa AINDA TINHA, não de hoje: quem renova
+        // faltando 20 dias fica com um ano MAIS esses 20. Sem isso, comprar cedo —
+        // que é exatamente o que o aviso de vencimento pede — custaria dias já
+        // pagos, e a pessoa aprenderia a esperar vencer. Quem já venceu parte de hoje.
+        const base = atual?.acesso_ate && String(atual.acesso_ate) > emDias(0)
+          ? String(atual.acesso_ate)
+          : emDias(0);
+        acessoAte = somarUmAno(base);
+        if (base !== emDias(0)) aviso = ` | estendido a partir de ${base}`;
       }
+
       status = 'ativa';
       resultado = 'liberado';
       break;
     }
 
     case 'subscription_renewal_refused': {
-      // Cobrança falhou: começa a tolerância. Não corta agora — cartão recusado
-      // por bobagem é comum e travar no mesmo dia irrita cliente bom.
+      // Só chega de assinatura antiga: pagamento único não tem cobrança recorrente
+      // para recusar. Cobrança falhou: começa a tolerância. Não corta agora —
+      // cartão recusado por bobagem é comum e travar no mesmo dia irrita cliente bom.
       acessoAte = emDias(DIAS_TOLERANCIA);
       status = 'atrasada';
       resultado = 'tolerancia';
@@ -183,7 +238,8 @@ Deno.serve(async (req) => {
     }
 
     case 'subscription_canceled': {
-      // Cancelou: mantém até o fim do período JÁ PAGO. A pessoa pagou por ele.
+      // Também só de assinatura antiga — não existe o que cancelar num pagamento
+      // único. Cancelou: mantém até o fim do período JÁ PAGO. A pessoa pagou por ele.
       status = 'cancelada';
       resultado = 'cancelada-mantem-periodo';
       break;
@@ -207,7 +263,7 @@ Deno.serve(async (req) => {
       });
   }
 
-  // 4. Grava a assinatura. Chaveada por e-mail porque a pessoa compra antes de
+  // 5. Grava a assinatura. Chaveada por e-mail porque a pessoa compra antes de
   //    existir conta no app, e pode cadastrar com outro e-mail depois.
   const linha: Record<string, unknown> = {
     email: String(email).trim().toLowerCase(),
@@ -245,7 +301,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: false, erro: 'sem assinatura' }), { status: 200 });
   }
 
-  // 5. Se a conta já existe, liga o user_id agora — assim o acesso vale mesmo
+  // 6. Se a conta já existe, liga o user_id agora — assim o acesso vale mesmo
   //    que a pessoa mude o e-mail de login depois.
   const { data: usuarios } = await db.auth.admin.listUsers();
   const u = usuarios?.users?.find(

@@ -911,8 +911,8 @@ const Store = {
         try { this.assinatura = await Sb.minhaAssinatura(); } catch (e) { this.assinatura = null; }
         if (typeof toast === 'function') {
           toast(this.assinatura
-            ? 'Sua assinatura não está em dia. Você continua vendo tudo, mas não consegue lançar até regularizar.'
-            : 'Não encontramos uma assinatura para este e-mail. Se você já comprou, entre com o mesmo e-mail que usou na compra.',
+            ? 'Seu ano de acesso terminou. Você continua vendo tudo, mas não consegue lançar até renovar.'
+            : 'Não encontramos acesso para este e-mail. Se você já comprou, entre com o mesmo e-mail que usou na compra.',
             'danger');
         }
       } else {

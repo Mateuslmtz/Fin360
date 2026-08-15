@@ -9,3 +9,8 @@ anuncio-final-*.png
 # 218 MB e o GitHub recusa acima de 100 MB). Ficam só no Google Drive.
 VÍDEO PARA MARKETING/
 *.mp4
+
+# Order bumps: são PRODUTOS VENDIDOS (R$ 9,90 cada no checkout). Este
+# repositório é público — versionar estes PDFs seria distribuí-los de graça
+# para qualquer um. A entrega deles é feita pela Cakto, a partir do Drive.
+Order Bumps/

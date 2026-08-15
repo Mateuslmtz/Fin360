@@ -1,10 +1,16 @@
 /* Fin360 — painel de admin (dono do produto).
    Sessão compartilhada com o app principal (mesma chave em localStorage): quem já
-   está logado em app.fin360app.com.br entra aqui direto. A trava de verdade é a
-   função admin_listar_usuarios() no banco — o e-mail abaixo é só pra decidir o que
-   MOSTRAR, não protege nada sozinho. */
+   está logado em app.fin360app.com.br entra aqui direto.
 
-const ADMIN_EMAIL = 'email-do-dono-removido';
+   QUEM DECIDE SE PODE ENTRAR É O BANCO, não este arquivo. A função
+   admin_listar_usuarios() levanta 'acesso negado' para quem não é o dono, e é esse
+   erro que faz o painel mostrar a tela de recusa.
+
+   Antes havia aqui uma constante com o e-mail do dono, usada só para escolher o que
+   MOSTRAR. Ela foi removida: este arquivo é servido publicamente em
+   app.fin360app.com.br e o repositório é público, então a constante era um endereço
+   pessoal exposto em dois lugares sem proteger nada. Perguntar ao servidor tem o
+   efeito colateral bom de o painel e o banco nunca discordarem sobre quem é o dono. */
 
 function toast(message, type) {
   const stack = document.getElementById('toast-stack');
@@ -33,7 +39,7 @@ function badgeStatus(status) {
   if (status === 'ativa') return '<span class="badge badge-success">Ativa</span>';
   if (status === 'atrasada') return '<span class="badge badge-warning">Atrasada</span>';
   if (status === 'cancelada') return '<span class="badge badge-muted">Cancelada</span>';
-  return '<span class="badge badge-muted">Sem assinatura</span>';
+  return '<span class="badge badge-muted">Sem acesso</span>';
 }
 
 function elAcoes() { return document.getElementById('admin-acoes'); }
@@ -43,8 +49,8 @@ function elConteudo() { return document.getElementById('admin-conteudo'); }
 function render() {
   Sb.loadSession();
   if (!Sb.isLoggedIn()) return renderLogin();
-  const email = (Sb.userEmail() || '').toLowerCase();
-  if (email !== ADMIN_EMAIL) return renderNegado(email);
+  // Sem checagem de e-mail aqui: tenta carregar e deixa o banco responder. Quem não
+  // for o dono cai em renderNegado() pelo erro 'acesso negado' da própria função.
   renderPainel();
 }
 
@@ -103,7 +109,7 @@ async function sair() {
 }
 
 async function renderPainel() {
-  elSub().textContent = 'Assinantes do Fin360.';
+  elSub().textContent = 'Clientes do Fin360.';
   elAcoes().innerHTML = `
     <button class="btn btn-ghost btn-sm" id="admin-atualizar">Atualizar</button>
     <button class="btn btn-ghost btn-sm" id="admin-sair">Sair</button>
@@ -117,12 +123,13 @@ async function renderPainel() {
   try {
     usuarios = await carregarUsuarios();
   } catch (err) {
+    if (err.negado) return renderNegado(Sb.userEmail() || 'desta conta');
     elConteudo().innerHTML = `<div class="admin-panel"><div class="admin-estado">Não foi possível carregar: ${err.message}</div></div>`;
     return;
   }
 
   if (!usuarios.length) {
-    elConteudo().innerHTML = '<div class="admin-panel"><div class="admin-estado">Nenhum assinante ainda.</div></div>';
+    elConteudo().innerHTML = '<div class="admin-panel"><div class="admin-estado">Nenhum cliente ainda.</div></div>';
     return;
   }
 
@@ -149,7 +156,7 @@ async function renderPainel() {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>Cliente</th><th>Desde</th><th>Último acesso</th><th>Assinatura</th><th>Válido até</th><th></th>
+              <th>Cliente</th><th>Desde</th><th>Último acesso</th><th>Acesso</th><th>Válido até</th><th></th>
             </tr>
           </thead>
           <tbody>${linhas}</tbody>
@@ -180,7 +187,12 @@ async function carregarUsuarios() {
   const r = await Sb.auth('/rest/v1/rpc/admin_listar_usuarios', { method: 'POST', body: JSON.stringify({}) });
   if (!r.ok) {
     const msg = (r.body && (r.body.message || r.body.msg)) || 'Falha ao carregar a lista.';
-    throw new Error(msg === 'acesso negado' ? 'esta conta não tem permissão.' : msg);
+    const erro = new Error(msg);
+    // 'acesso negado' é a mensagem exata que a função levanta para quem não é o dono.
+    // Marcada à parte para não confundir recusa com falha de rede: uma manda a pessoa
+    // embora, a outra pede pra tentar de novo.
+    erro.negado = msg === 'acesso negado';
+    throw erro;
   }
   return Array.isArray(r.body) ? r.body : [];
 }
