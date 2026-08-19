@@ -77,7 +77,7 @@ function defaultState() {
     gastosVariaveis: [],
     // recebimentos: {id,descricao,valor,data,categoryId,bankId,tipo:'unico'|'recorrente'|'parcelado',parcelas,dataFinal(recorrente, opcional),observacao,createdAt}
     recebimentos: [],
-    recebimentosRecebidos: [], // {id, recebimentoId, mes:'YYYY-MM'}
+    recebimentosRecebidos: [], // {id, recebimentoId, mes:'YYYY-MM', bankId, data, valor, ledgerApplied}
     // cofrinhos: {id,nome,meta,atual,icone,cor,prazo,observacao,aporteAutomatico,diaAporte,valorAporte,contaOrigemId,ultimoAporteMes,createdAt}
     cofrinhos: [],
     transferencias: [], // {id,deId,paraId,valor,data,observacao,createdAt}
@@ -430,46 +430,57 @@ function recebimentoOccurrenceInMonth(receb, mStr) {
   if (mStr === recebMonth) return { valor: receb.valor, parcelaLabel: '1/1' };
   return null;
 }
-function isRecebimentoRecebido(recebimentoId, mStr) {
-  return Store.state.recebimentosRecebidos.some((p) => p.recebimentoId === recebimentoId && p.mes === mStr);
+function recebimentoPagamento(recebimentoId, mStr) {
+  return Store.state.recebimentosRecebidos.find((p) => p.recebimentoId === recebimentoId && p.mes === mStr) || null;
 }
-function toggleRecebimentoRecebido(recebimentoId, mStr) {
+function isRecebimentoRecebido(recebimentoId, mStr) {
+  return !!recebimentoPagamento(recebimentoId, mStr);
+}
+// registra (ou substitui) a baixa de um mês específico: banco que recebeu, data e valor efetivamente
+// recebido. o valor base do recebimento (recorrência) não é alterado — só afeta esta competência,
+// igual ao pagamento de gasto fixo (ver payGastoFixo). a baixa, uma vez feita, é imutável: editar o
+// recebimento base depois não mexe no que já foi recebido.
+function payRecebimento(recebimentoId, mStr, opts) {
+  opts = opts || {};
   const list = Store.state.recebimentosRecebidos;
   const idx = list.findIndex((p) => p.recebimentoId === recebimentoId && p.mes === mStr);
+  if (idx > -1) Store.applyBankDelta(list[idx].bankId, -list[idx].valor); // desfaz a baixa anterior, se houver
   const receb = Store.get('recebimentos', recebimentoId);
   const occ = receb && recebimentoOccurrenceInMonth(receb, mStr);
-  const valor = occ ? occ.valor : 0;
+  const bankId = opts.bankId || (receb && receb.bankId);
+  const valor = opts.valor != null ? opts.valor : (occ ? occ.valor : 0);
+  const data = opts.data || `${mStr}-${receb ? receb.data.slice(8, 10) : '01'}`;
+  const record = { id: idx > -1 ? list[idx].id : uid(), recebimentoId, mes: mStr, bankId, data, valor, ledgerApplied: true };
+  if (idx > -1) list[idx] = record; else list.push(record);
+  Store.applyBankDelta(bankId, valor);
+  Store.save();
+}
+function reopenRecebimento(recebimentoId, mStr) {
+  const list = Store.state.recebimentosRecebidos;
+  const idx = list.findIndex((p) => p.recebimentoId === recebimentoId && p.mes === mStr);
   if (idx > -1) {
+    Store.applyBankDelta(list[idx].bankId, -list[idx].valor);
     list.splice(idx, 1);
-    if (receb) Store.applyBankDelta(receb.bankId, -valor);
-  } else {
-    list.push({ id: uid(), recebimentoId, mes: mStr, ledgerApplied: true });
-    if (receb) Store.applyBankDelta(receb.bankId, valor);
   }
   Store.save();
 }
-// reconcilia o saldo dos bancos ao editar um recebimento cujos meses já foram marcados como recebidos
+// marca/desmarca sem escolher banco, data ou valor — usado quando não faz sentido perguntar
+// (criação de recebimento com data passada, e importação de extrato)
+function toggleRecebimentoRecebido(recebimentoId, mStr) {
+  if (isRecebimentoRecebido(recebimentoId, mStr)) reopenRecebimento(recebimentoId, mStr);
+  else payRecebimento(recebimentoId, mStr);
+}
+// valor de fato recebido nesta competência (pode diferir do valor base recorrente); cai pro valor
+// previsto se ainda não foi recebido. Espelha gastoFixoValorEfetivo.
+function recebimentoValorEfetivo(r) {
+  return r.recebido && r.pagamento ? r.pagamento.valor : r.valor;
+}
 function updateRecebimento(id, payload) {
-  const old = Store.get('recebimentos', id);
-  const affected = Store.state.recebimentosRecebidos.filter((p) => p.recebimentoId === id);
-  affected.forEach((p) => {
-    const occ = old && recebimentoOccurrenceInMonth(old, p.mes);
-    if (occ) Store.applyBankDelta(old.bankId, -occ.valor);
-  });
   Store.update('recebimentos', id, payload);
-  const updated = Store.get('recebimentos', id);
-  affected.forEach((p) => {
-    const occ = updated && recebimentoOccurrenceInMonth(updated, p.mes);
-    if (occ) Store.applyBankDelta(updated.bankId, occ.valor);
-  });
 }
 function deleteRecebimento(id) {
-  const receb = Store.get('recebimentos', id);
   const affected = Store.state.recebimentosRecebidos.filter((p) => p.recebimentoId === id);
-  affected.forEach((p) => {
-    const occ = receb && recebimentoOccurrenceInMonth(receb, p.mes);
-    if (occ) Store.applyBankDelta(receb.bankId, -occ.valor);
-  });
+  affected.forEach((p) => Store.applyBankDelta(p.bankId, -p.valor));
   Store.state.recebimentosRecebidos = Store.state.recebimentosRecebidos.filter((p) => p.recebimentoId !== id);
   Store.remove('recebimentos', id);
 }
@@ -516,14 +527,18 @@ function recebimentosForMonth(mStr) {
   return Store.state.recebimentos
     .map((r) => ({ receb: r, occurrence: recebimentoOccurrenceInMonth(r, mStr) }))
     .filter((x) => x.occurrence)
-    .map((x) => ({
-      ...x.receb,
-      valor: x.occurrence.valor,
-      parcelaLabel: x.occurrence.parcelaLabel,
-      mesRef: mStr,
-      recebido: isRecebimentoRecebido(x.receb.id, mStr),
-      dataOcorrencia: `${mStr}-${x.receb.data.slice(8, 10)}`,
-    }));
+    .map((x) => {
+      const pagamento = recebimentoPagamento(x.receb.id, mStr);
+      return {
+        ...x.receb,
+        valor: x.occurrence.valor,
+        parcelaLabel: x.occurrence.parcelaLabel,
+        mesRef: mStr,
+        recebido: !!pagamento,
+        pagamento,
+        dataOcorrencia: `${mStr}-${x.receb.data.slice(8, 10)}`,
+      };
+    });
 }
 
 // entradas - saídas realizadas naquele mês (recebimentos + gastos fixos + variáveis + fatura de cartão)
@@ -550,7 +565,8 @@ function fluxoRealizadoDoMes(mStr, bankId) {
     if (!g.cartaoId && g.status === 'pago' && isSameMonth(g.data, mStr) && (!bankId || g.bankId === bankId)) total -= g.valor;
   });
   recebimentosForMonth(mStr).forEach((r) => {
-    if (r.recebido && (!bankId || r.bankId === bankId)) total += r.valor;
+    const bId = r.recebido ? r.pagamento.bankId : r.bankId;
+    if (r.recebido && (!bankId || bId === bankId)) total += recebimentoValorEfetivo(r);
   });
   Store.state.cartaoFaturasPagas.forEach((f) => {
     if (f.mes !== mStr || !f.ledgerApplied) return;
@@ -628,7 +644,8 @@ function buildTransacoes(start, end) {
     ...months.flatMap((m) => recebimentosForMonth(m)).map((r) => ({
       key: `rc:${r.id}:${r.mesRef}`, origem: 'recebimento', refId: r.id, mes: r.mesRef,
       data: r.dataOcorrencia, descricao: r.descricao, tipo: 'Recebimento',
-      bankId: r.bankId, categoryId: r.categoryId, status: r.recebido ? 'recebido' : 'pendente', valor: r.valor, sinal: 1,
+      bankId: r.recebido ? r.pagamento.bankId : r.bankId, categoryId: r.categoryId,
+      status: r.recebido ? 'recebido' : 'pendente', valor: recebimentoValorEfetivo(r), sinal: 1,
     })),
     // fatura do cartão vira 1 lançamento por mês (é o que de fato sai do banco) — as compras individuais
     // não movem dinheiro sozinhas, só quando a fatura é paga.
@@ -849,6 +866,18 @@ const Store = {
       const occ = receb && recebimentoOccurrenceInMonth(receb, p.mes);
       if (occ) this.applyBankDelta(receb.bankId, occ.valor);
       p.ledgerApplied = true;
+      changed = true;
+    });
+    // baixas de recebimento salvas no formato antigo (sem banco/data/valor próprios, ver
+    // payRecebimento) — preenche com o que já estava valendo, pra reabrir/pagar de novo não
+    // aplicar delta com valor undefined
+    this.state.recebimentosRecebidos.forEach((p) => {
+      if (p.valor != null && p.bankId) return;
+      const receb = this.get('recebimentos', p.recebimentoId);
+      const occ = receb && recebimentoOccurrenceInMonth(receb, p.mes);
+      p.bankId = p.bankId || (receb && receb.bankId);
+      p.valor = p.valor != null ? p.valor : (occ ? occ.valor : 0);
+      p.data = p.data || `${p.mes}-${receb ? receb.data.slice(8, 10) : '01'}`;
       changed = true;
     });
     this.state.gastosVariaveis.forEach((g) => {

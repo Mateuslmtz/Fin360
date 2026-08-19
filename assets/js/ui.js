@@ -2,7 +2,7 @@
 
 const NAV_ITEMS = [
   { route: 'dashboard', label: 'Dashboard', icon: 'grid', subtitle: 'Como está o seu mês, em números' },
-  { route: 'extrato', label: 'Extrato', icon: 'checkSquare', subtitle: 'O que falta pagar e receber, e tudo que já passou' },
+  { route: 'resumo', label: 'Resumo', icon: 'checkSquare', subtitle: 'O que falta pagar e receber, e tudo que já passou' },
   { route: 'lancamentos', label: 'Lançamentos', icon: 'layers', subtitle: 'Tudo o que entra e sai, no mesmo lugar' },
   { route: 'cartoes', label: 'Cartões de crédito', icon: 'card', subtitle: 'Limite, fatura e vencimento dos seus cartões' },
   { route: 'cofrinhos', label: 'Cofrinhos', icon: 'piggy', subtitle: 'Reserva de emergência e metas de poupança' },

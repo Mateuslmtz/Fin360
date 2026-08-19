@@ -421,6 +421,58 @@ function wirePagoFixoActions(container, onChange) {
   });
 }
 
+/* ============ Recebimento (banco recebido + data + valor), mesmo molde do gasto fixo ============ */
+function payRecebimentoModal(receb, mStr, valorPrevisto, onConfirm) {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>Marcar como recebido</h3>
+      <p>Confirme banco, data e valor recebido. O valor base do recebimento permanece intacto.</p>
+      <div class="field">
+        <label>Banco que recebeu <span class="req">*</span></label>
+        ${fieldHTML({ key: 'rc-banco', type: 'select-bank' }, receb.bankId)}
+      </div>
+      <div class="field"><label>Data do recebimento</label>${fieldHTML({ key: 'rc-data', type: 'date' }, todayISO())}</div>
+      <div class="field">
+        <label>Valor recebido</label>
+        ${fieldHTML({ key: 'rc-valor', type: 'number' }, valorPrevisto)}
+        <span class="row-sub" style="display:block;margin-top:6px">Valor previsto: <strong>${formatCurrency(valorPrevisto)}</strong>. Alterar aqui afeta somente esta baixa — o lançamento original e as próximas competências mantêm o valor base.</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-success btn-sm" id="modal-confirm">Confirmar recebimento</button>
+      </div>
+    </div>
+  `;
+  overlay.classList.add('open');
+  wireQuickAddButtons([{ key: 'rc-banco', type: 'select-bank' }]);
+  overlay.querySelector('#modal-cancel').onclick = () => overlay.classList.remove('open');
+  overlay.querySelector('#modal-confirm').onclick = () => {
+    const bankId = document.getElementById('f-rc-banco').value;
+    if (!bankId) { toast('Selecione o banco que recebeu', 'danger'); return; }
+    const data = document.getElementById('f-rc-data').value || todayISO();
+    const valor = moneyValue('f-rc-valor') || valorPrevisto;
+    payRecebimento(receb.id, mStr, { bankId, data, valor });
+    overlay.classList.remove('open');
+    toast('Recebimento confirmado', 'success');
+    onConfirm && onConfirm();
+  };
+}
+
+function wireRecebimentoActions(container, onChange) {
+  container.querySelectorAll('[data-action="pay-receb"]').forEach((b) => b.onclick = () => {
+    const receb = Store.get('recebimentos', b.dataset.id);
+    const mStr = b.dataset.mes;
+    const occ = recebimentoOccurrenceInMonth(receb, mStr);
+    payRecebimentoModal(receb, mStr, occ ? occ.valor : receb.valor, onChange);
+  });
+  container.querySelectorAll('[data-action="reopen-receb"]').forEach((b) => b.onclick = () => {
+    reopenRecebimento(b.dataset.id, b.dataset.mes);
+    toast('Recebimento reaberto', 'success');
+    onChange();
+  });
+}
+
 /* =========================================================================
    DASHBOARD
    ========================================================================= */
@@ -472,7 +524,7 @@ function pageDashboard(container) {
 
     const totalGastos = fixos.reduce((s, g) => s + g.valor, 0) + variaveis.reduce((s, g) => s + g.valor, 0) + custoRealCartoes;
     const totalRecebimentosLancado = receb.reduce((s, r) => s + r.valor, 0);
-    const totalRecebimentos = receb.filter((r) => r.recebido).reduce((s, r) => s + r.valor, 0);
+    const totalRecebimentos = receb.filter((r) => r.recebido).reduce((s, r) => s + recebimentoValorEfetivo(r), 0);
     const totalAReceber = receb.filter((r) => !r.recebido).reduce((s, r) => s + r.valor, 0);
     const totalPago = fixos.filter((g) => g.pago).reduce((s, g) => s + gastoFixoValorEfetivo(g), 0) + variaveis.filter((g) => g.status === 'pago').reduce((s, g) => s + g.valor, 0) + custoRealCartoesPago;
     const faltaPagar = totalGastos - totalPago;
@@ -1038,7 +1090,7 @@ function lancamentosDoPeriodo(period) {
       kind: 'recebimento', id: r.id, mes: m, item: r,
       titulo: r.descricao, categoryId: r.categoryId, observacao: r.observacao,
       dataISO: r.dataOcorrencia, sortISO: r.dataOcorrencia,
-      valor: r.valor, entrada: true, pago: r.recebido,
+      valor: recebimentoValorEfetivo(r), entrada: true, pago: r.recebido,
       parcelaLabel: lancParcelaLabel(r.parcelaLabel),
       recorrente: r.tipo === 'recorrente',
     })));
@@ -1097,14 +1149,14 @@ function lancTipoTag(kind, extraCls) {
 
 /* ---- status: o MESMO chip nos três tipos ----
    verde = já entrou/saiu da conta, laranja = ainda em aberto, cinza = quem manda é a fatura do cartão.
-   Clicar no chip dá e tira a baixa; no gasto fixo ele abre a janela de pagamento (banco, data, valor). */
+   Clicar no chip dá e tira a baixa; no gasto fixo e no recebimento ele abre a janela de
+   pagamento/recebimento (banco, data, valor). */
 function lancStatusHTML(x) {
   const chip = (cls, texto, attrs, title) => `<button type="button" class="badge ${cls} status-chip"${attrs} title="${title}">${cls === 'badge-success' ? icon('checkCircle') + ' ' : ''}${texto}</button>`;
   if (x.kind === 'recebimento') {
-    const attrs = ` data-action="toggle-receb" data-id="${x.id}" data-mes="${x.item.mesRef}"`;
     return x.pago
-      ? chip('badge-success', 'Recebido', attrs, 'Recebido — clique para desmarcar')
-      : chip('badge-warning', 'A receber', attrs, 'Clique para marcar como recebido');
+      ? chip('badge-success', 'Recebido', ` data-action="reopen-receb" data-id="${x.id}" data-mes="${x.item.mesRef}"`, 'Recebido — clique para desmarcar')
+      : chip('badge-warning', 'A receber', ` data-action="pay-receb" data-id="${x.id}" data-mes="${x.item.mesRef}"`, 'Clique para dar baixa');
   }
   if (x.item.cartaoId) {
     return `<span class="badge ${x.pago ? 'badge-success' : 'badge-muted'}" title="Sai junto com a fatura do cartão — a baixa é feita na aba Cartões de crédito">${x.pago ? icon('checkCircle') + ' Pago na fatura' : 'Na fatura'}</span>`;
@@ -1642,7 +1694,7 @@ function pageLancamentos(container) {
       draw();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
-    container.querySelectorAll('[data-action="toggle-receb"]').forEach((b) => b.onclick = () => { toggleRecebimentoRecebido(b.dataset.id, b.dataset.mes); draw(); });
+    wireRecebimentoActions(container, draw);
     container.querySelectorAll('[data-action="delete-receb"]').forEach((b) => b.onclick = () => {
       confirmModal({
         title: 'Excluir recebimento', text: 'O recebimento sai de todos os meses e o saldo do banco é ajustado. Não dá para desfazer.', confirmLabel: 'Excluir', danger: true,
@@ -2367,9 +2419,9 @@ function extratoStatusHTML(t) {
   const feito = t.status === 'pago' || t.status === 'recebido';
   const chip = (cls, texto, attrs, title) => `<button type="button" class="badge ${cls} status-chip"${attrs} title="${title}">${feito ? icon('checkCircle') + ' ' : ''}${texto}</button>`;
   if (t.origem === 'recebimento') {
-    const attrs = ` data-action="ex-toggle-receb" data-id="${t.refId}" data-mes="${t.mes}"`;
-    return feito ? chip('badge-success', 'Recebido', attrs, 'Recebido — clique para desmarcar')
-      : chip('badge-warning', 'A receber', attrs, 'Clique para marcar como recebido');
+    return feito
+      ? chip('badge-success', 'Recebido', ` data-action="reopen-receb" data-id="${t.refId}" data-mes="${t.mes}"`, 'Recebido — clique para desmarcar')
+      : chip('badge-warning', 'A receber', ` data-action="pay-receb" data-id="${t.refId}" data-mes="${t.mes}"`, 'Clique para marcar como recebido');
   }
   if (t.origem === 'variavel') {
     const attrs = ` data-action="ex-toggle-var" data-id="${t.refId}"`;
@@ -2513,7 +2565,7 @@ function pageExtrato(container) {
     document.getElementById('ex-export').onclick = () => exportExtratoCSV(txs);
 
     /* ---- dar baixa sem sair daqui ---- */
-    container.querySelectorAll('[data-action="ex-toggle-receb"]').forEach((b) => b.onclick = () => { toggleRecebimentoRecebido(b.dataset.id, b.dataset.mes); draw(); });
+    wireRecebimentoActions(container, draw);
     container.querySelectorAll('[data-action="ex-toggle-var"]').forEach((b) => b.onclick = () => {
       const g = Store.get('gastosVariaveis', b.dataset.id);
       if (g.status === 'pago') reopenGastoVariavel(b.dataset.id); else payGastoVariavel(b.dataset.id);
@@ -2547,10 +2599,10 @@ function exportExtratoCSV(txs) {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `extrato-fin360-${todayISO()}.csv`;
+  a.href = url; a.download = `resumo-fin360-${todayISO()}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast('Extrato exportado', 'success');
+  toast('Resumo exportado', 'success');
 }
 
 /* =========================================================================

@@ -99,10 +99,10 @@ function demoDataset() {
 
   // salário cai todo mês; os avulsos passados também. Reembolso e freela ficam pendentes ("a receber")
   meses.forEach((mStr) => {
-    state.recebimentosRecebidos.push({ id: uid('rr'), recebimentoId: salario.id, mes: mStr, ledgerApplied: true });
+    state.recebimentosRecebidos.push({ id: uid('rr'), recebimentoId: salario.id, mes: mStr, bankId: salario.bankId, data: dataDe(mStr, 5), valor: salario.valor, ledgerApplied: true });
   });
-  state.recebimentosRecebidos.push({ id: uid('rr'), recebimentoId: vendaUsado.id, mes: meses[2], ledgerApplied: true });
-  state.recebimentosRecebidos.push({ id: uid('rr'), recebimentoId: bonus.id, mes: mesAtual, ledgerApplied: true });
+  state.recebimentosRecebidos.push({ id: uid('rr'), recebimentoId: vendaUsado.id, mes: meses[2], bankId: vendaUsado.bankId, data: vendaUsado.data, valor: vendaUsado.valor, ledgerApplied: true });
+  state.recebimentosRecebidos.push({ id: uid('rr'), recebimentoId: bonus.id, mes: mesAtual, bankId: bonus.bankId, data: bonus.data, valor: bonus.valor, ledgerApplied: true });
 
   /* ---------- Gastos variáveis ---------- */
   const variaveis = [];

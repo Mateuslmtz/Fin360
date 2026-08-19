@@ -6,7 +6,7 @@ const ROUTES = {
   'bancos': pageBancos,
   'cofrinhos': pageCofrinhos,
   'cartoes': pageCartoes,
-  'extrato': pageExtrato,
+  'resumo': pageExtrato,
   'planejamento': pagePlanejamento,
   'importar': pageImportar,
   'configuracoes': pageConfiguracoes,
@@ -20,8 +20,8 @@ const ROTAS_ANTIGAS = {
   'gastos-variaveis': 'lancamentos',
   'gastos-fixos': 'lancamentos',
   'assistente': 'dashboard',
-  // Resumo e Extrato eram a mesma pergunta em duas telas; viraram uma so
-  'resumo': 'extrato',
+  // Resumo e Extrato eram a mesma pergunta em duas telas; viraram uma so, com o nome Resumo
+  'extrato': 'resumo',
 };
 
 function currentRoute() {
