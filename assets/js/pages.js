@@ -744,14 +744,6 @@ function gastosFixosMiniList(items) {
     </div>`).join('');
 }
 
-function miniList(items) {
-  return `<table class="list-table"><tbody>${items.map((i) => `
-    <tr>
-      <td><div class="row-title">${i.title}</div><div class="row-sub">${i.sub}</div></td>
-      <td style="text-align:right">${formatCurrency(i.value)}</td>
-      <td style="text-align:right">${badgeStatus(i.status)}</td>
-    </tr>`).join('')}</tbody></table>`;
-}
 function cardsMini(cartoes) {
   return `<div class="grid-2">${cartoes.map((c) => {
     const mStr = currentMonthStr();
@@ -873,132 +865,6 @@ function yearTable(year) {
     </div>
   `;
 }
-/* =========================================================================
-   RESUMO
-   ========================================================================= */
-let resumoPeriod = { type: 'hoje' };
-
-function isInResumoPeriod(iso, period) {
-  if (!iso) return false;
-  const today = todayISO();
-  if (period.type === 'hoje') return iso === today;
-  if (period.type === 'amanha') return iso === addDaysISO(today, 1);
-  if (period.type === '7dias') return iso >= today && iso <= addDaysISO(today, 7);
-  if (period.type === 'mes') return isSameMonth(iso, currentMonthStr());
-  if (period.type === 'custom') return iso >= (period.start || today) && iso <= (period.end || today);
-  return true;
-}
-
-function resumoMonthsForPeriod(period) {
-  const today = todayISO();
-  if (period.type === 'custom') {
-    const months = new Set();
-    let cur = (period.start || today).slice(0, 7);
-    const end = (period.end || today).slice(0, 7);
-    let guard = 0;
-    while (cur <= end && guard < 36) { months.add(cur); cur = monthAddStr(cur, 1); guard++; }
-    return [...months];
-  }
-  if (period.type === 'mes') return [currentMonthStr()];
-  return [currentMonthStr(), monthAddStr(currentMonthStr(), 1)];
-}
-
-function pageResumo(container) {
-  const draw = () => {
-    const period = resumoPeriod;
-    const today = todayISO();
-
-    const gastos = [
-      ...resumoMonthsForPeriod(period).flatMap((m) => gastosFixosForMonth(m)).filter((g) => !g.cartaoId).map((g) => ({ ...g, label: g.nome, date: g.vencimentoISO, kind: 'pagar', status: g.pago ? 'pago' : 'pendente' })),
-      ...resumoMonthsForPeriod(period).flatMap((m) => gastosVariaveisForMonth(m)).filter((g) => !g.cartaoId).map((g) => ({ ...g, label: g.descricao, date: g.data, kind: 'pagar' })),
-    ];
-    const receb = resumoMonthsForPeriod(period).flatMap((m) => recebimentosForMonth(m)).map((r) => ({ ...r, label: r.descricao, date: r.dataOcorrencia, kind: 'receber', status: r.recebido ? 'recebido' : 'pendente' }));
-
-    const paraPagar = gastos.filter((g) => g.status !== 'pago' && isInResumoPeriod(g.date, period));
-    const paraReceber = receb.filter((r) => r.status !== 'recebido' && isInResumoPeriod(r.date, period));
-    const concluidas = [...gastos.filter((g) => g.status === 'pago'), ...receb.filter((r) => r.status === 'recebido')]
-      .filter((t) => isInResumoPeriod(t.date, period)).sort((a, b) => (a.date < b.date ? 1 : -1));
-
-    const totalReceber = paraReceber.reduce((s, r) => s + r.valor, 0);
-    const totalPagar = paraPagar.reduce((s, g) => s + g.valor, 0);
-    const saldoBancos = Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
-    const recebidoHoje = receb.filter((r) => r.status === 'recebido' && r.date === today).reduce((s, r) => s + r.valor, 0);
-    const pagoHoje = gastos.filter((g) => g.status === 'pago' && g.date === today).reduce((s, g) => s + g.valor, 0);
-    const pendente = totalReceber + totalPagar;
-
-    container.innerHTML = `
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <h3 style="font-size:18px">Olá${Store.state.profile.name ? ', ' + Store.state.profile.name.toUpperCase() : ''} 👋</h3>
-            <div class="panel-sub">Estas são suas movimentações de <strong>${resumoLabel(period.type)}</strong>.</div>
-          </div>
-          <div class="pill-group" id="resumo-period-group">
-            <button class="pill ${period.type === 'hoje' ? 'active' : ''}" data-mode="hoje">Hoje</button>
-            <button class="pill ${period.type === 'amanha' ? 'active' : ''}" data-mode="amanha">Amanhã</button>
-            <button class="pill ${period.type === '7dias' ? 'active' : ''}" data-mode="7dias">Próximos 7 dias</button>
-            <button class="pill ${period.type === 'mes' ? 'active' : ''}" data-mode="mes">Este mês</button>
-            <button class="pill ${period.type === 'custom' ? 'active' : ''}" data-mode="custom">Personalizado</button>
-          </div>
-        </div>
-        ${period.type === 'custom' ? `
-          <div class="field-row" style="max-width:340px">
-            <div class="field"><label>De</label><input type="date" id="resumo-start" value="${period.start || today}" /></div>
-            <div class="field"><label>Até</label><input type="date" id="resumo-end" value="${period.end || today}" /></div>
-          </div>` : ''}
-      </div>
-
-      <div class="stat-grid">
-        ${statCard({ label: 'A receber', value: formatCurrency(totalReceber), tone: 'green', iconName: 'arrowUpCircle' })}
-        ${statCard({ label: 'A pagar', value: formatCurrency(totalPagar), tone: 'red', iconName: 'arrowDownCircle' })}
-        ${statCard({ label: 'Saldo previsto', value: formatCurrency(saldoBancos + totalReceber - totalPagar), tone: 'blue', iconName: 'wallet' })}
-        ${statCard({ label: 'Recebido hoje', value: formatCurrency(recebidoHoje), tone: 'green', iconName: 'checkCircle' })}
-        ${statCard({ label: 'Pago hoje', value: formatCurrency(pagoHoje), tone: 'purple', iconName: 'checkCircle' })}
-        ${statCard({ label: 'Pendente', value: formatCurrency(pendente), tone: 'orange', iconName: 'alertTriangle' })}
-      </div>
-
-      <div class="grid-2">
-        <div class="panel">
-          <div class="panel-header"><h3>${icon('arrowDownCircle')} Para pagar</h3><span class="badge badge-danger">Total ${formatCurrency(totalPagar)}</span></div>
-          ${paraPagar.length === 0 ? emptyState({ iconName: 'checkCircle', title: 'Nada para pagar nesse período.' }) : miniList(paraPagar.map((g) => ({ title: g.label, sub: formatDateBR(g.date), value: g.valor, status: g.status })))}
-        </div>
-        <div class="panel">
-          <div class="panel-header"><h3>${icon('arrowUpCircle')} Para receber</h3><span class="badge badge-success">Total ${formatCurrency(totalReceber)}</span></div>
-          ${paraReceber.length === 0 ? emptyState({ iconName: 'calendar', title: 'Nada para receber nesse período.' }) : miniList(paraReceber.map((r) => ({ title: r.label, sub: formatDateBR(r.date), value: r.valor, status: r.status })))}
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">
-          <h3>${icon('list')} Últimas movimentações concluídas</h3>
-          <div class="pill-group" id="resumo-period-group-2">
-            <button class="pill ${period.type === 'hoje' ? 'active' : ''}" data-mode="hoje">Hoje</button>
-            <button class="pill ${period.type === 'amanha' ? 'active' : ''}" data-mode="amanha">Amanhã</button>
-            <button class="pill ${period.type === '7dias' ? 'active' : ''}" data-mode="7dias">Próximos 7 dias</button>
-            <button class="pill ${period.type === 'mes' ? 'active' : ''}" data-mode="mes">Este mês</button>
-            <button class="pill ${period.type === 'custom' ? 'active' : ''}" data-mode="custom">Personalizado</button>
-          </div>
-        </div>
-        ${concluidas.length === 0 ? emptyState({ iconName: 'inbox', title: 'Nenhuma movimentação concluída neste período.' }) : recentTxList(concluidas.map((t) => ({ label: t.label, date: t.date, valor: t.valor, kind: t.kind === 'receber' ? 'receb' : 'gasto' })))}
-      </div>
-    `;
-
-    const wireGroup = (groupId) => {
-      document.getElementById(groupId).querySelectorAll('.pill').forEach((btn) => {
-        btn.onclick = () => { resumoPeriod = { type: btn.dataset.mode, start: period.start, end: period.end }; draw(); };
-      });
-    };
-    wireGroup('resumo-period-group'); wireGroup('resumo-period-group-2');
-    const startEl = document.getElementById('resumo-start'), endEl = document.getElementById('resumo-end');
-    if (startEl) startEl.onchange = () => { resumoPeriod.start = startEl.value; draw(); };
-    if (endEl) endEl.onchange = () => { resumoPeriod.end = endEl.value; draw(); };
-  };
-  draw();
-}
-function resumoLabel(type) {
-  return { hoje: 'hoje', amanha: 'amanhã', '7dias': 'nos próximos 7 dias', mes: 'este mês', custom: 'no período selecionado' }[type] || 'hoje';
-}
-
 /* ============ Forma de pagamento (Banco x Cartão de crédito) — gastos fixos e variáveis ============ */
 function cartaoOptions(selected) {
   if (!Store.state.cartoes.length) return `<option value="">Nenhum cartão cadastrado</option>`;
@@ -2447,149 +2313,226 @@ function pageCartoes(container) {
 /* =========================================================================
    EXTRATO — livro-razão unificado (gastos fixos + variáveis + recebimentos)
    ========================================================================= */
-let extratoPeriod = { type: 'sync' };
+/* =========================================================================
+   EXTRATO — o Resumo e o Extrato eram duas telas fazendo a mesma pergunta com
+   palavras diferentes ("o que falta fazer" e "o que aconteceu"), cada uma com sua
+   lista, seus filtros de periodo e sua fileira de cartoes (6 la, 10 aqui).
+   Agora e uma tela so: a MESMA lista, e um botao que troca entre o que esta em
+   aberto e o que ja foi concluido. Dois ganhos que vieram junto:
+   - da pra dar baixa aqui mesmo. O Resumo dizia "para pagar" e nao deixava pagar;
+   - a fatura do cartao entra no "A pagar". O Resumo ignorava cartao, entao o numero
+     que ele mostrava era menor do que a divida real do mes.
+   ========================================================================= */
+let extratoPeriod = { type: 'mes' };
+let extratoEstado = 'aberto';   // 'aberto' | 'concluido' | 'tudo'
 let extratoBanco = 'todos';
 let extratoTipo = 'todos';
-let extratoStatus = 'todos';
 let extratoSearch = '';
-let extratoSort = 'desc';
+let extratoSort = 'asc';
 let extratoFiltrosAbertos = false;
 
+const EXTRATO_PERIODOS = [
+  { mode: 'hoje', label: 'Hoje' },
+  { mode: '7dias', label: 'Próximos 7 dias' },
+  { mode: 'mes', label: 'Este mês' },
+  { mode: 'mespassado', label: 'Mês passado' },
+  { mode: 'custom', label: 'Escolher datas' },
+];
+
+// primeiro e ultimo dia de um mes, em ISO
 function monthRangeISO(mStr) {
   const [y, m] = mStr.split('-').map(Number);
   return [`${mStr}-01`, `${mStr}-${String(daysInMonth(y, m - 1)).padStart(2, '0')}`];
 }
 function extratoDateRange(period) {
-  const today = todayISO();
+  const hoje = todayISO();
   switch (period.type) {
-    case 'sync': return dashPeriod.type === 'year' ? [`${dashPeriod.value}-01-01`, `${dashPeriod.value}-12-31`] : monthRangeISO(dashPeriod.value || currentMonthStr());
-    case 'hoje': return [today, today];
-    case 'ontem': return [addDaysISO(today, -1), addDaysISO(today, -1)];
-    case '7dias': return [addDaysISO(today, -6), today];
-    case '30dias': return [addDaysISO(today, -29), today];
+    case 'hoje': return [hoje, hoje];
+    case '7dias': return [hoje, addDaysISO(hoje, 6)];
     case 'mespassado': return monthRangeISO(monthAddStr(currentMonthStr(), -1));
-    case 'custom': return [period.start || today, period.end || today];
+    case 'custom': return [period.start || hoje, period.end || hoje];
     case 'mes': default: return monthRangeISO(currentMonthStr());
   }
 }
+function extratoPeriodoLabel(period) {
+  if (period.type === 'custom') {
+    const [a, b] = extratoDateRange(period);
+    return `${formatDateBR(a)} a ${formatDateBR(b)}`;
+  }
+  return (EXTRATO_PERIODOS.find((p) => p.mode === period.type) || {}).label.toLowerCase();
+}
+
+// o mesmo chip de status da aba Lancamentos, pra baixa dada aqui e la ter a mesma cara
+function extratoStatusHTML(t) {
+  const feito = t.status === 'pago' || t.status === 'recebido';
+  const chip = (cls, texto, attrs, title) => `<button type="button" class="badge ${cls} status-chip"${attrs} title="${title}">${feito ? icon('checkCircle') + ' ' : ''}${texto}</button>`;
+  if (t.origem === 'recebimento') {
+    const attrs = ` data-action="ex-toggle-receb" data-id="${t.refId}" data-mes="${t.mes}"`;
+    return feito ? chip('badge-success', 'Recebido', attrs, 'Recebido — clique para desmarcar')
+      : chip('badge-warning', 'A receber', attrs, 'Clique para marcar como recebido');
+  }
+  if (t.origem === 'variavel') {
+    const attrs = ` data-action="ex-toggle-var" data-id="${t.refId}"`;
+    return feito ? chip('badge-success', 'Pago', attrs, 'Pago — clique para reabrir')
+      : chip('badge-warning', 'A pagar', attrs, 'Clique para dar baixa');
+  }
+  if (t.origem === 'fixo') {
+    return feito
+      ? chip('badge-success', 'Pago', ` data-action="reopen-fixo" data-id="${t.refId}" data-mes="${t.mes}"`, 'Pago — clique para reabrir')
+      : chip('badge-warning', 'A pagar', ` data-action="pay-fixo" data-id="${t.refId}" data-mes="${t.mes}"`, 'Clique para dar baixa');
+  }
+  const attrs = ` data-action="ex-toggle-fatura" data-id="${t.refId}" data-mes="${t.mes}"`;
+  return feito ? chip('badge-success', 'Paga', attrs, 'Fatura paga — clique para reabrir')
+    : chip('badge-warning', 'A pagar', attrs, 'Clique para dar a fatura como paga');
+}
+
 function pageExtrato(container) {
   const draw = () => {
     const [start, end] = extratoDateRange(extratoPeriod);
-    let txs = buildTransacoes(start, end);
+    const todas = buildTransacoes(start, end);
 
+    let txs = todas;
+    if (extratoEstado !== 'tudo') {
+      const feito = (t) => t.status === 'pago' || t.status === 'recebido';
+      txs = txs.filter((t) => (extratoEstado === 'aberto' ? !feito(t) : feito(t)));
+    }
     if (extratoBanco !== 'todos') txs = txs.filter((t) => t.bankId === extratoBanco);
     if (extratoTipo !== 'todos') txs = txs.filter((t) => t.tipo === extratoTipo);
-    if (extratoStatus !== 'todos') txs = txs.filter((t) => (extratoStatus === 'pago' ? (t.status === 'pago' || t.status === 'recebido') : t.status === 'pendente'));
     if (extratoSearch) {
       const q = extratoSearch.toLowerCase();
-      txs = txs.filter((t) => t.descricao.toLowerCase().includes(q) || (Store.categoryById(t.categoryId) || {}).name?.toLowerCase().includes(q));
+      txs = txs.filter((t) => t.descricao.toLowerCase().includes(q) || ((Store.categoryById(t.categoryId) || {}).name || '').toLowerCase().includes(q));
     }
-    txs.sort((a, b) => extratoSort === 'asc' ? (a.data < b.data ? -1 : 1) : (a.data < b.data ? 1 : -1));
+    txs.sort((a, b) => (extratoSort === 'asc' ? (a.data < b.data ? -1 : 1) : (a.data < b.data ? 1 : -1)));
 
-    const gastos = txs.filter((t) => t.sinal === -1);
-    const receb = txs.filter((t) => t.sinal === 1);
-    const totalGastos = gastos.reduce((s, t) => s + t.valor, 0);
-    const totalRecebimentos = receb.reduce((s, t) => s + t.valor, 0);
-    const totalAReceber = receb.filter((t) => t.status !== 'recebido').reduce((s, t) => s + t.valor, 0);
-    const totalPago = gastos.filter((t) => t.status === 'pago').reduce((s, t) => s + t.valor, 0);
-    const faltaPagar = totalGastos - totalPago;
-    const entradasRealizadas = receb.filter((t) => t.status === 'recebido').reduce((s, t) => s + t.valor, 0);
-    const saidasPagas = totalPago;
-    const saldoBancario = extratoBanco !== 'todos' ? ((Store.bankById(extratoBanco) || {}).balance || 0) : Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
+    // os quatro numeros olham SEMPRE o periodo inteiro, nao a lista filtrada: senao clicar
+    // em "Concluidos" zeraria o "A pagar" e daria a impressao de que nao falta nada
+    const noBanco = (t) => extratoBanco === 'todos' || t.bankId === extratoBanco;
+    const emAberto = todas.filter((t) => t.status === 'pendente' && noBanco(t));
+    const aReceber = emAberto.filter((t) => t.sinal === 1).reduce((s, t) => s + t.valor, 0);
+    const aPagar = emAberto.filter((t) => t.sinal === -1).reduce((s, t) => s + t.valor, 0);
+    const saldoEmConta = extratoBanco !== 'todos'
+      ? ((Store.bankById(extratoBanco) || {}).balance || 0)
+      : Store.state.banks.reduce((s, b) => s + (b.balance || 0), 0);
 
-    const periodPills = [
-      { mode: 'sync', label: `Sincronizar com Dashboard (${dashPeriod.type === 'year' ? dashPeriod.value : 'Este mês'})` },
-      { mode: 'hoje', label: 'Hoje' }, { mode: 'ontem', label: 'Ontem' }, { mode: '7dias', label: 'Últimos 7 dias' },
-      { mode: '30dias', label: 'Últimos 30 dias' }, { mode: 'mes', label: 'Este mês' }, { mode: 'mespassado', label: 'Mês passado' },
-      { mode: 'custom', label: 'Personalizado' },
-    ];
+    const contagem = {
+      aberto: todas.filter((t) => t.status === 'pendente').length,
+      concluido: todas.filter((t) => t.status !== 'pendente').length,
+      tudo: todas.length,
+    };
+    const nomeEstado = { aberto: 'em aberto', concluido: 'já concluído', tudo: 'do período' }[extratoEstado];
 
     container.innerHTML = `
       <div class="panel">
-        <div class="section-title" style="margin-top:0">Período</div>
-        <div class="pill-group" id="ex-period-group">${periodPills.map((p) => `<button class="pill ${extratoPeriod.type === p.mode ? 'active' : ''}" data-mode="${p.mode}">${p.label}</button>`).join('')}</div>
+        <div class="panel-header">
+          <div>
+            <h3 style="font-size:18px">Olá${Store.state.profile.name ? ', ' + Store.state.profile.name.toUpperCase() : ''} 👋</h3>
+            <div class="panel-sub">O que falta pagar, o que falta receber e tudo que já passou — ${extratoPeriodoLabel(extratoPeriod)}.</div>
+          </div>
+          <div class="pill-group" id="ex-period-group">
+            ${EXTRATO_PERIODOS.map((p) => `<button class="pill ${extratoPeriod.type === p.mode ? 'active' : ''}" data-mode="${p.mode}">${p.label}</button>`).join('')}
+          </div>
+        </div>
         ${extratoPeriod.type === 'custom' ? `
           <div class="field-row" style="max-width:340px;margin-top:12px">
             <div class="field"><label>De</label><input type="date" id="ex-start" value="${extratoPeriod.start || start}" /></div>
             <div class="field"><label>Até</label><input type="date" id="ex-end" value="${extratoPeriod.end || end}" /></div>
           </div>` : ''}
-
-        <div class="section-title">Bancos (${extratoBanco === 'todos' ? 'todos' : (Store.bankById(extratoBanco) || {}).name})</div>
-        <div class="pill-group" id="ex-bank-group">
-          <button class="pill ${extratoBanco === 'todos' ? 'active' : ''}" data-bank="todos">Todos</button>
-          ${Store.state.banks.map((b) => `<button class="pill ${extratoBanco === b.id ? 'active' : ''}" data-bank="${b.id}">${icon('bank')} ${b.name}</button>`).join('')}
-        </div>
-
-        <div class="field-row" style="margin-top:14px;align-items:end">
-          <div class="field"><label>Tipo</label><select id="ex-tipo">
-            <option value="todos" ${extratoTipo === 'todos' ? 'selected' : ''}>Todos</option>
-            <option value="Gasto fixo" ${extratoTipo === 'Gasto fixo' ? 'selected' : ''}>Gasto fixo</option>
-            <option value="Gasto variável" ${extratoTipo === 'Gasto variável' ? 'selected' : ''}>Gasto variável</option>
-            <option value="Cartão de crédito" ${extratoTipo === 'Cartão de crédito' ? 'selected' : ''}>Cartão de crédito</option>
-            <option value="Recebimento" ${extratoTipo === 'Recebimento' ? 'selected' : ''}>Recebimento</option>
-          </select></div>
-          <div class="field" style="flex:1"><label>Buscar</label><input type="text" id="ex-search" placeholder="Descrição, categoria..." value="${extratoSearch}" /></div>
-        </div>
-        <button class="btn btn-ghost btn-sm" id="ex-toggle-filtros">${icon('chevronDown')} Filtros avançados</button>
-        <div style="display:${extratoFiltrosAbertos ? 'block' : 'none'};margin-top:12px" class="field-row">
-          <div class="field"><label>Status</label><select id="ex-status">
-            <option value="todos" ${extratoStatus === 'todos' ? 'selected' : ''}>Todos</option>
-            <option value="pago" ${extratoStatus === 'pago' ? 'selected' : ''}>Pago/Recebido</option>
-            <option value="pendente" ${extratoStatus === 'pendente' ? 'selected' : ''}>Pendente</option>
-          </select></div>
-          <div class="field"><label>Ordenar por</label><select id="ex-sort">
-            <option value="desc" ${extratoSort === 'desc' ? 'selected' : ''}>Data — mais recente</option>
-            <option value="asc" ${extratoSort === 'asc' ? 'selected' : ''}>Data — mais antiga</option>
-          </select></div>
-        </div>
       </div>
 
       <div class="stat-grid">
-        ${statCard({ label: 'Total de gastos', value: formatCurrency(totalGastos), tone: 'red', iconName: 'arrowDownCircle' })}
-        ${statCard({ label: 'Recebimentos', value: formatCurrency(totalRecebimentos), tone: 'green', iconName: 'arrowUpCircle' })}
-        ${statCard({ label: 'A receber', value: formatCurrency(totalAReceber), tone: 'blue', iconName: 'download' })}
-        ${statCard({ label: 'Total pago', value: formatCurrency(totalPago), tone: 'purple', iconName: 'checkCircle' })}
-        ${statCard({ label: 'Falta pagar', value: formatCurrency(faltaPagar), tone: 'orange', iconName: 'alertTriangle' })}
-        ${statCard({ label: 'Saldo do período', value: formatCurrency(totalRecebimentos - totalGastos), tone: 'cyan', iconName: 'wallet' })}
-      </div>
-      <div class="stat-grid">
-        ${statCard({ label: 'Entradas (realizadas)', value: formatCurrency(entradasRealizadas), tone: 'green', iconName: 'download' })}
-        ${statCard({ label: 'Saídas (pagas)', value: formatCurrency(saidasPagas), tone: 'red', iconName: 'arrowUpCircle' })}
-        ${statCard({ label: 'Saldo realizado (período)', value: formatCurrency(entradasRealizadas - saidasPagas), tone: 'blue', iconName: 'checkCircle' })}
-        ${statCard({ label: 'Saldo bancário atual', value: formatCurrency(saldoBancario), tone: 'purple', iconName: 'wallet' })}
+        ${statCard({ label: 'A receber', value: formatCurrency(aReceber), tone: 'green', iconName: 'arrowUpCircle' })}
+        ${statCard({ label: 'A pagar', value: formatCurrency(aPagar), tone: 'red', iconName: 'arrowDownCircle' })}
+        ${statCard({ label: 'Saldo em conta', value: formatCurrency(saldoEmConta), tone: 'blue', iconName: 'bank' })}
+        ${statCard({ label: 'Saldo previsto', value: formatCurrency(saldoEmConta + aReceber - aPagar), sub: 'Se tudo acima for pago e recebido', tone: 'purple', iconName: 'wallet' })}
       </div>
 
       <div class="panel">
-        <div class="panel-header"><h3>${txs.length} movimentações</h3><button class="btn btn-ghost btn-sm" id="ex-export">${icon('download')} Exportar</button></div>
-        ${txs.length === 0 ? emptyState({ iconName: 'list', title: 'Nenhuma movimentação encontrada com os filtros aplicados.' }) : `
+        <div class="panel-header">
+          <div><h3>${txs.length} ${txs.length === 1 ? 'movimentação' : 'movimentações'}</h3><div class="panel-sub">Mostrando o que está ${nomeEstado}.</div></div>
+          <button class="btn btn-ghost btn-sm" id="ex-export">${icon('download')} Exportar</button>
+        </div>
+
+        <div class="chip-row" style="margin-bottom:10px">
+          <button class="chip ${extratoEstado === 'aberto' ? 'active' : ''}" data-ex-estado="aberto">Em aberto (${contagem.aberto})</button>
+          <button class="chip ${extratoEstado === 'concluido' ? 'active' : ''}" data-ex-estado="concluido">Já concluído (${contagem.concluido})</button>
+          <button class="chip ${extratoEstado === 'tudo' ? 'active' : ''}" data-ex-estado="tudo">Tudo (${contagem.tudo})</button>
+        </div>
+        ${Store.state.banks.length > 1 ? `<div class="chip-row" style="margin-bottom:10px">
+          <button class="chip ${extratoBanco === 'todos' ? 'active' : ''}" data-ex-banco="todos">Todos os bancos</button>
+          ${Store.state.banks.map((b) => `<button class="chip ${extratoBanco === b.id ? 'active' : ''}" data-ex-banco="${b.id}">${icon('bank')} ${b.name}</button>`).join('')}
+        </div>` : ''}
+        <div class="field-row" style="margin-bottom:4px">
+          <div class="field" style="margin-bottom:10px"><input type="text" id="ex-search" placeholder="Buscar por descrição ou categoria" value="${extratoSearch}" /></div>
+          <div class="field" style="margin-bottom:10px"><select id="ex-tipo">
+            <option value="todos" ${extratoTipo === 'todos' ? 'selected' : ''}>Todos os tipos</option>
+            <option value="Recebimento" ${extratoTipo === 'Recebimento' ? 'selected' : ''}>Recebimentos</option>
+            <option value="Gasto variável" ${extratoTipo === 'Gasto variável' ? 'selected' : ''}>Gastos variáveis</option>
+            <option value="Gasto fixo" ${extratoTipo === 'Gasto fixo' ? 'selected' : ''}>Gastos fixos</option>
+            <option value="Cartão de crédito" ${extratoTipo === 'Cartão de crédito' ? 'selected' : ''}>Faturas de cartão</option>
+          </select></div>
+          <div class="field" style="margin-bottom:10px"><select id="ex-sort">
+            <option value="asc" ${extratoSort === 'asc' ? 'selected' : ''}>Da mais antiga para a mais nova</option>
+            <option value="desc" ${extratoSort === 'desc' ? 'selected' : ''}>Da mais nova para a mais antiga</option>
+          </select></div>
+        </div>
+
+        ${txs.length === 0
+          ? emptyState({
+            iconName: extratoEstado === 'aberto' ? 'checkCircle' : 'list',
+            title: extratoEstado === 'aberto' ? 'Nada em aberto nesse período.' : 'Nenhuma movimentação encontrada.',
+            text: extratoEstado === 'aberto' ? 'Está tudo pago e recebido. Clique em "Tudo" para ver o que já passou.' : 'Tente outro período ou limpe a busca.',
+          })
+          : `
           <div class="table-wrap"><table class="list-table">
-            <thead><tr><th>Data</th><th>Descrição</th><th class="col-opt">Tipo</th><th class="col-opt">Banco</th><th class="col-opt">Categoria</th><th>Status</th><th>Valor</th></tr></thead>
+            <thead><tr><th>Descrição</th><th>Data</th><th class="col-opt">Tipo</th><th class="col-opt">Banco</th><th class="col-opt">Categoria</th><th>Valor</th><th>Status</th></tr></thead>
             <tbody>${txs.map((t) => `
               <tr>
+                <td>
+                  <div class="row-title">${t.descricao}<span class="badge ${t.sinal === 1 ? 'badge-success' : 'badge-muted'} so-celular" style="margin-left:8px">${t.tipo}</span></div>
+                </td>
                 <td>${formatDateCell(t.data)}</td>
-                <td class="row-title">${t.descricao}</td>
                 <td class="col-opt"><span class="badge ${t.sinal === 1 ? 'badge-success' : 'badge-muted'}">${t.tipo}</span></td>
                 <td class="col-opt">${(Store.bankById(t.bankId) || {}).name || '—'}</td>
-                <td class="col-opt">${categoryTag(t.categoryId)}</td>
-                <td>${t.status === 'pago' || t.status === 'recebido' ? '<span class="badge badge-success">' + (t.status === 'pago' ? 'pago' : 'recebido') + '</span>' : '<span class="badge badge-warning">pendente</span>'}</td>
-                <td class="${t.sinal === 1 ? 'amount-pos' : 'amount-neg'}">${t.sinal === 1 ? '+' : '-'} ${formatCurrency(t.valor)}</td>
+                <td class="col-opt">${t.categoryId ? categoryTag(t.categoryId) : '<span class="row-sub">—</span>'}</td>
+                <td><strong class="${t.sinal === 1 ? 'amount-pos' : 'amount-neg'}">${formatCurrency(t.valor)}</strong></td>
+                <td>${extratoStatusHTML(t)}</td>
               </tr>`).join('')}</tbody>
-          </table></div>
-        `}
+          </table></div>`}
       </div>
     `;
 
-    document.getElementById('ex-period-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => { extratoPeriod = { type: b.dataset.mode }; draw(); });
-    const s = document.getElementById('ex-start'), e = document.getElementById('ex-end');
-    if (s) s.onchange = () => { extratoPeriod = { type: 'custom', start: s.value, end: e.value }; draw(); };
-    if (e) e.onchange = () => { extratoPeriod = { type: 'custom', start: s.value, end: e.value }; draw(); };
-    document.getElementById('ex-bank-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => { extratoBanco = b.dataset.bank; draw(); });
-    document.getElementById('ex-tipo').onchange = (ev) => { extratoTipo = ev.target.value; draw(); };
-    document.getElementById('ex-search').oninput = (ev) => { extratoSearch = ev.target.value; draw(); };
-    document.getElementById('ex-toggle-filtros').onclick = () => { extratoFiltrosAbertos = !extratoFiltrosAbertos; draw(); };
-    document.getElementById('ex-status').onchange = (ev) => { extratoStatus = ev.target.value; draw(); };
-    document.getElementById('ex-sort').onchange = (ev) => { extratoSort = ev.target.value; draw(); };
+    container.querySelectorAll('#ex-period-group .pill').forEach((b) => b.onclick = () => { extratoPeriod = { type: b.dataset.mode }; draw(); });
+    const de = document.getElementById('ex-start'), ate = document.getElementById('ex-end');
+    if (de) de.onchange = () => { extratoPeriod = { type: 'custom', start: de.value, end: ate.value }; draw(); };
+    if (ate) ate.onchange = () => { extratoPeriod = { type: 'custom', start: de.value, end: ate.value }; draw(); };
+    container.querySelectorAll('[data-ex-estado]').forEach((b) => b.onclick = () => { extratoEstado = b.dataset.exEstado; draw(); });
+    container.querySelectorAll('[data-ex-banco]').forEach((b) => b.onclick = () => { extratoBanco = b.dataset.exBanco; draw(); });
+    document.getElementById('ex-tipo').onchange = (e) => { extratoTipo = e.target.value; draw(); };
+    document.getElementById('ex-sort').onchange = (e) => { extratoSort = e.target.value; draw(); };
+    document.getElementById('ex-search').oninput = (e) => { extratoSearch = e.target.value; draw(); };
     document.getElementById('ex-export').onclick = () => exportExtratoCSV(txs);
+
+    /* ---- dar baixa sem sair daqui ---- */
+    container.querySelectorAll('[data-action="ex-toggle-receb"]').forEach((b) => b.onclick = () => { toggleRecebimentoRecebido(b.dataset.id, b.dataset.mes); draw(); });
+    container.querySelectorAll('[data-action="ex-toggle-var"]').forEach((b) => b.onclick = () => {
+      const g = Store.get('gastosVariaveis', b.dataset.id);
+      if (g.status === 'pago') reopenGastoVariavel(b.dataset.id); else payGastoVariavel(b.dataset.id);
+      draw();
+    });
+    wirePagoFixoActions(container, draw);
+    container.querySelectorAll('[data-action="ex-toggle-fatura"]').forEach((b) => b.onclick = () => {
+      const cartao = Store.get('cartoes', b.dataset.id);
+      const mes = b.dataset.mes;
+      if (isCartaoFaturaPaga(cartao.id, mes)) { reopenCartaoFatura(cartao.id, mes); toast('Fatura reaberta', 'success'); draw(); return; }
+      if (!cartao.bankId) { toast('Defina o banco que paga esse cartão na aba Cartões de crédito', 'danger'); return; }
+      const valor = cartaoFaturaForMonth(cartao.id, mes);
+      confirmModal({
+        title: `Pagar a fatura do ${cartao.nome}`,
+        text: `Vão sair ${formatCurrency(valor)} do ${(Store.bankById(cartao.bankId) || {}).name || 'banco vinculado'}, e todas as compras dessa fatura passam a contar como pagas.`,
+        confirmLabel: 'Confirmar pagamento',
+        onConfirm: () => { payCartaoFatura(cartao.id, mes, { bankId: cartao.bankId, valor }); toast('Fatura paga', 'success'); draw(); },
+      });
+    });
   };
   draw();
 }

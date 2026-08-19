@@ -2,7 +2,6 @@
 
 const ROUTES = {
   'dashboard': pageDashboard,
-  'resumo': pageResumo,
   'lancamentos': pageLancamentos,
   'bancos': pageBancos,
   'cofrinhos': pageCofrinhos,
@@ -21,6 +20,8 @@ const ROTAS_ANTIGAS = {
   'gastos-variaveis': 'lancamentos',
   'gastos-fixos': 'lancamentos',
   'assistente': 'dashboard',
+  // Resumo e Extrato eram a mesma pergunta em duas telas; viraram uma so
+  'resumo': 'extrato',
 };
 
 function currentRoute() {

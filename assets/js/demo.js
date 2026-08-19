@@ -61,7 +61,7 @@ function demoDataset() {
   const fCelular = fixo('Celular', 69.90, 12, 'cat-outros', viaCartaoNu);
   const fNetflix = fixo('Netflix', 44.90, 15, 'cat-assinaturas', viaCartaoInter);
   const fSpotify = fixo('Spotify', 21.90, 15, 'cat-assinaturas', viaCartaoInter);
-  // vence exatamente hoje — é o que faz a tela Resumo ter o que mostrar em "Hoje"
+  // vence exatamente hoje — é o que faz o Extrato ter o que mostrar no filtro "Hoje"
   const fSeguro = fixo('Seguro do carro', 214.00, hojeDia, 'cat-transporte', viaNubank);
   state.gastosFixos = [fAluguel, fCondominio, fPlano, fEnergia, fInternet, fSeguro, fAcademia, fCelular, fNetflix, fSpotify];
 

@@ -615,16 +615,19 @@ function buildTransacoes(start, end) {
     // gastos fixos/variáveis vinculados a cartão (g.cartaoId) não entram aqui como linha própria — já
     // aparecem juntos na linha "Fatura X" abaixo, exatamente como as compras de cartão de antes.
     ...months.flatMap((m) => gastosFixosForMonth(m)).filter((g) => !g.cartaoId).map((g) => ({
-      key: `gf:${g.id}:${g.mesRef}`, data: g.vencimentoISO, descricao: g.nome, tipo: 'Gasto fixo',
+      key: `gf:${g.id}:${g.mesRef}`, origem: 'fixo', refId: g.id, mes: g.mesRef,
+      data: g.vencimentoISO, descricao: g.nome, tipo: 'Gasto fixo',
       bankId: g.pago && g.pagamento ? g.pagamento.bankId : g.bankId, categoryId: g.categoryId,
       status: g.pago ? 'pago' : 'pendente', valor: g.pago && g.pagamento ? g.pagamento.valor : g.valor, sinal: -1,
     })),
     ...months.flatMap((m) => gastosVariaveisForMonth(m)).filter((g) => !g.cartaoId).map((g) => ({
-      key: `gv:${g.id}`, data: g.data, descricao: g.descricao, tipo: 'Gasto variável',
+      key: `gv:${g.id}`, origem: 'variavel', refId: g.id, mes: g.mesRef,
+      data: g.data, descricao: g.descricao, tipo: 'Gasto variável',
       bankId: g.bankId, categoryId: g.categoryId, status: g.status, valor: g.valor, sinal: -1,
     })),
     ...months.flatMap((m) => recebimentosForMonth(m)).map((r) => ({
-      key: `rc:${r.id}:${r.mesRef}`, data: r.dataOcorrencia, descricao: r.descricao, tipo: 'Recebimento',
+      key: `rc:${r.id}:${r.mesRef}`, origem: 'recebimento', refId: r.id, mes: r.mesRef,
+      data: r.dataOcorrencia, descricao: r.descricao, tipo: 'Recebimento',
       bankId: r.bankId, categoryId: r.categoryId, status: r.recebido ? 'recebido' : 'pendente', valor: r.valor, sinal: 1,
     })),
     // fatura do cartão vira 1 lançamento por mês (é o que de fato sai do banco) — as compras individuais
@@ -634,7 +637,8 @@ function buildTransacoes(start, end) {
       if (valor <= 0) return null;
       const dia = clampDayToMonth(m, c.diaVencimento);
       return {
-        key: `cc:${c.id}:${m}`, data: `${m}-${String(dia).padStart(2, '0')}`, descricao: `Fatura ${c.nome}`, tipo: 'Cartão de crédito',
+        key: `cc:${c.id}:${m}`, origem: 'cartao', refId: c.id, mes: m,
+        data: `${m}-${String(dia).padStart(2, '0')}`, descricao: `Fatura ${c.nome}`, tipo: 'Cartão de crédito',
         bankId: c.bankId, categoryId: null, status: isCartaoFaturaPaga(c.id, m) ? 'pago' : 'pendente', valor, sinal: -1,
       };
     }).filter(Boolean)),
