@@ -23,6 +23,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+
+      # Carimba o codigo do commit em todo .js/.css chamado pelos HTML: sem isso o
+      # navegador segura a versao antiga por ate 10 minutos (Cache-Control: max-age=600)
+      # e a pessoa nao ve a correcao que acabou de subir. So a copia publicada muda --
+      # os arquivos do repositorio continuam sem sufixo nenhum.
+      - name: Carimba a versao nos arquivos (mata o cache do navegador)
+        run: |
+          V=${GITHUB_SHA::7}
+          find . -name '*.html' -not -path './.git/*' -print0 | xargs -0 --no-run-if-empty sed -i -E "s#(src|href)=\"([^\":]*\.(js|css))\"#\1=\"\2?v=$V\"#g"
+          echo "--- conferencia ---"
+          grep -o 'assets/js/[a-z]*\.js?v=[0-9a-f]*' index.html | head -3
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
