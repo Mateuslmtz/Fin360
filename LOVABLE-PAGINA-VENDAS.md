@@ -55,10 +55,16 @@ Você paga uma vez e usa o Fin360° por 12 meses. Não existe cobrança automát
 | Elemento | Texto |
 |---|---|
 | Selo | `Pagamento único` |
-| Preço antigo, riscado | `De R$ 147,00` |
-| Parcela, em destaque grande e verde | `11x de R$ 5,32` |
-| Abaixo, com o valor em negrito | `Ou R$ 47,90 à vista` |
-| Linha pequena e discreta | `Pague uma vez, use por 1 ano` |
+| Preço antigo, riscado, pequeno | `De R$ 147,00` |
+| **À vista, em destaque grande e verde** | `R$ 47,90` |
+| Logo abaixo, texto médio | `à vista no Pix` |
+| Pequeno e discreto, cor secundária | `ou 11x de R$ 5,32 no cartão` |
+| Linha pequena embaixo | `Pague uma vez, use por 1 ano` |
+
+> **A hierarquia é de propósito: o à vista é o herói, a parcela é rodapé.** Ele pediu a
+> inversão em 15/08/2026 para empurrar o cliente pro Pix. Além de converter melhor, o Pix
+> deixa mais líquido pra ele que o cartão — e o número grande passa a ser o preço de
+> verdade, não uma parcela com juros embutidos. **Não voltar a promover a parcela.**
 
 > **Por que 11x de R$ 5,32 e não outro número.** Conferido no checkout em 15/08/2026: a
 > lista de parcelas da Cakto calcula sobre os R$ 46,91 e mostra `10x de R$ 5,69` /
