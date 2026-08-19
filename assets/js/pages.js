@@ -1016,6 +1016,8 @@ function bancoOuCartaoLabel(item) {
   const meio = MEIO_PAGAMENTO_LABELS[item.meioPagamento];
   return meio ? `${bankName} · ${meio}` : bankName;
 }
+// o bloco "como isso e pago" e igual no gasto variavel e no gasto fixo; o recebimento usa so a
+// parte do banco (bancoFieldHTML), pra que o campo tenha o mesmo rotulo e o mesmo jeito nos tres
 function formaPagamentoHTML(prefix, forma, bankSelected, cartaoSelected) {
   return `
     <div class="field">
@@ -1027,12 +1029,10 @@ function formaPagamentoHTML(prefix, forma, bankSelected, cartaoSelected) {
         <button type="button" class="pill ${forma === 'boleto' ? 'active' : ''}" data-forma="boleto">Boleto</button>
       </div>
     </div>
-    <div class="field" id="${prefix}-banco-field" style="display:${forma !== 'cartao' ? 'block' : 'none'}">
-      <label>Banco vinculado <span class="req">*</span></label>${fieldHTML({ key: `${prefix}-banco`, type: 'select-bank' }, bankSelected)}
-    </div>
+    ${bancoFieldHTML(prefix, bankSelected, 'Conta de onde o dinheiro sai.', `display:${forma !== 'cartao' ? 'block' : 'none'}`)}
     <div class="field" id="${prefix}-cartao-field" style="display:${forma === 'cartao' ? 'block' : 'none'}">
       <label>Cartão <span class="req">*</span></label><select id="${prefix}-cartao">${cartaoOptions(cartaoSelected)}</select>
-      <div class="row-sub" style="margin-top:6px">Entra no resumo da fatura desse cartão — pague tudo de uma vez em "Cartões de crédito".</div>
+      <div class="row-sub" style="margin-top:6px">Entra na fatura desse cartão. A baixa é feita de uma vez na aba Cartões de crédito.</div>
     </div>
   `;
 }
@@ -1159,37 +1159,56 @@ function lancLimparEdicao() {
 }
 
 /* ---- normalização: as três coleções viram uma lista só ----
-   `dataISO` é a data que a tabela MOSTRA e `sortISO` é a que ela ORDENA — nem sempre
-   são a mesma: a parcela 3/10 mostra a data da compra, mas pertence ao mês corrente. */
+   Cada linha guarda:
+   - `dataISO`: a data que a tabela MOSTRA, sempre dentro do mês filtrado (compra/cobrança);
+   - `sortISO`: a data pela qual ela ORDENA (a parcela 3/10 pertence ao mês corrente);
+   - `vencimentoFatura`: só para item de cartão — o dia em que a fatura de fato vence;
+   - `valor`: COM sinal (estorno vem negativo, porque abate das saídas);
+   - `valorExibido`: sempre positivo, que é o que a coluna Valor imprime. */
 function lancamentosDoPeriodo(period) {
   const out = [];
   monthsInPeriod(period).forEach((m) => {
-    recebimentosForMonth(m).forEach((r) => out.push({
+    recebimentosForMonth(m).forEach((r) => out.push(lancNormalizar({
       kind: 'recebimento', id: r.id, mes: m, item: r,
       titulo: r.descricao, categoryId: r.categoryId, observacao: r.observacao,
       dataISO: r.dataOcorrencia, sortISO: r.dataOcorrencia,
       valor: r.valor, entrada: true, pago: r.recebido,
       parcelaLabel: lancParcelaLabel(r.parcelaLabel),
       recorrente: r.tipo === 'recorrente',
-    }));
-    gastosVariaveisForMonth(m).forEach((g) => out.push({
+    })));
+    gastosVariaveisForMonth(m).forEach((g) => out.push(lancNormalizar({
       kind: 'variavel', id: g.id, mes: m, item: g,
       titulo: g.descricao, categoryId: g.categoryId, observacao: g.observacao,
-      dataISO: g.data, sortISO: `${m}-${g.data.slice(8, 10)}`,
+      dataISO: `${m}-${g.data.slice(8, 10)}`, sortISO: `${m}-${g.data.slice(8, 10)}`,
+      vencimentoFatura: g.cartaoId ? g.vencimentoISO : null,
       valor: g.valor, entrada: !!g.estorno, pago: g.pago,
       parcelaLabel: lancParcelaLabel(g.parcelaLabel),
-    }));
-    gastosFixosForMonthAll(m).forEach((g) => out.push({
-      kind: 'fixo', id: g.id, mes: m, item: g,
-      titulo: g.nome, categoryId: g.categoryId, observacao: g.observacao,
-      dataISO: g.vencimentoISO,
-      sortISO: g.vencimentoISO || `${m}-01`,
-      valor: gastoFixoValorEfetivo(g), entrada: false, pago: g.pago,
-      parcelaLabel: g.fimMes ? `${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}` : '',
-      inativo: g.ativo === false,
-    }));
+    })));
+    gastosFixosForMonthAll(m).forEach((g) => {
+      // no cartão, `g.vencimentoISO` já é a data da FATURA (mês seguinte, às vezes) — a coluna Data
+      // precisa mostrar a cobrança dentro do mês filtrado, senão agosto exibe linha de setembro
+      const diaNoMes = gastoFixoVencimentoISO(g, m);
+      out.push(lancNormalizar({
+        kind: 'fixo', id: g.id, mes: m, item: g,
+        titulo: g.nome, categoryId: g.categoryId, observacao: g.observacao,
+        dataISO: g.cartaoId ? diaNoMes : g.vencimentoISO,
+        sortISO: g.cartaoId ? diaNoMes : (g.vencimentoISO || `${m}-01`),
+        vencimentoFatura: g.cartaoId ? g.vencimentoISO : null,
+        valor: gastoFixoValorEfetivo(g), entrada: false, pago: g.pago,
+        parcelaLabel: g.fimMes ? `${monthsDiffStr(gastoFixoCreatedMonth(g), g.mesRef) + 1}/${monthsDiffStr(gastoFixoCreatedMonth(g), g.fimMes)}` : '',
+        inativo: g.ativo === false,
+      }));
+    });
   });
   return out;
+}
+
+// o estorno fica guardado com valor negativo (abate da fatura); na tela ele aparece como número
+// positivo em verde, com a etiqueta "Estorno" — negativo pintado de verde confunde qualquer um
+function lancNormalizar(x) {
+  x.valorExibido = Math.abs(x.valor);
+  x.divisoes = (x.item.divisoes || []).filter((d) => d && d.nome);
+  return x;
 }
 
 // só é etiqueta de parcela se for do tipo "3/10"; recebimento único vem como "1/1" e
@@ -1210,121 +1229,211 @@ function lancTipoTag(kind, extraCls) {
   return `<span class="badge ${t.cls}${extraCls ? ' ' + extraCls : ''}"${extraCls ? ' style="margin-left:8px"' : ''}>${t.label}</span>`;
 }
 
-// como o recebimento se repete: único (uma vez), recorrente (todo mês) ou parcelado (N vezes)
-function recebimentoTipoTag(tipo) {
-  const mapa = {
-    recorrente: { label: 'Recorrente', cls: 'badge-primary' },
-    parcelado: { label: 'Parcelado', cls: 'badge-warning' },
-    unico: { label: 'Único', cls: 'badge-muted' },
-  };
-  const t = mapa[tipo] || mapa.unico;
-  return `<span class="badge ${t.cls}">${t.label}</span>`;
-}
-
-// vinculado a cartão: não tem baixa própria — o pagamento é feito de uma vez na fatura do cartão (aba Cartões)
-function pagoVariavelStatusHTML(g) {
-  if (g.cartaoId) {
-    return `<span class="badge ${g.pago ? 'badge-success' : 'badge-warning'}" title="Pago junto com a fatura do cartão — veja em Cartões de crédito">${g.pago ? 'Pago (fatura)' : 'Na fatura'}</span>`;
-  }
-  return `<button class="badge ${g.status === 'pago' ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-pago-var" data-id="${g.id}">${g.status === 'pago' ? 'Pago' : 'Pendente'}</button>`;
-}
-
+/* ---- status: o MESMO chip nos três tipos ----
+   verde = já entrou/saiu da conta, laranja = ainda em aberto, cinza = quem manda é a fatura do cartão.
+   Clicar no chip dá e tira a baixa; no gasto fixo ele abre a janela de pagamento (banco, data, valor). */
 function lancStatusHTML(x) {
+  const chip = (cls, texto, attrs, title) => `<button type="button" class="badge ${cls} status-chip"${attrs} title="${title}">${cls === 'badge-success' ? icon('checkCircle') + ' ' : ''}${texto}</button>`;
   if (x.kind === 'recebimento') {
-    return `<button class="badge ${x.pago ? 'badge-success' : 'badge-warning'}" style="border:none" data-action="toggle-receb" data-id="${x.id}" data-mes="${x.item.mesRef}">${x.pago ? 'Recebido' : 'Pendente'}</button>`;
+    const attrs = ` data-action="toggle-receb" data-id="${x.id}" data-mes="${x.item.mesRef}"`;
+    return x.pago
+      ? chip('badge-success', 'Recebido', attrs, 'Recebido — clique para desmarcar')
+      : chip('badge-warning', 'A receber', attrs, 'Clique para marcar como recebido');
   }
-  if (x.kind === 'variavel') return pagoVariavelStatusHTML(x.item);
-  return pagoFixoStatusHTML(x.item, x.mes);
-}
-
-function lancAcoesHTML(x) {
-  if (x.kind === 'recebimento') {
-    return `
-      <button class="btn-icon" data-action="edit-receb" data-id="${x.id}">${icon('edit')}</button>
-      <button class="btn-icon" data-action="delete-receb" data-id="${x.id}">${icon('trash')}</button>`;
+  if (x.item.cartaoId) {
+    return `<span class="badge ${x.pago ? 'badge-success' : 'badge-muted'}" title="Sai junto com a fatura do cartão — a baixa é feita na aba Cartões de crédito">${x.pago ? icon('checkCircle') + ' Pago na fatura' : 'Na fatura'}</span>`;
   }
   if (x.kind === 'variavel') {
-    return `
-      <button class="btn-icon" data-action="edit-var" data-id="${x.id}">${icon('edit')}</button>
-      <button class="btn-icon" data-action="delete-var" data-id="${x.id}">${icon('trash')}</button>`;
+    const attrs = ` data-action="toggle-pago-var" data-id="${x.id}"`;
+    return x.pago
+      ? chip('badge-success', 'Pago', attrs, 'Pago — clique para reabrir')
+      : chip('badge-warning', 'A pagar', attrs, 'Clique para dar baixa');
   }
-  return `
-    <button class="btn-icon" data-action="toggle-ativo-fixo" data-id="${x.id}" title="${x.inativo ? 'Reativar' : 'Desativar'}">${icon(x.inativo ? 'checkCircle' : 'alertTriangle')}</button>
-    <button class="btn-icon" data-action="edit-fixo" data-id="${x.id}">${icon('edit')}</button>
-    <button class="btn-icon" data-action="delete-fixo" data-id="${x.id}" data-mes="${x.mes}">${icon('trash')}</button>`;
+  return x.pago
+    ? chip('badge-success', 'Pago', ` data-action="reopen-fixo" data-id="${x.id}" data-mes="${x.mes}"`, 'Pago — clique para reabrir')
+    : chip('badge-warning', 'A pagar', ` data-action="pay-fixo" data-id="${x.id}" data-mes="${x.mes}"`, 'Clique para dar baixa');
+}
+
+// os três tipos têm editar e excluir na mesma ordem; o gasto fixo ganha um botão a mais, o de
+// pausar a recorrência sem apagar o histórico
+function lancAcoesHTML(x) {
+  const sufixo = { recebimento: 'receb', variavel: 'var', fixo: 'fixo' }[x.kind];
+  const pausar = x.kind === 'fixo'
+    ? `<button class="btn-icon" data-action="toggle-ativo-fixo" data-id="${x.id}" title="${x.inativo ? 'Reativar este gasto fixo' : 'Pausar este gasto fixo'}">${icon(x.inativo ? 'checkCircle' : 'alertTriangle')}</button>`
+    : '';
+  return `${pausar}
+    <button class="btn-icon" data-action="edit-${sufixo}" data-id="${x.id}" title="Editar">${icon('edit')}</button>
+    <button class="btn-icon" data-action="delete-${sufixo}" data-id="${x.id}"${x.kind === 'fixo' ? ` data-mes="${x.mes}"` : ''} title="Excluir">${icon('trash')}</button>`;
+}
+
+// linhas de apoio embaixo do título — mesma ordem e mesmo texto para os três tipos
+function lancDetalhesHTML(x) {
+  const linhas = [];
+  if (x.divisoes.length) linhas.push(`${icon('sparkles')} Rachado com ${x.divisoes.map((d) => d.nome).join(', ')} — sua parte é ${formatCurrency(gastoValorMeu(x.item))}`);
+  if (x.vencimentoFatura) linhas.push(`Entra na fatura que vence em ${formatDateBR(x.vencimentoFatura)}`);
+  if (x.kind === 'fixo' && x.item.pagamento) linhas.push(`Pago em ${formatDateBR(x.item.pagamento.data)}`);
+  if (x.observacao) linhas.push(x.observacao);
+  return linhas.map((l) => `<div class="row-sub">${l}</div>`).join('');
 }
 
 function lancamentosTable(list, sort) {
   return `
     <div class="table-wrap"><table class="list-table">
-      <thead><tr><th>Descrição</th><th class="col-opt">Tipo</th><th class="col-opt">Categoria</th>${sortableThHTML('Data', 'data', sort)}<th class="col-opt">Banco</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Descrição</th><th class="col-opt">Tipo</th><th class="col-opt">Categoria</th>${sortableThHTML('Data', 'data', sort)}<th class="col-opt">Pago com</th>${sortableThHTML('Valor', 'valor', sort)}<th>Status</th><th></th></tr></thead>
       <tbody>
-        ${list.map((x) => {
-          const pagamentoFixo = x.kind === 'fixo' && x.item.pagamento ? `<div class="row-sub">Pago em ${formatDateBR(x.item.pagamento.data)}</div>` : '';
-          return `
+        ${list.map((x) => `
           <tr>
             <td>
-              <div class="row-title">${x.titulo}${lancTipoTag(x.kind, 'so-celular')}${x.item.estorno ? `<span class="badge badge-success" style="margin-left:8px">Estorno</span>` : ''}${x.parcelaLabel ? `<span class="badge badge-primary" style="margin-left:8px">${x.parcelaLabel}</span>` : ''}${x.recorrente ? `<span style="margin-left:8px;display:inline-block;vertical-align:middle">${recebimentoTipoTag('recorrente')}</span>` : ''}${x.inativo ? `<span class="badge badge-muted" style="margin-left:8px">Inativo</span>` : ''}</div>
-              ${x.observacao ? `<div class="row-sub">${x.observacao}</div>` : ''}${pagamentoFixo}
+              <div class="row-title">${x.titulo}${lancTipoTag(x.kind, 'so-celular')}${x.item.estorno ? `<span class="badge badge-success" style="margin-left:8px">Estorno</span>` : ''}${x.parcelaLabel ? `<span class="badge badge-primary" style="margin-left:8px" title="Parcela ${x.parcelaLabel.replace('/', ' de ')}">${x.parcelaLabel}</span>` : ''}${x.recorrente ? `<span class="badge badge-primary" style="margin-left:8px">Todo mês</span>` : ''}${x.inativo ? `<span class="badge badge-muted" style="margin-left:8px">Pausado</span>` : ''}</div>
+              ${lancDetalhesHTML(x)}
             </td>
             <td class="col-opt">${lancTipoTag(x.kind)}</td>
             <td class="col-opt">${categoryTag(x.categoryId)}</td>
             <td>${x.dataISO ? formatDateCell(x.dataISO) : '<span class="row-sub">—</span>'}</td>
             <td class="col-opt">${bancoOuCartaoLabel(x.item)}</td>
-            <td><strong class="${x.entrada ? 'amount-pos' : 'amount-neg'}">${formatCurrency(x.valor)}</strong></td>
+            <td><strong class="${x.entrada ? 'amount-pos' : 'amount-neg'}">${formatCurrency(x.valorExibido)}</strong></td>
             <td>${lancStatusHTML(x)}</td>
             <td><div class="row-actions">${lancAcoesHTML(x)}</div></td>
-          </tr>`;
-        }).join('')}
+          </tr>`).join('')}
       </tbody>
     </table></div>
   `;
 }
 
-/* ---------------- formulário: recebimento ---------------- */
+/* =========================================================================
+   OS TRES FORMULARIOS
+   Recebimento, gasto variavel e gasto fixo seguem exatamente a mesma ordem de campos,
+   os mesmos rotulos e os mesmos textos de erro. O que muda entre eles e so o que
+   realmente e diferente: entrada nao tem forma de pagamento, e gasto fixo repete todo mes.
+
+   Ordem canonica:  Descricao · Valor + Data · Categoria · Onde entra/sai ·
+                    Repeticao · Racha · Observacao · Botao
+   ========================================================================= */
+
+// bloco de banco identico nos tres (mesmo rotulo, mesmo asterisco, mesmo atalho de cadastrar na hora)
+function bancoFieldHTML(prefix, selected, hint, wrapStyle) {
+  return `
+    <div class="field" id="${prefix}-banco-field"${wrapStyle ? ` style="${wrapStyle}"` : ''}>
+      <label>Banco <span class="req">*</span></label>${fieldHTML({ key: `${prefix}-banco`, type: 'select-bank' }, selected)}
+      ${hint ? `<div class="row-sub" style="margin-top:6px">${hint}</div>` : ''}
+    </div>`;
+}
+
+// seletor de repeticao: antes eram tres widgets diferentes pra mesma pergunta (caixa grande no
+// recebimento, pilula no gasto variavel e <select> no gasto fixo). Agora e sempre pilula.
+function repeticaoHTML(prefix, atual, opcoes) {
+  return `
+    <div class="field">
+      <label>Repetição</label>
+      <div class="pill-group" id="${prefix}-rep-group">
+        ${opcoes.map((o) => `<button type="button" class="pill ${atual === o.key ? 'active' : ''}" data-rep="${o.key}" title="${o.hint}">${o.label}</button>`).join('')}
+      </div>
+      <div class="row-sub" style="margin-top:6px" id="${prefix}-rep-hint">${(opcoes.find((o) => o.key === atual) || opcoes[0]).hint}</div>
+    </div>`;
+}
+function wireRepeticao(prefix, opcoes, atual, onChange) {
+  const group = document.getElementById(`${prefix}-rep-group`);
+  if (!group) return;
+  group.querySelectorAll('.pill').forEach((b) => b.onclick = () => {
+    group.querySelectorAll('.pill').forEach((x) => x.classList.toggle('active', x === b));
+    const opt = opcoes.find((o) => o.key === b.dataset.rep);
+    document.getElementById(`${prefix}-rep-hint`).textContent = opt ? opt.hint : '';
+    onChange(b.dataset.rep);
+  });
+}
+
+// campo de parcelas + a conta feita ao vivo. `modo` diz o que o campo Valor significa:
+//   'divide'  -> o valor digitado e o TOTAL e as parcelas o dividem (recebimento e gasto variavel)
+//   'repete'  -> o valor digitado e o de CADA mes e as parcelas multiplicam (gasto fixo)
+// sem esse texto o usuario nunca sabe se 1.200 em 3x vira 3x400 ou 3x1.200 — e e ai que erra
+function parcelasFieldHTML(prefix, visivel, valor, modo) {
+  return `
+    <div class="field" id="${prefix}-parcelas-field" style="display:${visivel ? 'block' : 'none'}">
+      <label>Quantas parcelas?</label>
+      <input type="number" min="${modo === 'repete' ? 1 : 2}" max="480" id="${prefix}-parcelas" placeholder="Ex.: 12" value="${valor || ''}" />
+      <div class="row-sub" style="margin-top:6px" id="${prefix}-parcelas-hint"></div>
+    </div>`;
+}
+function wireParcelasHint(prefix, valorInputId, modo) {
+  const hint = document.getElementById(`${prefix}-parcelas-hint`);
+  const nEl = document.getElementById(`${prefix}-parcelas`);
+  const vEl = document.getElementById(valorInputId);
+  if (!hint || !nEl || !vEl) return;
+  const atualizar = () => {
+    const total = moneyValueFromEl(vEl);
+    const n = parseInt(nEl.value, 10) || 0;
+    if (!total || n < 1) { hint.textContent = modo === 'repete' ? 'A conta aparece nesse número de meses e para sozinha.' : 'O valor acima é o total — as parcelas dividem esse total.'; return; }
+    hint.innerHTML = modo === 'repete'
+      ? `${n}x de <strong style="color:var(--text)">${formatCurrency(total)}</strong> — total de ${formatCurrency(total * n)}.`
+      : `${n}x de <strong style="color:var(--text)">${formatCurrency(valorDaParcela(total, n, 0))}</strong> — o valor acima é o total.`;
+  };
+  nEl.oninput = atualizar;
+  vEl.addEventListener('input', atualizar);
+  atualizar();
+}
+
+// mesmo rodape nos tres: observacao, botao de salvar e o atalho de criar categoria
+function lancRodapeHTML(prefix, editing, rotuloNovo, observacao) {
+  return `
+    <div class="field"><label>Observação <span class="row-sub" style="display:inline">(opcional)</span></label><textarea id="${prefix}-obs" placeholder="Algum detalhe que você queira lembrar depois">${observacao || ''}</textarea></div>
+    <button class="btn btn-primary btn-block" id="${prefix}-save">${editing ? 'Salvar alterações' : rotuloNovo}</button>
+    ${editing ? `<button class="btn btn-ghost btn-block" id="${prefix}-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
+    <div style="margin-top:14px">${collapsibleNewCategory(prefix, { catTipo: prefix === 'rc' ? 'receita' : 'despesa' })}</div>`;
+}
+
+// os erros de preenchimento sao os mesmos nos tres formularios
+function lancFaltaCampo(campos) {
+  for (const c of campos) {
+    if (!c.ok) { toast(c.erro, 'danger'); return true; }
+  }
+  return false;
+}
+
+const REP_RECEBIMENTO = [
+  { key: 'unico', label: 'Uma vez', hint: 'Entra só neste mês.' },
+  { key: 'recorrente', label: 'Todo mês', hint: 'Se repete todo mês, no mesmo dia, até você definir uma data final.' },
+  { key: 'parcelado', label: 'Parcelado', hint: 'O valor total é dividido em parcelas mensais.' },
+];
+const REP_VARIAVEL = [
+  { key: 'unico', label: 'Uma vez', hint: 'Cai inteiro na fatura deste mês.' },
+  { key: 'parcelado', label: 'Parcelado', hint: 'O valor total é dividido em parcelas nas próximas faturas.' },
+];
+const REP_FIXO = [
+  { key: 'sempre', label: 'Todo mês', hint: 'Se repete todo mês, sem data para acabar.' },
+  { key: 'parcelas', label: 'Parcelado', hint: 'Aparece por um número fixo de meses e para sozinho.' },
+];
+
+/* ---------------- 1. recebimento ---------------- */
 function lancFormRecebimentoHTML(editing) {
   return `
-    <div class="field"><label>Descrição</label><input type="text" id="rc-desc" placeholder="Ex.: Salário" value="${editing ? editing.descricao : ''}" /></div>
+    <div class="field"><label>Descrição <span class="req">*</span></label><input type="text" id="rc-desc" placeholder="Ex.: Salário" value="${editing ? editing.descricao : ''}" /></div>
     <div class="field-row">
-      <div class="field"><label>Valor</label>${moneyInputHTML('rc-valor', editing ? editing.valor : '')}</div>
-      <div class="field"><label>Data</label><input type="date" id="rc-data" value="${editing ? editing.data : todayISO()}" /></div>
+      <div class="field"><label>Valor <span class="req">*</span></label>${moneyInputHTML('rc-valor', editing ? editing.valor : '')}</div>
+      <div class="field"><label>Data <span class="req">*</span></label><input type="date" id="rc-data" value="${editing ? editing.data : todayISO()}" /></div>
     </div>
-    <div class="field"><label>Categoria</label>${fieldHTML({ key: 'rc-categoria', type: 'select-category', catTipo: 'receita' }, editing ? editing.categoryId : '')}</div>
-    <div class="field"><label>Banco (obrigatório)</label>${fieldHTML({ key: 'rc-banco', type: 'select-bank' }, editing ? editing.bankId : '')}</div>
-    <div class="field"><label>Observação (opcional)</label><textarea id="rc-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
-    <div class="field">
-      <label>Tipo de recebimento</label>
-      <div class="type-box-group" id="rc-tipo-group">
-        <button type="button" class="type-box ${recebTipo === 'unico' ? 'active' : ''}" data-tipo="unico">${icon('wallet')}<span>Único</span></button>
-        <button type="button" class="type-box ${recebTipo === 'recorrente' ? 'active' : ''}" data-tipo="recorrente">${icon('repeat')}<span>Recorrente</span></button>
-        <button type="button" class="type-box ${recebTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">${icon('layers')}<span>Parcelado</span></button>
-      </div>
-    </div>
-    <div class="field" id="rc-parcelas-field" style="display:${recebTipo === 'parcelado' ? 'block' : 'none'}">
-      <label>Número de parcelas</label><input type="number" min="2" max="48" id="rc-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
-    </div>
+    <div class="field"><label>Categoria <span class="req">*</span></label>${fieldHTML({ key: 'rc-categoria', type: 'select-category', catTipo: 'receita' }, editing ? editing.categoryId : '')}</div>
+    ${bancoFieldHTML('rc', editing ? editing.bankId : '', 'Conta em que o dinheiro entra.')}
+    ${repeticaoHTML('rc', recebTipo, REP_RECEBIMENTO)}
+    ${parcelasFieldHTML('rc', recebTipo === 'parcelado', editing ? editing.parcelas : '', 'divide')}
     <div class="field" id="rc-datafinal-field" style="display:${recebTipo === 'recorrente' ? 'block' : 'none'}">
-      <label>Data final (opcional — deixe em branco para infinito)</label>
+      <label>Repetir até <span class="row-sub" style="display:inline">(opcional)</span></label>
       <input type="date" id="rc-data-final" value="${editing ? (editing.dataFinal || '') : ''}" />
-      <div class="row-sub" style="margin-top:6px">Será replicado todo mês no dia <strong id="rc-dia-replica" style="color:var(--text)">${(editing ? editing.data : todayISO()).slice(8, 10)}</strong>.</div>
+      <div class="row-sub" style="margin-top:6px">Deixe em branco para repetir sem prazo. Cai todo dia <strong id="rc-dia-replica" style="color:var(--text)">${(editing ? editing.data : todayISO()).slice(8, 10)}</strong>.</div>
     </div>
-    <button class="btn btn-primary btn-block" id="rc-save">${editing ? 'Salvar alterações' : 'Registrar recebimento'}</button>
-    ${editing ? `<button class="btn btn-ghost btn-block" id="rc-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
-    <div style="margin-top:14px">${collapsibleNewCategory('rc', { catTipo: 'receita' })}</div>
+    ${lancRodapeHTML('rc', editing, 'Adicionar recebimento', editing ? editing.observacao : '')}
   `;
 }
 
 function lancWireRecebimento(editing, draw) {
-  document.getElementById('rc-tipo-group').querySelectorAll('.type-box').forEach((b) => b.onclick = () => {
-    recebTipo = b.dataset.tipo;
-    document.getElementById('rc-tipo-group').querySelectorAll('.type-box').forEach((x) => x.classList.toggle('active', x === b));
-    document.getElementById('rc-parcelas-field').style.display = recebTipo === 'parcelado' ? 'block' : 'none';
-    document.getElementById('rc-datafinal-field').style.display = recebTipo === 'recorrente' ? 'block' : 'none';
+  wireRepeticao('rc', REP_RECEBIMENTO, recebTipo, (v) => {
+    recebTipo = v;
+    document.getElementById('rc-parcelas-field').style.display = v === 'parcelado' ? 'block' : 'none';
+    document.getElementById('rc-datafinal-field').style.display = v === 'recorrente' ? 'block' : 'none';
   });
+  wireParcelasHint('rc', 'rc-valor', 'divide');
   document.getElementById('rc-data').oninput = (e) => {
-    const dia = e.target.value ? e.target.value.slice(8, 10) : '';
     const diaEl = document.getElementById('rc-dia-replica');
-    if (diaEl && dia) diaEl.textContent = dia;
+    if (diaEl && e.target.value) diaEl.textContent = e.target.value.slice(8, 10);
   };
 
   document.getElementById('rc-save').onclick = () => {
@@ -1333,64 +1442,61 @@ function lancWireRecebimento(editing, draw) {
     const data = document.getElementById('rc-data').value;
     const bankId = document.getElementById('f-rc-banco').value;
     const categoryId = document.getElementById('f-rc-categoria').value;
-    if (!descricao) { toast('Informe a descrição', 'danger'); return; }
-    if (!valor) { toast('Informe um valor', 'danger'); return; }
-    if (!bankId) { toast('Selecione o banco', 'danger'); return; }
-    if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
+    if (lancFaltaCampo([
+      { ok: descricao, erro: 'Escreva uma descrição' },
+      { ok: valor, erro: 'Informe o valor' },
+      { ok: data, erro: 'Informe a data' },
+      { ok: categoryId, erro: 'Escolha a categoria' },
+      { ok: bankId, erro: 'Escolha o banco' },
+    ])) return;
     const payload = {
-      descricao, valor, data, bankId,
-      categoryId,
+      descricao, valor, data, bankId, categoryId,
       observacao: document.getElementById('rc-obs').value,
       tipo: recebTipo,
       parcelas: recebTipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('rc-parcelas').value, 10) || 2) : 1,
       dataFinal: recebTipo === 'recorrente' ? (document.getElementById('rc-data-final').value || null) : null,
     };
-    if (editing) { updateRecebimento(editing.id, payload); toast('Recebimento atualizado', 'success'); editingRecebId = null; }
-    else {
+    if (editing) {
+      updateRecebimento(editing.id, payload);
+      toast('Recebimento atualizado', 'success');
+      editingRecebId = null;
+    } else {
       const novo = Store.add('recebimentos', payload);
       if (!novo) return;
       if (data <= todayISO()) toggleRecebimentoRecebido(novo.id, data.slice(0, 7));
-      toast('Recebimento registrado', 'success');
+      toast('Recebimento adicionado', 'success');
     }
+    recebTipo = 'unico';
     draw();
   };
-  if (editing) document.getElementById('rc-cancel-edit').onclick = () => { editingRecebId = null; draw(); };
+  if (editing) document.getElementById('rc-cancel-edit').onclick = () => { editingRecebId = null; recebTipo = 'unico'; draw(); };
 
   wireQuickAddButtons([{ key: 'rc-categoria', type: 'select-category', catTipo: 'receita' }, { key: 'rc-banco', type: 'select-bank' }]);
   wireCollapsibleNewCategory('rc', draw, { catTipo: 'receita' });
 }
 
-/* ---------------- formulário: gasto variável ---------------- */
+/* ---------------- 2. gasto variável ---------------- */
 function lancFormVariavelHTML(editing) {
+  const noCartao = gvForma === 'cartao';
   return `
-    <div class="field"><label>Descrição</label><input type="text" id="gv-desc" placeholder="Ex.: Mercado" value="${editing ? editing.descricao : ''}" /></div>
+    <div class="field"><label>Descrição <span class="req">*</span></label><input type="text" id="gv-desc" placeholder="Ex.: Mercado" value="${editing ? editing.descricao : ''}" /></div>
     <div class="field-row">
-      <div class="field"><label>Valor</label>${moneyInputHTML('gv-valor', editing ? Math.abs(editing.valor) : '')}</div>
-      <div class="field"><label>Data</label><input type="date" id="gv-data" value="${editing ? editing.data : todayISO()}" /></div>
+      <div class="field"><label>Valor <span class="req">*</span></label>${moneyInputHTML('gv-valor', editing ? Math.abs(editing.valor) : '')}</div>
+      <div class="field"><label>Data <span class="req">*</span></label><input type="date" id="gv-data" value="${editing ? editing.data : todayISO()}" /></div>
     </div>
-    <div class="field"><label>Categoria</label>${fieldHTML({ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
+    <div class="field"><label>Categoria <span class="req">*</span></label>${fieldHTML({ key: 'gv-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
     ${formaPagamentoHTML('gv', gvForma, editing ? editing.bankId : '', editing ? editing.cartaoId : '')}
-    <div id="gv-tipo-wrap" style="display:${gvForma === 'cartao' ? 'block' : 'none'}">
-      <div class="field"><label class="checkbox-row"><input type="checkbox" id="gv-estorno" ${gvEstorno ? 'checked' : ''} /> É um estorno (crédito na fatura)</label></div>
+    <div class="row-sub" id="gv-sem-parcela" style="margin:-8px 0 14px;display:${noCartao ? 'none' : 'block'}">Parcelamento existe só no cartão. Para uma conta parcelada no boleto ou no débito, use <strong style="color:var(--text)">Gasto fixo &rarr; Parcelado</strong>.</div>
+    <div id="gv-tipo-wrap" style="display:${noCartao ? 'block' : 'none'}">
+      <div class="field"><label class="checkbox-row"><input type="checkbox" id="gv-estorno" ${gvEstorno ? 'checked' : ''} /> É um estorno (dinheiro voltando pra fatura)</label></div>
       <div id="gv-compra-wrap" style="display:${gvEstorno ? 'none' : 'block'}">
-        <div class="field">
-          <label>Tipo de compra</label>
-          <div class="pill-group" id="gv-tipo-group">
-            <button type="button" class="pill ${gvTipo === 'unico' ? 'active' : ''}" data-tipo="unico">Único</button>
-            <button type="button" class="pill ${gvTipo === 'parcelado' ? 'active' : ''}" data-tipo="parcelado">Parcelado</button>
-          </div>
-        </div>
-        <div class="field" id="gv-parcelas-field" style="display:${gvTipo === 'parcelado' ? 'block' : 'none'}">
-          <label>Número de parcelas</label><input type="number" min="2" max="48" id="gv-parcelas" value="${editing ? editing.parcelas || 2 : 2}" />
-        </div>
+        ${repeticaoHTML('gv', gvTipo, REP_VARIAVEL)}
+        ${parcelasFieldHTML('gv', gvTipo === 'parcelado', editing ? editing.parcelas : '', 'divide')}
       </div>
-      <div class="row-sub" style="margin:-8px 0 14px">${gvEstorno ? 'Abate esse valor da fatura do cartão no mês do lançamento.' : 'Conta na fatura do mês da compra — o vencimento mostrado é a data real da fatura desse cartão (considerando o fechamento).'}</div>
+      ${gvEstorno ? '<div class="row-sub" style="margin:-8px 0 14px">Abate esse valor da fatura do mês do lançamento.</div>' : ''}
     </div>
-    <div id="gv-racha-wrap" style="display:${gvForma === 'cartao' && !gvEstorno ? 'block' : 'none'}">${divisoesBoxHTML('gv', editing ? editing.divisoes : [])}</div>
-    <div class="field"><label>Observação (opcional)</label><textarea id="gv-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
-    <button class="btn btn-primary btn-block" id="gv-save">${editing ? 'Salvar alterações' : 'Adicionar lançamento'}</button>
-    ${editing ? `<button class="btn btn-ghost btn-block" id="gv-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
-    <div style="margin-top:14px">${collapsibleNewCategory('gv', { catTipo: 'despesa' })}</div>
+    <div id="gv-racha-wrap" style="display:${noCartao && !gvEstorno ? 'block' : 'none'}">${divisoesBoxHTML('gv', editing ? editing.divisoes : [])}</div>
+    ${lancRodapeHTML('gv', editing, 'Adicionar gasto variável', editing ? editing.observacao : '')}
   `;
 }
 
@@ -1404,11 +1510,13 @@ function lancWireVariavel(editing, draw) {
     const cartaoId = gvForma === 'cartao' ? document.getElementById('gv-cartao').value : null;
     const meioPagamento = gvForma !== 'cartao' ? gvForma : null;
     const estorno = gvForma === 'cartao' && gvEstorno;
-    if (!descricao) { toast('Informe a descrição', 'danger'); return; }
-    if (!valor) { toast('Informe um valor', 'danger'); return; }
-    if (gvForma !== 'cartao' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
-    if (gvForma === 'cartao' && !cartaoId) { toast('Selecione o cartão', 'danger'); return; }
-    if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
+    if (lancFaltaCampo([
+      { ok: descricao, erro: 'Escreva uma descrição' },
+      { ok: valor, erro: 'Informe o valor' },
+      { ok: data, erro: 'Informe a data' },
+      { ok: categoryId, erro: 'Escolha a categoria' },
+      { ok: gvForma === 'cartao' ? cartaoId : bankId, erro: gvForma === 'cartao' ? 'Escolha o cartão' : 'Escolha o banco' },
+    ])) return;
     if (estorno) valor = -valor; // estorno abate da fatura, então guardamos como valor negativo
     const tipo = (cartaoId && !estorno) ? gvTipo : 'unico';
     const parcelas = tipo === 'parcelado' ? Math.max(2, parseInt(document.getElementById('gv-parcelas').value, 10) || 2) : 1;
@@ -1418,8 +1526,8 @@ function lancWireVariavel(editing, draw) {
       categoryId,
       observacao: document.getElementById('gv-obs').value,
     };
-    if (editing) { updateGastoVariavel(editing.id, payload); toast('Lançamento atualizado', 'success'); editingVariavelId = null; }
-    else { addGastoVariavel(payload); toast(estorno ? 'Estorno lançado' : 'Lançamento adicionado', 'success'); }
+    if (editing) { updateGastoVariavel(editing.id, payload); toast('Gasto variável atualizado', 'success'); editingVariavelId = null; }
+    else { addGastoVariavel(payload); toast(estorno ? 'Estorno adicionado' : 'Gasto variável adicionado', 'success'); }
     gvForma = 'pix'; gvTipo = 'unico'; gvEstorno = false;
     draw();
   };
@@ -1429,6 +1537,7 @@ function lancWireVariavel(editing, draw) {
   wireCollapsibleNewCategory('gv', draw, { catTipo: 'despesa' });
   wireFormaPagamento('gv', (v) => { gvForma = v; }, (forma) => {
     document.getElementById('gv-tipo-wrap').style.display = forma === 'cartao' ? 'block' : 'none';
+    document.getElementById('gv-sem-parcela').style.display = forma === 'cartao' ? 'none' : 'block';
     document.getElementById('gv-racha-wrap').style.display = forma === 'cartao' && !gvEstorno ? 'block' : 'none';
   });
   if (document.getElementById('gv-estorno')) document.getElementById('gv-estorno').onchange = (e) => {
@@ -1437,98 +1546,94 @@ function lancWireVariavel(editing, draw) {
     document.getElementById('gv-racha-wrap').style.display = gvEstorno ? 'none' : 'block';
   };
   wireDivisoesBox('gv', 'gv-valor');
-  if (document.getElementById('gv-tipo-group')) document.getElementById('gv-tipo-group').querySelectorAll('.pill').forEach((b) => b.onclick = () => {
-    gvTipo = b.dataset.tipo;
-    document.getElementById('gv-tipo-group').querySelectorAll('.pill').forEach((x) => x.classList.toggle('active', x === b));
-    document.getElementById('gv-parcelas-field').style.display = gvTipo === 'parcelado' ? 'block' : 'none';
+  wireRepeticao('gv', REP_VARIAVEL, gvTipo, (v) => {
+    gvTipo = v;
+    document.getElementById('gv-parcelas-field').style.display = v === 'parcelado' ? 'block' : 'none';
   });
+  wireParcelasHint('gv', 'gv-valor', 'divide');
 }
 
-/* ---------------- formulário: gasto fixo ---------------- */
+/* ---------------- 3. gasto fixo ---------------- */
 function lancFormFixoHTML(editing) {
+  const parcelado = !!(editing && editing.fimMes);
+  const nCartao = ffForma === 'cartao';
   return `
-    <div class="field"><label>Nome</label><input type="text" id="ff-nome" placeholder="Ex.: Aluguel" value="${editing ? editing.nome : ''}" /></div>
+    <div class="field"><label>Descrição <span class="req">*</span></label><input type="text" id="ff-nome" placeholder="Ex.: Aluguel" value="${editing ? editing.nome : ''}" /></div>
     <div class="field-row">
-      <div class="field"><label>Valor</label>${moneyInputHTML('ff-valor', editing ? editing.valor : '')}</div>
-      <div class="field"><label id="ff-dia-label">${ffForma === 'cartao' ? 'Dia da cobrança' : 'Dia do vencimento'}</label><input type="number" min="1" max="31" id="ff-dia" placeholder="Ex.: 10" value="${editing ? editing.diaVencimento : ''}" /></div>
+      <div class="field"><label>Valor por mês <span class="req">*</span></label>${moneyInputHTML('ff-valor', editing ? editing.valor : '')}</div>
+      <div class="field"><label id="ff-dia-label">${nCartao ? 'Dia da cobrança' : 'Dia do vencimento'} <span class="req">*</span></label><input type="number" min="1" max="31" id="ff-dia" placeholder="Ex.: 10" value="${editing ? editing.diaVencimento : ''}" /></div>
     </div>
-    <div class="row-sub" id="ff-dia-hint" style="margin:-8px 0 14px;display:${ffForma === 'cartao' ? 'block' : 'none'}">Só de referência — o vencimento mostrado é a data real da fatura desse cartão (considerando o fechamento).</div>
-    <div class="field"><label>Ativo desde</label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(lancPeriod)}" /></div>
-    <div class="row-sub" style="margin:-8px 0 14px">Segue o mês escolhido no filtro da lista — mude aqui se quiser lançar/pagar meses passados deste gasto fixo.</div>
-    <div class="field-row" style="grid-template-columns:1.3fr 1fr">
-      <div class="field"><label>Duração</label><select id="ff-duracao">
-        <option value="sempre" ${editing && editing.fimMes ? '' : 'selected'}>Recorrente</option>
-        <option value="parcelas" ${editing && editing.fimMes ? 'selected' : ''}>Parcelas (nº fixo)</option>
-      </select></div>
-      <div class="field" id="ff-parcelas-field" style="display:${editing && editing.fimMes ? 'block' : 'none'}"><label>Quantas parcelas?</label><input type="number" min="1" max="480" id="ff-parcelas" placeholder="Ex.: 12" value="${editing && editing.fimMes ? monthsDiffStr(gastoFixoCreatedMonth(editing), editing.fimMes) : ''}" /></div>
-    </div>
-    <div class="row-sub" style="margin:-8px 0 14px">Ex.: 12 parcelas — a conta aparece por 12 meses a partir do "Ativo desde" e para sozinha.</div>
-    <div class="field"><label>Categoria</label>${fieldHTML({ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
-    <div class="field" style="display:flex;align-items:center;padding-top:4px"><label class="checkbox-row"><input type="checkbox" id="ff-ativo" ${!editing || editing.ativo !== false ? 'checked' : ''} /> Ativo (recorrente todo mês)</label></div>
+    <div class="row-sub" id="ff-dia-hint" style="margin:-8px 0 14px;display:${nCartao ? 'block' : 'none'}">Só de referência — quem manda é a data real da fatura desse cartão.</div>
+    <div class="field"><label>Categoria <span class="req">*</span></label>${fieldHTML({ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, editing ? editing.categoryId : '')}</div>
     ${formaPagamentoHTML('ff', ffForma, editing ? editing.bankId : '', editing ? editing.cartaoId : '')}
-    <div id="ff-racha-wrap" style="display:${ffForma === 'cartao' ? 'block' : 'none'}">${divisoesBoxHTML('ff', editing ? editing.divisoes : [])}</div>
-    <div class="field"><label>Observação (opcional)</label><textarea id="ff-obs" placeholder="Observação (opcional)">${editing ? (editing.observacao || '') : ''}</textarea></div>
-    <button class="btn btn-primary btn-block" id="ff-save">${editing ? 'Salvar alterações' : 'Salvar gasto fixo'}</button>
-    ${editing ? `<button class="btn btn-ghost btn-block" id="ff-cancel-edit" style="margin-top:8px">Cancelar edição</button>` : ''}
-    <div style="margin-top:14px">${collapsibleNewCategory('ff', { catTipo: 'despesa' })}</div>
+    ${repeticaoHTML('ff', parcelado ? 'parcelas' : 'sempre', REP_FIXO)}
+    ${parcelasFieldHTML('ff', parcelado, parcelado ? monthsDiffStr(gastoFixoCreatedMonth(editing), editing.fimMes) : '', 'repete')}
+    <div class="field"><label>Começa em <span class="req">*</span></label><input type="month" id="ff-inicio" value="${editing ? gastoFixoCreatedMonth(editing) : gfPeriodMonth(lancPeriod)}" /></div>
+    <div class="row-sub" style="margin:-8px 0 14px">Vem do mês escolhido no filtro da lista. Mude aqui se quiser lançar meses passados.</div>
+    <div id="ff-racha-wrap" style="display:${nCartao ? 'block' : 'none'}">${divisoesBoxHTML('ff', editing ? editing.divisoes : [])}</div>
+    ${editing ? `<div class="field"><label class="checkbox-row"><input type="checkbox" id="ff-ativo" ${editing.ativo !== false ? 'checked' : ''} /> Lançamento ativo (desmarque para pausar sem apagar o histórico)</label></div>` : ''}
+    ${lancRodapeHTML('ff', editing, 'Adicionar gasto fixo', editing ? editing.observacao : '')}
   `;
 }
 
 function lancWireFixo(editing, draw) {
-  document.getElementById('ff-duracao').onchange = (e) => {
-    document.getElementById('ff-parcelas-field').style.display = e.target.value === 'parcelas' ? 'block' : 'none';
-  };
+  let ffDuracao = editing && editing.fimMes ? 'parcelas' : 'sempre';
+  wireRepeticao('ff', REP_FIXO, ffDuracao, (v) => {
+    ffDuracao = v;
+    document.getElementById('ff-parcelas-field').style.display = v === 'parcelas' ? 'block' : 'none';
+  });
+  wireParcelasHint('ff', 'ff-valor', 'repete');
+
   document.getElementById('ff-save').onclick = () => {
     const nome = document.getElementById('ff-nome').value.trim();
     const valor = moneyValue('ff-valor');
-    const diaVencimento = Math.min(31, Math.max(1, parseInt(document.getElementById('ff-dia').value, 10) || 1));
-    const inicioMesInformado = document.getElementById('ff-inicio').value || currentMonthStr();
+    const diaInformado = parseInt(document.getElementById('ff-dia').value, 10);
+    const diaVencimento = Math.min(31, Math.max(1, diaInformado || 1));
+    const inicioMes = document.getElementById('ff-inicio').value || currentMonthStr();
     const categoryId = document.getElementById('f-ff-categoria').value;
-    const duracao = document.getElementById('ff-duracao').value;
     const nParcelas = parseInt(document.getElementById('ff-parcelas').value, 10) || 0;
     const bankId = ffForma !== 'cartao' ? document.getElementById('f-ff-banco').value : null;
     const cartaoId = ffForma === 'cartao' ? document.getElementById('ff-cartao').value : null;
     const meioPagamento = ffForma !== 'cartao' ? ffForma : null;
-    if (!nome) { toast('Informe o nome do gasto fixo', 'danger'); return; }
-    if (!valor) { toast('Informe um valor', 'danger'); return; }
-    if (ffForma !== 'cartao' && !bankId) { toast('Selecione o banco vinculado', 'danger'); return; }
-    if (ffForma === 'cartao' && !cartaoId) { toast('Selecione o cartão', 'danger'); return; }
-    if (!categoryId) { toast('Selecione a categoria', 'danger'); return; }
-    if (duracao === 'parcelas' && nParcelas < 1) { toast('Informe o número de parcelas', 'danger'); return; }
-    const inicioMes = inicioMesInformado;
+    if (lancFaltaCampo([
+      { ok: nome, erro: 'Escreva uma descrição' },
+      { ok: valor, erro: 'Informe o valor' },
+      { ok: diaInformado, erro: 'Informe o dia do vencimento' },
+      { ok: categoryId, erro: 'Escolha a categoria' },
+      { ok: ffForma === 'cartao' ? cartaoId : bankId, erro: ffForma === 'cartao' ? 'Escolha o cartão' : 'Escolha o banco' },
+      { ok: ffDuracao !== 'parcelas' || nParcelas >= 1, erro: 'Informe quantas parcelas' },
+    ])) return;
     const divisoes = cartaoId ? readDivisoesIfChecked('ff') : [];
     const payload = {
       nome, valor, diaVencimento, inicioMes, bankId, cartaoId, meioPagamento, divisoes,
       categoryId,
       // fimMes é exclusivo: 12 parcelas a partir de jul/2026 => aparece de jul/2026 a jun/2027
-      fimMes: duracao === 'parcelas' ? monthAddStr(inicioMes, nParcelas) : null,
-      ativo: document.getElementById('ff-ativo').checked,
+      fimMes: ffDuracao === 'parcelas' ? monthAddStr(inicioMes, nParcelas) : null,
+      ativo: editing ? document.getElementById('ff-ativo').checked : true,
       observacao: document.getElementById('ff-obs').value,
     };
     if (editing) {
-      const valorMudou = valor !== editing.valor || diaVencimento !== editing.diaVencimento || cartaoId !== (editing.cartaoId || null);
-      if (valorMudou) {
+      const mudouOQueAfetaOPassado = valor !== editing.valor || diaVencimento !== editing.diaVencimento || cartaoId !== (editing.cartaoId || null);
+      if (mudouOQueAfetaOPassado) {
         aplicarAlteracaoGastoFixoModal(editing, lancMesReferencia(), payload, () => { editingFixoId = null; ffForma = 'pix'; draw(); });
-      } else {
-        Store.update('gastosFixos', editing.id, payload);
-        toast('Gasto fixo atualizado', 'success');
-        editingFixoId = null;
-        ffForma = 'pix';
-        draw();
+        return;
       }
+      Store.update('gastosFixos', editing.id, payload);
+      toast('Gasto fixo atualizado', 'success');
+      editingFixoId = null;
     } else {
       Store.add('gastosFixos', Object.assign({ historico: [{ id: uid(), mes: inicioMes, valor, diaVencimento }] }, payload));
-      toast('Gasto fixo cadastrado', 'success');
-      ffForma = 'pix';
-      draw();
+      toast('Gasto fixo adicionado', 'success');
     }
+    ffForma = 'pix';
+    draw();
   };
   if (editing) document.getElementById('ff-cancel-edit').onclick = () => { editingFixoId = null; ffForma = 'pix'; draw(); };
 
   wireQuickAddButtons([{ key: 'ff-categoria', type: 'select-category', catTipo: 'despesa' }, { key: 'ff-banco', type: 'select-bank' }]);
   wireCollapsibleNewCategory('ff', draw, { catTipo: 'despesa' });
   wireFormaPagamento('ff', (v) => { ffForma = v; }, (forma) => {
-    document.getElementById('ff-dia-label').textContent = forma === 'cartao' ? 'Dia da cobrança' : 'Dia do vencimento';
+    document.getElementById('ff-dia-label').innerHTML = `${forma === 'cartao' ? 'Dia da cobrança' : 'Dia do vencimento'} <span class="req">*</span>`;
     document.getElementById('ff-dia-hint').style.display = forma === 'cartao' ? 'block' : 'none';
     document.getElementById('ff-racha-wrap').style.display = forma === 'cartao' ? 'block' : 'none';
   });
@@ -1554,17 +1659,26 @@ function pageLancamentos(container) {
         || (x.observacao || '').toLowerCase().includes(q)
         || ((Store.categoryById(x.categoryId) || {}).name || '').toLowerCase().includes(q));
     }
-    list = sortList(list, lancFilters.sort, (x) => x.sortISO, (x) => x.valor);
+    list = sortList(list, lancFilters.sort, (x) => x.sortISO, (x) => x.valorExibido);
 
+    // os totais falam da LISTA que está na tela (com os filtros aplicados), por competência: uma
+    // compra no cartão conta no mês em que foi feita. O Dashboard conta pelo mês em que a fatura é
+    // paga — por isso os dois números podem não bater, e por isso não existe "saldo" aqui.
     const entradas = list.filter((x) => x.kind === 'recebimento').reduce((s, x) => s + x.valor, 0);
     const saidas = list.filter((x) => x.kind !== 'recebimento').reduce((s, x) => s + x.valor, 0);
-    const pendente = list.filter((x) => !x.pago && x.kind !== 'recebimento').reduce((s, x) => s + x.valor, 0);
+    const faltaPagar = list.filter((x) => !x.pago && x.kind !== 'recebimento').reduce((s, x) => s + x.valor, 0);
     const usedCatIds = [...new Set(todos.map((x) => x.categoryId).filter(Boolean))];
+    const temFiltro = lancFilters.tipo !== 'todos' || lancFilters.status !== 'todos' || lancFilters.category !== 'todos' || !!lancFilters.search;
 
     const tituloForm = {
       recebimento: editingReceb ? 'Editar recebimento' : 'Novo recebimento',
       variavel: editingVar ? 'Editar gasto variável' : 'Novo gasto variável',
       fixo: editingFixo ? 'Editar gasto fixo' : 'Novo gasto fixo',
+    }[lancTipo];
+    const subtituloForm = {
+      recebimento: 'Dinheiro que entra: salário, freela, aluguel recebido, venda.',
+      variavel: 'Gasto que muda todo mês: mercado, uber, farmácia, restaurante.',
+      fixo: 'Conta que se repete todo mês pelo mesmo valor: aluguel, escola, assinatura.',
     }[lancTipo];
 
     const formHTML = {
@@ -1582,48 +1696,51 @@ function pageLancamentos(container) {
               ${LANC_TIPOS.map((t) => `<button type="button" class="type-box ${lancTipo === t.key ? 'active' : ''}" data-lanctipo="${t.key}">${icon(t.icon)}<span>${t.label}</span></button>`).join('')}
             </div>
           </div>
-          <h3 style="margin-bottom:14px">${tituloForm}</h3>
+          <div style="margin-bottom:14px"><h3>${tituloForm}</h3><div class="panel-sub">${subtituloForm}</div></div>
           ${formHTML}
         </div>
 
         <div>
           <div class="panel">
             <div class="panel-header">
-              <div><h3>Lançamentos</h3><div class="panel-sub">Recebimentos, gastos variáveis e gastos fixos do período.</div></div>
+              <div><h3>Lançamentos</h3><div class="panel-sub">Recebimentos, gastos variáveis e gastos fixos, na ordem em que acontecem.</div></div>
               ${renderPeriodControl('lp', lancPeriod)}
             </div>
-            <div class="chip-row" style="margin-bottom:12px">
-              <button class="chip ${lancFilters.tipo === 'todos' ? 'active' : ''}" data-lanc-tipo-filtro="todos">Todos</button>
+
+            <div class="chip-row" style="margin-bottom:10px">
+              <button class="chip ${lancFilters.tipo === 'todos' ? 'active' : ''}" data-lanc-tipo-filtro="todos">Tudo</button>
               <button class="chip ${lancFilters.tipo === 'recebimento' ? 'active' : ''}" data-lanc-tipo-filtro="recebimento">Recebimentos</button>
               <button class="chip ${lancFilters.tipo === 'variavel' ? 'active' : ''}" data-lanc-tipo-filtro="variavel">Gastos variáveis</button>
               <button class="chip ${lancFilters.tipo === 'fixo' ? 'active' : ''}" data-lanc-tipo-filtro="fixo">Gastos fixos</button>
             </div>
-            <div class="panel-header" style="gap:8px">
-              <select id="lanc-filter-status" style="max-width:190px">
-                <option value="todos" ${lancFilters.status === 'todos' ? 'selected' : ''}>Todos os status</option>
-                <option value="pago" ${lancFilters.status === 'pago' ? 'selected' : ''}>Pagos / recebidos</option>
-                <option value="pendente" ${lancFilters.status === 'pendente' ? 'selected' : ''}>Pendentes</option>
-              </select>
-              <select id="lanc-filter-cat" style="max-width:200px">
-                <option value="todos">Todas categorias</option>
-                ${Store.state.categories.map((c) => `<option value="${c.id}" ${lancFilters.category === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('')}
-              </select>
-            </div>
-            <div class="field" style="max-width:480px">
-              <input type="text" id="lanc-search" placeholder="Buscar por descrição, categoria ou observação..." value="${lancFilters.search}" />
+            <div class="field-row" style="margin-bottom:4px">
+              <div class="field" style="margin-bottom:10px"><input type="text" id="lanc-search" placeholder="Buscar por descrição, categoria ou observação" value="${lancFilters.search}" /></div>
+              <div class="field" style="margin-bottom:10px"><select id="lanc-filter-status">
+                <option value="todos" ${lancFilters.status === 'todos' ? 'selected' : ''}>Pagos e em aberto</option>
+                <option value="pago" ${lancFilters.status === 'pago' ? 'selected' : ''}>Só o que já foi pago/recebido</option>
+                <option value="pendente" ${lancFilters.status === 'pendente' ? 'selected' : ''}>Só o que está em aberto</option>
+              </select></div>
             </div>
             ${usedCatIds.length ? `<div class="chip-row" style="margin-bottom:16px">
-              <button class="chip ${lancFilters.category === 'todos' ? 'active' : ''}" data-lanc-cat="todos">Todas</button>
+              <button class="chip ${lancFilters.category === 'todos' ? 'active' : ''}" data-lanc-cat="todos">Todas as categorias</button>
               ${usedCatIds.map((id) => { const c = Store.categoryById(id); if (!c) return ''; return `<button class="chip ${lancFilters.category === id ? 'active' : ''}" data-lanc-cat="${id}"><span class="dot" style="color:${c.color}"></span>${c.emoji} ${c.name}</button>`; }).join('')}
             </div>` : ''}
+
             <div class="stat-grid">
-              ${statCard({ label: 'Encontrados', value: list.length, tone: 'blue', iconName: 'search' })}
+              ${statCard({ label: 'Lançamentos', value: list.length, tone: 'blue', iconName: 'layers' })}
               ${statCard({ label: 'Entradas', value: formatCurrency(entradas), tone: 'green', iconName: 'arrowUpCircle' })}
               ${statCard({ label: 'Saídas', value: formatCurrency(saidas), tone: 'red', iconName: 'arrowDownCircle' })}
-              ${statCard({ label: 'Saldo', value: formatCurrency(entradas - saidas), tone: 'purple', iconName: 'wallet' })}
-              ${statCard({ label: 'A pagar', value: formatCurrency(pendente), tone: 'orange', iconName: 'alertTriangle' })}
+              ${statCard({ label: 'Falta pagar', value: formatCurrency(faltaPagar), tone: 'orange', iconName: 'alertTriangle' })}
             </div>
-            ${list.length === 0 ? emptyState({ iconName: 'search', title: 'Nenhum lançamento encontrado com os filtros aplicados.' }) : lancamentosTable(list, lancFilters.sort)}
+            <div class="row-sub" style="margin:-4px 0 16px">Compra no cartão conta no mês em que foi feita. O que sai do banco no mês em que a fatura vence você vê na aba Cartões de crédito.</div>
+
+            ${list.length === 0
+              ? emptyState({
+                iconName: temFiltro ? 'search' : 'layers',
+                title: temFiltro ? 'Nada encontrado com esses filtros.' : 'Nenhum lançamento neste período.',
+                text: temFiltro ? 'Tente limpar a busca ou escolher outro tipo.' : 'Use o formulário ao lado para registrar o primeiro.',
+              })
+              : lancamentosTable(list, lancFilters.sort)}
           </div>
         </div>
       </div>
@@ -1647,7 +1764,6 @@ function pageLancamentos(container) {
     container.querySelectorAll('[data-lanc-tipo-filtro]').forEach((b) => b.onclick = () => { lancFilters.tipo = b.dataset.lancTipoFiltro; draw(); });
     container.querySelectorAll('[data-lanc-cat]').forEach((b) => b.onclick = () => { lancFilters.category = b.dataset.lancCat; draw(); });
     document.getElementById('lanc-filter-status').onchange = (e) => { lancFilters.status = e.target.value; draw(); };
-    document.getElementById('lanc-filter-cat').onchange = (e) => { lancFilters.category = e.target.value; draw(); };
     document.getElementById('lanc-search').oninput = (e) => { lancFilters.search = e.target.value; draw(); };
 
     const abrirEdicao = (tipo) => { lancLimparEdicao(); lancTipo = tipo; };
@@ -1663,7 +1779,7 @@ function pageLancamentos(container) {
     container.querySelectorAll('[data-action="toggle-receb"]').forEach((b) => b.onclick = () => { toggleRecebimentoRecebido(b.dataset.id, b.dataset.mes); draw(); });
     container.querySelectorAll('[data-action="delete-receb"]').forEach((b) => b.onclick = () => {
       confirmModal({
-        title: 'Excluir recebimento', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
+        title: 'Excluir recebimento', text: 'O recebimento sai de todos os meses e o saldo do banco é ajustado. Não dá para desfazer.', confirmLabel: 'Excluir', danger: true,
         onConfirm: () => { deleteRecebimento(b.dataset.id); toast('Recebimento excluído', 'success'); if (editingRecebId === b.dataset.id) editingRecebId = null; draw(); },
       });
     });
@@ -1686,8 +1802,8 @@ function pageLancamentos(container) {
     });
     container.querySelectorAll('[data-action="delete-var"]').forEach((b) => b.onclick = () => {
       confirmModal({
-        title: 'Excluir lançamento', text: 'Essa ação não pode ser desfeita. Deseja continuar?', confirmLabel: 'Excluir', danger: true,
-        onConfirm: () => { deleteGastoVariavel(b.dataset.id); toast('Lançamento excluído', 'success'); if (editingVariavelId === b.dataset.id) editingVariavelId = null; draw(); },
+        title: 'Excluir gasto variável', text: 'Se ele já estava pago, o valor volta para o saldo do banco. Não dá para desfazer.', confirmLabel: 'Excluir', danger: true,
+        onConfirm: () => { deleteGastoVariavel(b.dataset.id); toast('Gasto variável excluído', 'success'); if (editingVariavelId === b.dataset.id) editingVariavelId = null; draw(); },
       });
     });
 
@@ -1702,7 +1818,9 @@ function pageLancamentos(container) {
     });
     container.querySelectorAll('[data-action="toggle-ativo-fixo"]').forEach((b) => b.onclick = () => {
       const item = Store.get('gastosFixos', b.dataset.id);
-      Store.update('gastosFixos', b.dataset.id, { ativo: item.ativo === false });
+      const reativando = item.ativo === false;
+      Store.update('gastosFixos', b.dataset.id, { ativo: reativando });
+      toast(reativando ? 'Gasto fixo reativado' : 'Gasto fixo pausado — o histórico continua salvo', 'success');
       draw();
     });
     wirePagoFixoActions(container, draw);
@@ -2146,7 +2264,7 @@ function pageCartoes(container) {
             <div id="cc-novocartao-box" style="display:${novoCartaoOpen ? 'block' : 'none'};margin-top:14px">
               <h3 style="margin-bottom:14px;font-size:14px">${editingCartao ? 'Editar cartão' : 'Cadastrar cartão'}</h3>
               <div class="field"><label>Nome do cartão</label><input type="text" id="cc-nome" placeholder="Ex.: Nubank Ultravioleta" value="${editingCartao ? editingCartao.nome : ''}" /></div>
-              <div class="field"><label>Banco vinculado (paga a fatura) <span class="req">*</span></label>${fieldHTML({ key: 'cc-vinculo', type: 'select-bank' }, editingCartao ? editingCartao.bankId : '')}</div>
+              <div class="field"><label>Banco que paga a fatura <span class="req">*</span></label>${fieldHTML({ key: 'cc-vinculo', type: 'select-bank' }, editingCartao ? editingCartao.bankId : '')}</div>
               <div class="field-row">
                 <div class="field"><label>Limite</label>${moneyInputHTML('cc-limite', editingCartao ? editingCartao.limite : '')}</div>
                 <div class="field">

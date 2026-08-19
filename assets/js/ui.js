@@ -1,17 +1,17 @@
 /* Fin360 — componentes de UI compartilhados */
 
 const NAV_ITEMS = [
-  { route: 'dashboard', label: 'Dashboard', icon: 'grid', subtitle: 'Visão geral · Este mês' },
-  { route: 'resumo', label: 'Resumo', icon: 'checkSquare', subtitle: 'Central operacional · Hoje' },
-  { route: 'lancamentos', label: 'Lançamentos', icon: 'layers', subtitle: 'Recebimentos, gastos variáveis e gastos fixos no mesmo lugar' },
+  { route: 'dashboard', label: 'Dashboard', icon: 'grid', subtitle: 'Como está o seu mês, em números' },
+  { route: 'resumo', label: 'Resumo', icon: 'checkSquare', subtitle: 'O que tem para pagar e receber hoje' },
+  { route: 'lancamentos', label: 'Lançamentos', icon: 'layers', subtitle: 'Tudo o que entra e sai, no mesmo lugar' },
   { route: 'cartoes', label: 'Cartões de crédito', icon: 'card', subtitle: 'Limite, fatura e vencimento dos seus cartões' },
   { route: 'cofrinhos', label: 'Cofrinhos', icon: 'piggy', subtitle: 'Reserva de emergência e metas de poupança' },
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
-  { route: 'bancos', label: 'Bancos', icon: 'bank', subtitle: 'Contas e saldos vinculados' },
-  { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Espelha o Dashboard com os mesmos filtros e regras' },
+  { route: 'bancos', label: 'Bancos', icon: 'bank', subtitle: 'Suas contas e o saldo de cada uma' },
+  { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Todos os lançamentos do período, em uma lista só' },
   { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'O Assistente IA lê seu PDF e cadastra tudo automaticamente', ia: true },
   { route: 'assistente', label: 'Assistente IA', icon: 'sparkles', subtitle: 'Converse, peça relatórios em PDF e gere análises com seus dados reais', ia: true },
-  { route: 'configuracoes', label: 'Configurações', icon: 'settings', subtitle: 'Gerencie sua conta e preferências' },
+  { route: 'configuracoes', label: 'Configurações', icon: 'settings', subtitle: 'Sua conta, seu plano e as preferências do app' },
 ];
 
 function navItemByRoute(route) {

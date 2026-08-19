@@ -255,6 +255,14 @@ function cartaoVencimentoRealISO(cartaoId, mStr, day) {
   return `${vencimentoMes}-${String(vDay).padStart(2, '0')}`;
 }
 /* ============ Gastos variáveis: único ou parcelado (parcelado só faz sentido vinculado a cartão) ============ */
+// divide um total em N parcelas sem perder centavo: as primeiras ficam com o valor arredondado e a
+// última absorve a sobra (1000 em 3x = 333,33 + 333,33 + 333,34, e não 333,33 tres vezes = 999,99)
+function valorDaParcela(total, parcelas, indice) {
+  const n = Math.max(1, parcelas || 1);
+  const base = Math.round((total / n) * 100) / 100;
+  if (indice < n - 1) return base;
+  return Math.round((total - base * (n - 1)) * 100) / 100;
+}
 // mês em que uma cobrança lançada num cartão conta — sempre o mês em que a compra foi feita (o dia de
 // fechamento do cartão é só informativo, não desloca a cobrança pro mês seguinte)
 function gastoVariavelBaseMonth(g) {
@@ -267,8 +275,7 @@ function gastoVariavelOccurrenceInMonth(g, mStr) {
     const parcelas = Math.max(1, g.parcelas || 1);
     for (let i = 0; i < parcelas; i++) {
       if (monthAddStr(baseMonth, i) === mStr) {
-        const valorParcela = Math.round((g.valor / parcelas) * 100) / 100;
-        base = { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
+        base = { valor: valorDaParcela(g.valor, parcelas, i), parcelaLabel: `${i + 1}/${parcelas}` };
         break;
       }
     }
@@ -409,8 +416,7 @@ function recebimentoOccurrenceInMonth(receb, mStr) {
     const parcelas = Math.max(1, receb.parcelas || 1);
     for (let i = 0; i < parcelas; i++) {
       if (monthAddStr(recebMonth, i) === mStr) {
-        const valorParcela = Math.round((receb.valor / parcelas) * 100) / 100;
-        return { valor: valorParcela, parcelaLabel: `${i + 1}/${parcelas}` };
+        return { valor: valorDaParcela(receb.valor, parcelas, i), parcelaLabel: `${i + 1}/${parcelas}` };
       }
     }
     return null;
