@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { route: 'bancos', label: 'Bancos', icon: 'bank', subtitle: 'Suas contas e o saldo de cada uma' },
   { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Todos os lançamentos do período, em uma lista só' },
   { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'O Assistente IA lê seu PDF e cadastra tudo automaticamente', ia: true },
-  { route: 'assistente', label: 'Assistente IA', icon: 'sparkles', subtitle: 'Converse, peça relatórios em PDF e gere análises com seus dados reais', ia: true },
   { route: 'configuracoes', label: 'Configurações', icon: 'settings', subtitle: 'Sua conta, seu plano e as preferências do app' },
 ];
 

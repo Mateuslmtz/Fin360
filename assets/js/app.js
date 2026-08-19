@@ -10,15 +10,17 @@ const ROUTES = {
   'extrato': pageExtrato,
   'planejamento': pagePlanejamento,
   'importar': pageImportar,
-  'assistente': pageAssistente,
   'configuracoes': pageConfiguracoes,
 };
 
-// as três abas antigas viraram uma só: quem tem link/favorito velho cai em Lançamentos
+// as três abas antigas viraram uma só: quem tem link/favorito velho cai em Lançamentos.
+// 'assistente' saiu do ar: a tela existia mas era só maquete, e prometia uma IA que não
+// funciona — pageAssistente continua no pages.js pra quando o recurso for de verdade.
 const ROTAS_ANTIGAS = {
   'recebimentos': 'lancamentos',
   'gastos-variaveis': 'lancamentos',
   'gastos-fixos': 'lancamentos',
+  'assistente': 'dashboard',
 };
 
 function currentRoute() {
