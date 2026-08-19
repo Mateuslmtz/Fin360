@@ -3,10 +3,8 @@
 const ROUTES = {
   'dashboard': pageDashboard,
   'resumo': pageResumo,
-  'gastos-fixos': pageGastosFixos,
-  'gastos-variaveis': pageGastosVariaveis,
+  'lancamentos': pageLancamentos,
   'bancos': pageBancos,
-  'recebimentos': pageRecebimentos,
   'cofrinhos': pageCofrinhos,
   'cartoes': pageCartoes,
   'extrato': pageExtrato,
@@ -16,8 +14,16 @@ const ROUTES = {
   'configuracoes': pageConfiguracoes,
 };
 
+// as três abas antigas viraram uma só: quem tem link/favorito velho cai em Lançamentos
+const ROTAS_ANTIGAS = {
+  'recebimentos': 'lancamentos',
+  'gastos-variaveis': 'lancamentos',
+  'gastos-fixos': 'lancamentos',
+};
+
 function currentRoute() {
   const hash = location.hash.replace('#/', '');
+  if (ROTAS_ANTIGAS[hash]) return ROTAS_ANTIGAS[hash];
   return ROUTES[hash] ? hash : 'dashboard';
 }
 

@@ -81,7 +81,7 @@ function defaultState() {
     // cofrinhos: {id,nome,meta,atual,icone,cor,prazo,observacao,aporteAutomatico,diaAporte,valorAporte,contaOrigemId,ultimoAporteMes,createdAt}
     cofrinhos: [],
     transferencias: [], // {id,deId,paraId,valor,data,observacao,createdAt}
-    // cartoes: {id,nome,bankId,limite,diaFechamento,diaVencimento,cor} — compras são lançadas em Gastos Fixos/Variáveis (cartaoId)
+    // cartoes: {id,nome,bankId,limite,diaFechamento,diaVencimento,cor} — compras são lançadas na aba Lançamentos (cartaoId)
     cartoes: [],
     cartaoCompras: [], // legado — só usado para migrar dados antigos, ver Store.migrarCartaoComprasParaGastos()
     migradoCartaoComprasV2: false,
@@ -797,7 +797,7 @@ const Store = {
 
   // migração única: compras lançadas no modelo antigo (aba Cartões) viram Gasto Fixo (assinatura recorrente)
   // ou Gasto Variável (à vista/parcelado), vinculadas ao cartão via cartaoId — mesmo comportamento de antes,
-  // só que lançadas nas abas de Gastos Fixos/Variáveis em vez de terem uma tela própria dentro de Cartões.
+  // só que lançadas na aba Lançamentos em vez de terem uma tela própria dentro de Cartões.
   migrarCartaoComprasParaGastos() {
     if (this.state.migradoCartaoComprasV2) return;
     this.state.cartaoCompras.forEach((c) => {

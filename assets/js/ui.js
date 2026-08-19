@@ -3,9 +3,7 @@
 const NAV_ITEMS = [
   { route: 'dashboard', label: 'Dashboard', icon: 'grid', subtitle: 'Visão geral · Este mês' },
   { route: 'resumo', label: 'Resumo', icon: 'checkSquare', subtitle: 'Central operacional · Hoje' },
-  { route: 'recebimentos', label: 'Recebimentos', icon: 'download', subtitle: 'Entradas previstas e recebidas' },
-  { route: 'gastos-variaveis', label: 'Gastos variáveis', icon: 'bag', subtitle: 'Criar, editar, excluir e filtrar lançamentos em tempo real' },
-  { route: 'gastos-fixos', label: 'Gastos fixos', icon: 'repeat', subtitle: 'Cadastre custos recorrentes e acompanhe vencimentos' },
+  { route: 'lancamentos', label: 'Lançamentos', icon: 'layers', subtitle: 'Recebimentos, gastos variáveis e gastos fixos no mesmo lugar' },
   { route: 'cartoes', label: 'Cartões de crédito', icon: 'card', subtitle: 'Limite, fatura e vencimento dos seus cartões' },
   { route: 'cofrinhos', label: 'Cofrinhos', icon: 'piggy', subtitle: 'Reserva de emergência e metas de poupança' },
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
