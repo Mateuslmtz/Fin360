@@ -2764,15 +2764,18 @@ function pagePlaceholder(container, route) {
 }
 
 /* =========================================================================
-   IA — telas desenhadas mas desativadas (Importar / Assistente IA)
+   TELAS DESENHADAS MAS AINDA DESATIVADAS
+   Importar dados aparece no menu como previa; pageAssistente ficou fora do menu e do
+   ROUTES (ver app.js) — o codigo segue aqui pro dia em que a IA existir de verdade.
    ========================================================================= */
+// aviso de tela que ainda nao funciona — a de Importar dados e a unica que usa hoje
 function iaBanner() {
   return `
     <div class="panel" style="border-color:var(--primary);background:var(--primary-soft);display:flex;align-items:center;gap:12px">
       <span style="color:var(--primary)">${icon('lock')}</span>
       <div>
-        <strong style="color:var(--text)">Recurso de IA — desativado por enquanto</strong>
-        <div class="row-sub">A tela já está pronta, mas a inteligência artificial só é ligada quando você decidir ativar. Por enquanto, cadastre tudo manualmente nas páginas de Gastos, Recebimentos e Cartões.</div>
+        <strong style="color:var(--text)">Em construção</strong>
+        <div class="row-sub">A tela abaixo é só uma prévia de como a importação vai funcionar — ainda não dá para enviar arquivo. Por enquanto, cadastre pela aba Lançamentos.</div>
       </div>
     </div>
   `;
@@ -2786,7 +2789,7 @@ function pageImportar(container) {
       <div class="grid-2" style="margin-bottom:18px">
         <div class="panel" style="background:var(--bg-input);border-color:var(--primary)">
           <strong style="display:flex;align-items:center;gap:8px">${icon('list')} Extrato bancário</strong>
-          <p class="row-sub" style="margin-top:6px">Receitas vão para "Recebimentos" e despesas para "Gastos variáveis"</p>
+          <p class="row-sub" style="margin-top:6px">Entradas viram recebimentos e saídas viram gastos variáveis, na aba Lançamentos</p>
         </div>
         <div class="panel" style="background:var(--bg-input)">
           <strong style="display:flex;align-items:center;gap:8px">${icon('card')} Fatura de cartão</strong>

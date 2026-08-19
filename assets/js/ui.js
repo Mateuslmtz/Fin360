@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { route: 'planejamento', label: 'Planejamento', icon: 'target', subtitle: 'Metas e orçamento por categoria' },
   { route: 'bancos', label: 'Bancos', icon: 'bank', subtitle: 'Suas contas e o saldo de cada uma' },
   { route: 'extrato', label: 'Extrato', icon: 'list', subtitle: 'Todos os lançamentos do período, em uma lista só' },
-  { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'O Assistente IA lê seu PDF e cadastra tudo automaticamente', ia: true },
+  { route: 'importar', label: 'Importar dados', icon: 'upload', subtitle: 'Traga o extrato do banco em vez de digitar lançamento por lançamento' },
   { route: 'configuracoes', label: 'Configurações', icon: 'settings', subtitle: 'Sua conta, seu plano e as preferências do app' },
 ];
 
