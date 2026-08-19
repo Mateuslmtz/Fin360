@@ -1039,11 +1039,13 @@ const Store = {
 
   // saldo de banco é um livro-razão de verdade: toda baixa/recebimento/transferência move o saldo na hora.
   // isso garante que o saldo de um mês carrega corretamente pro mês seguinte, sem recomputar do zero por período.
+  // arredonda em centavos a cada movimento: somar e subtrair float acumula lixo (9954.449999999999)
+  // e, depois de muitas baixas, esse lixo chega a virar um centavo de diferenca no saldo
   applyBankDelta(bankId, delta) {
     if (!bankId || !delta) return;
     const bank = this.bankById(bankId);
     if (!bank) return;
-    this.update('banks', bankId, { balance: (bank.balance || 0) + delta });
+    this.update('banks', bankId, { balance: Math.round(((bank.balance || 0) + delta) * 100) / 100 });
   },
 
   // aplica os aportes automáticos de cofrinhos ainda não feitos neste mês (dia do aporte já chegou)

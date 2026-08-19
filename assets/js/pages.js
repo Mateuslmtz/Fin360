@@ -2781,38 +2781,431 @@ function iaBanner() {
   `;
 }
 
+/* =========================================================================
+   IMPORTAR DADOS — sem nenhuma IA envolvida
+   Dois caminhos, os dois deterministicos (o que esta no arquivo e o que entra):
+   - OFX: o "arquivo para o Money" que todo banco grande exporta. Cada transacao ja vem
+     etiquetada (data, valor, descricao), entao nao ha nada pra adivinhar.
+   - CSV: a pessoa baixa o modelo daqui, preenche e devolve. Colunas fixas, sem tentar
+     descobrir o layout de cada banco.
+   PDF ficou de fora de proposito: cada banco desenha o extrato do seu jeito e ler na
+   marra vira chute — e chute errado aqui nao da erro, cadastra valor errado.
+   O arquivo e lido no proprio navegador e nada entra no Store antes da conferencia.
+   ========================================================================= */
+
+let impDestino = 'banco';      // 'banco' (extrato) ou 'cartao' (fatura)
+let impBankId = '';
+let impCartaoId = '';
+let impLinhas = null;          // null enquanto nenhum arquivo foi lido
+let impArquivo = '';
+let impSaldoFinal = null;      // saldo de fechamento, quando o OFX traz
+
+const IMP_CSV_COLUNAS = ['data', 'descricao', 'valor', 'tipo', 'categoria'];
+
+/* ---------------- leitura de numero e data ---------------- */
+// aceita 1.234,56 (brasileiro), 1234.56 (ingles), R$, parenteses e sinal negativo
+function impNumero(txt) {
+  let v = String(txt == null ? '' : txt).trim().replace(/R\$/gi, '').replace(/\s/g, '');
+  if (!v) return null;
+  const negativo = v.startsWith('-') || /^\(.*\)$/.test(v);
+  v = v.replace(/[()\-+]/g, '');
+  const virgula = v.lastIndexOf(',');
+  const ponto = v.lastIndexOf('.');
+  v = virgula > ponto ? v.replace(/\./g, '').replace(',', '.') : v.replace(/,/g, '');
+  const n = parseFloat(v);
+  if (!isFinite(n)) return null;
+  return negativo ? -n : n;
+}
+// dd/mm/aaaa, dd-mm-aaaa ou aaaa-mm-dd -> sempre aaaa-mm-dd
+function impData(txt) {
+  const v = String(txt == null ? '' : txt).trim();
+  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (!m) return null;
+  const ano = m[3].length === 2 ? `20${m[3]}` : m[3];
+  return `${ano}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+// arquivo de banco costuma vir em windows-1252; se o utf-8 estragar os acentos, tenta o outro
+function impDecodificar(buffer) {
+  const utf8 = new TextDecoder('utf-8').decode(buffer);
+  if (utf8.indexOf('\uFFFD') === -1) return utf8;
+  try { return new TextDecoder('windows-1252').decode(buffer); } catch (e) { return utf8; }
+}
+
+/* ---------------- OFX ---------------- */
+function impParseOFX(texto) {
+  const linhas = [];
+  const blocos = texto.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) || [];
+  blocos.forEach((b) => {
+    const campo = (tag) => {
+      const m = b.match(new RegExp(`<${tag}>\\s*([^\r\n<]*)`, 'i'));
+      return m ? m[1].trim() : '';
+    };
+    const dt = campo('DTPOSTED').replace(/[^0-9]/g, '').slice(0, 8);
+    const valor = impNumero(campo('TRNAMT'));
+    const descricao = campo('MEMO') || campo('NAME') || 'Sem descrição';
+    if (dt.length !== 8 || valor === null || valor === 0) return;
+    linhas.push({
+      data: `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}`,
+      descricao,
+      valor: Math.abs(valor),
+      entrada: valor > 0,
+    });
+  });
+  const bal = texto.match(/<LEDGERBAL>[\s\S]*?<BALAMT>\s*([^\r\n<]*)/i);
+  return { linhas, saldoFinal: bal ? impNumero(bal[1]) : null };
+}
+
+/* ---------------- CSV (o modelo daqui) ---------------- */
+// tokenizador simples, mas que respeita aspas: "Mercado; do bairro" e uma celula so
+function impQuebrarCSV(texto, sep) {
+  const linhas = [];
+  let celula = '';
+  let linha = [];
+  let dentroDeAspas = false;
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto[i];
+    if (dentroDeAspas) {
+      if (c === '"' && texto[i + 1] === '"') { celula += '"'; i++; }
+      else if (c === '"') dentroDeAspas = false;
+      else celula += c;
+      continue;
+    }
+    if (c === '"') { dentroDeAspas = true; continue; }
+    if (c === sep) { linha.push(celula); celula = ''; continue; }
+    if (c === '\n') { linha.push(celula); linhas.push(linha); linha = []; celula = ''; continue; }
+    if (c === '\r') continue;
+    celula += c;
+  }
+  if (celula !== '' || linha.length) { linha.push(celula); linhas.push(linha); }
+  return linhas.filter((l) => l.some((c) => String(c).trim() !== ''));
+}
+function impParseCSV(texto) {
+  const limpo = texto.replace(/^\uFEFF/, '');
+  const cabecalho = (limpo.split('\n')[0] || '');
+  const sep = (cabecalho.split(';').length >= cabecalho.split(',').length) ? ';' : ',';
+  const grade = impQuebrarCSV(limpo, sep);
+  if (!grade.length) return { linhas: [], erro: 'O arquivo está vazio.' };
+
+  const cabs = grade[0].map((c) => c.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+  const col = {};
+  IMP_CSV_COLUNAS.forEach((nome) => { col[nome] = cabs.indexOf(nome); });
+  const faltando = ['data', 'descricao', 'valor'].filter((c) => col[c] === -1);
+  if (faltando.length) {
+    return { linhas: [], erro: `A planilha precisa das colunas ${IMP_CSV_COLUNAS.join(', ')}. Não encontrei: ${faltando.join(', ')}. Baixe o modelo e preencha nele.` };
+  }
+
+  const linhas = [];
+  grade.slice(1).forEach((l, i) => {
+    const pega = (nome) => (col[nome] > -1 ? String(l[col[nome]] || '').trim() : '');
+    const descricao = pega('descricao');
+    // as linhas de exemplo do modelo sao ignoradas, pra ninguem importar elas sem querer
+    if (/^exemplo\b/i.test(descricao)) return;
+    const data = impData(pega('data'));
+    const valor = impNumero(pega('valor'));
+    const tipoTxt = pega('tipo').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // a coluna "tipo" e quem manda. Se a planilha nem tem essa coluna, o sinal do valor
+    // decide (negativo = saida); se tem a coluna mas a celula veio vazia, e erro de
+    // preenchimento — adivinhar aqui seria cadastrar entrada no lugar de saida
+    const temColunaTipo = col.tipo > -1;
+    let erro = null;
+    if (!data) erro = 'data inválida, use dd/mm/aaaa';
+    else if (!descricao) erro = 'falta a descrição';
+    else if (valor === null || valor === 0) erro = 'valor inválido';
+    else if (temColunaTipo && !tipoTxt) erro = 'falta dizer se é entrada ou saida';
+    else if (temColunaTipo && !/^(entrada|saida)/.test(tipoTxt)) erro = `não entendi o tipo "${pega('tipo')}", escreva entrada ou saida`;
+    linhas.push({
+      data: data || '',
+      descricao: descricao || `Linha ${i + 2} da planilha`,
+      valor: Math.abs(valor || 0),
+      entrada: temColunaTipo ? tipoTxt.startsWith('entrada') : (valor || 0) > 0,
+      categoriaTexto: pega('categoria'),
+      erro,
+    });
+  });
+  return { linhas };
+}
+
+/* ---------------- chute de categoria por palavra (nada de IA, so uma tabela) ---------------- */
+const IMP_PALAVRAS = [
+  { re: /uber|99pop|99 |taxi|combustivel|posto|ipiranga|shell|petrobras|estacion|pedagio|onibus|metro/i, cat: 'cat-transporte' },
+  { re: /ifood|rappi|mercado|supermerc|padaria|restaurante|lanche|pizza|acougue|hortifruti|zaffari|carrefour|assai|atacad/i, cat: 'cat-alimentacao' },
+  { re: /netflix|spotify|prime|disney|hbo|max |globoplay|youtube|assinatura|deezer|apple\.com/i, cat: 'cat-assinaturas' },
+  { re: /farmac|drogar|clinica|hospital|laborat|dentist|psicol|unimed|amil|academia|smartfit/i, cat: 'cat-saude' },
+  { re: /aluguel|condominio|energia|celesc|copel|cemig|light|enel|agua|casan|sabesp|gas |internet|vivo|claro|tim |oi fibra/i, cat: 'cat-moradia' },
+  { re: /escola|faculdade|curso|udemy|alura|livraria|material escolar/i, cat: 'cat-educacao' },
+  { re: /cinema|show|ingresso|steam|playstation|xbox|bar |cerveja|balada/i, cat: 'cat-lazer' },
+  { re: /salario|folha|pagamento de salario|proventos/i, cat: 'cat-salario' },
+  { re: /freela|servico prestado|nota fiscal/i, cat: 'cat-freelancer' },
+  { re: /reembolso|estorno|devolucao/i, cat: 'cat-reembolso' },
+];
+function impChutarCategoria(descricao, entrada) {
+  const tipo = entrada ? 'receita' : 'despesa';
+  const existe = (id) => (Store.categoryById(id) || {}).tipo === tipo ? id : null;
+  const texto = String(descricao || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  for (const regra of IMP_PALAVRAS) {
+    if (regra.re.test(texto)) { const c = existe(regra.cat); if (c) return c; }
+  }
+  return null;
+}
+// quando a planilha traz a categoria escrita, o nome manda; senao cai no chute e depois no padrao
+function impResolverCategoria(linha) {
+  const tipo = linha.entrada ? 'receita' : 'despesa';
+  const alvo = String(linha.categoriaTexto || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (alvo) {
+    const achou = Store.state.categories.find((c) => c.tipo === tipo
+      && c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === alvo);
+    if (achou) return achou.id;
+  }
+  const chute = impChutarCategoria(linha.descricao, linha.entrada);
+  if (chute) return chute;
+  const padrao = Store.state.categories.find((c) => c.tipo === tipo);
+  return padrao ? padrao.id : '';
+}
+
+/* ---------------- ja esta cadastrado? ---------------- */
+// mesma data + mesmo valor + mesmo destino ja e sinal forte o bastante; a ideia e impedir
+// que importar o mesmo extrato duas vezes duplique o mes inteiro
+function impJaCadastrado(linha) {
+  const centavos = Math.round(linha.valor * 100);
+  if (linha.entrada && impDestino === 'banco') {
+    return Store.state.recebimentos.some((r) => r.data === linha.data
+      && Math.round(Math.abs(r.valor) * 100) === centavos
+      && r.bankId === impBankId);
+  }
+  return Store.state.gastosVariaveis.some((g) => g.data === linha.data
+    && Math.round(Math.abs(g.valor) * 100) === centavos
+    && (impDestino === 'cartao' ? g.cartaoId === impCartaoId : g.bankId === impBankId));
+}
+
+/* ---------------- modelo de planilha ---------------- */
+function impBaixarModelo() {
+  const hoje = todayISO();
+  const d = (iso) => formatDateBR(iso);
+  // as tres linhas de exemplo comecam com "EXEMPLO" e sao ignoradas na leitura, entao
+  // ninguem importa elas sem querer, mesmo esquecendo de apagar
+  const linhas = [
+    IMP_CSV_COLUNAS,
+    [d(hoje), 'EXEMPLO compra no mercado', '149,90', 'saida', 'Alimentação'],
+    [d(hoje), 'EXEMPLO salário do mês', '4500,00', 'entrada', 'Salário'],
+    [d(hoje), 'EXEMPLO conta de luz', '210,45', 'saida', 'Moradia'],
+  ];
+  const csv = linhas.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'fin360-modelo-de-importacao.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Modelo baixado — preencha e volte aqui', 'success');
+}
+
+/* ---------------- a pagina ---------------- */
 function pageImportar(container) {
-  container.innerHTML = `
-    ${iaBanner()}
-    <div class="panel" style="opacity:0.55;pointer-events:none">
-      <h3 style="margin-bottom:14px">1. O que você quer importar?</h3>
-      <div class="grid-2" style="margin-bottom:18px">
-        <div class="panel" style="background:var(--bg-input);border-color:var(--primary)">
-          <strong style="display:flex;align-items:center;gap:8px">${icon('list')} Extrato bancário</strong>
-          <p class="row-sub" style="margin-top:6px">Entradas viram recebimentos e saídas viram gastos variáveis, na aba Lançamentos</p>
-        </div>
-        <div class="panel" style="background:var(--bg-input)">
-          <strong style="display:flex;align-items:center;gap:8px">${icon('card')} Fatura de cartão</strong>
-          <p class="row-sub" style="margin-top:6px">Lança no cartão escolhido</p>
-        </div>
-      </div>
-      <div class="field"><label>${icon('bank')} Banco do extrato</label><select disabled><option>Selecione...</option></select></div>
-      <p class="row-sub" style="margin:-8px 0 14px">Todos os lançamentos importados serão vinculados a este banco.</p>
-      <div class="field"><label>Mês de referência do extrato</label><input type="month" disabled value="${currentMonthStr()}" /></div>
-      <p class="row-sub" style="margin:-8px 0 18px">Todos os lançamentos serão fixados neste mês — preservamos o dia da movimentação, mas não saímos do mês selecionado.</p>
+  const destinoOk = () => (impDestino === 'banco' ? !!impBankId : !!impCartaoId);
+  const nomeDestino = () => (impDestino === 'banco'
+    ? (Store.bankById(impBankId) || {}).name || 'banco'
+    : (Store.get('cartoes', impCartaoId) || {}).nome || 'cartão');
 
-      <h3 style="margin-bottom:14px">2. Envie seu extrato (PDF, OFX, CSV ou TXT)</h3>
-      <div style="border:2px dashed var(--border);border-radius:14px;padding:40px;text-align:center;color:var(--text-muted)">
-        ${icon('upload', 'svg-icon')}
-        <div style="margin-top:10px;font-weight:700;color:var(--text)">Clique para escolher PDF, OFX, CSV ou TXT</div>
-        <div class="row-sub" style="margin-top:4px">OFX/CSV são mais precisos que PDF (vêm direto do banco)</div>
-      </div>
-      <button class="btn btn-primary btn-block" style="margin-top:18px" disabled>${icon('sparkles')} Processar extrato</button>
+  const draw = () => {
+    const prontas = (impLinhas || []).filter((l) => !l.erro);
+    const comErro = (impLinhas || []).filter((l) => l.erro);
+    const marcadas = prontas.filter((l) => l.incluir);
+    const repetidas = prontas.filter((l) => l.duplicado);
+    const total = marcadas.reduce((s, l) => s + (l.entrada ? l.valor : -l.valor), 0);
 
-      <h3 style="margin:24px 0 12px">Histórico de importações</h3>
-      <div class="empty-state"><span>Nenhuma importação no modo Pessoal ainda.</span></div>
-    </div>
-  `;
+    container.innerHTML = `
+      <div class="panel">
+        <h3 style="margin-bottom:6px">1. Para onde vão os lançamentos?</h3>
+        <div class="panel-sub" style="margin-bottom:14px">O extrato do banco vira recebimentos e gastos variáveis. A fatura vira compras no cartão escolhido.</div>
+        <div class="type-box-group" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px">
+          <button type="button" class="type-box ${impDestino === 'banco' ? 'active' : ''}" data-imp-destino="banco">${icon('bank')}<span>Extrato do banco</span></button>
+          <button type="button" class="type-box ${impDestino === 'cartao' ? 'active' : ''}" data-imp-destino="cartao">${icon('card')}<span>Fatura do cartão</span></button>
+        </div>
+        ${impDestino === 'banco'
+          ? `<div class="field"><label>Banco <span class="req">*</span></label>${fieldHTML({ key: 'imp-banco', type: 'select-bank' }, impBankId)}</div>`
+          : `<div class="field"><label>Cartão <span class="req">*</span></label><select id="imp-cartao">${cartaoOptions(impCartaoId)}</select></div>`}
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:6px">2. Escolha o arquivo</h3>
+        <div class="panel-sub" style="margin-bottom:14px">Nada é enviado para a internet: o arquivo é lido aqui no seu navegador.</div>
+        <div class="grid-2">
+          <div class="panel" style="background:var(--bg-input);margin:0">
+            <strong style="display:flex;align-items:center;gap:8px">${icon('bank')} Arquivo OFX do banco</strong>
+            <p class="row-sub" style="margin-top:6px">No app ou no site do seu banco, procure <strong style="color:var(--text)">Exportar extrato</strong> e escolha OFX (às vezes aparece como "arquivo para o Money"). É o caminho mais fiel: vem tudo pronto, sem digitar nada.</p>
+          </div>
+          <div class="panel" style="background:var(--bg-input);margin:0">
+            <strong style="display:flex;align-items:center;gap:8px">${icon('list')} Planilha no modelo do Fin360</strong>
+            <p class="row-sub" style="margin-top:6px">Se o seu banco não tem OFX, baixe o modelo, preencha no Excel ou no Google Planilhas e traga de volta. As colunas são <strong style="color:var(--text)">${IMP_CSV_COLUNAS.join(', ')}</strong>.</p>
+            <button class="btn btn-ghost btn-sm" id="imp-modelo" style="margin-top:10px">${icon('download')} Baixar o modelo</button>
+          </div>
+        </div>
+        <input type="file" id="imp-file" accept=".ofx,.csv,.txt,text/csv" style="display:none" />
+        <button class="btn btn-primary btn-block" id="imp-escolher" style="margin-top:16px" ${destinoOk() ? '' : 'disabled'}>${icon('upload')} ${destinoOk() ? 'Escolher arquivo OFX ou CSV' : `Escolha o ${impDestino === 'banco' ? 'banco' : 'cartão'} acima primeiro`}</button>
+        ${impArquivo ? `<div class="row-sub" style="margin-top:10px">Lendo <strong style="color:var(--text)">${impArquivo}</strong>.</div>` : ''}
+      </div>
+
+      ${impLinhas === null ? '' : `
+      <div class="panel">
+        <div class="panel-header">
+          <div><h3>3. Confira antes de importar</h3><div class="panel-sub">Desmarque o que não quiser e ajuste a categoria de cada linha. Nada entra no app até você confirmar.</div></div>
+        </div>
+        ${impLinhas.length === 0
+          ? emptyState({ iconName: 'search', title: 'Não encontrei nenhum lançamento nesse arquivo.', text: 'Se for uma planilha, confira se ela está no modelo. Se for OFX, tente exportar de novo pelo banco.' })
+          : `
+          <div class="stat-grid">
+            ${statCard({ label: 'Encontrados', value: prontas.length, tone: 'blue', iconName: 'list' })}
+            ${statCard({ label: 'Já cadastrados', value: repetidas.length, tone: 'orange', iconName: 'alertTriangle' })}
+            ${statCard({ label: 'Vão entrar', value: marcadas.length, tone: 'green', iconName: 'checkCircle' })}
+            ${statCard({ label: 'Resultado no período', value: formatCurrency(total), tone: total >= 0 ? 'green' : 'red', iconName: 'wallet' })}
+          </div>
+          ${comErro.length ? `<div class="row-sub" style="margin-bottom:12px;color:var(--danger)">${comErro.length} linha(s) da planilha foram ignoradas por erro de preenchimento: ${comErro.slice(0, 3).map((l) => `${l.descricao} (${l.erro})`).join('; ')}${comErro.length > 3 ? '…' : ''}</div>` : ''}
+          <div class="chip-row" style="margin-bottom:12px">
+            <button class="chip" id="imp-marcar-todos">Marcar todos</button>
+            <button class="chip" id="imp-desmarcar-todos">Desmarcar todos</button>
+            ${repetidas.length ? `<button class="chip" id="imp-so-novos">Deixar só os que ainda não estão cadastrados</button>` : ''}
+          </div>
+          <div class="table-wrap"><table class="list-table">
+            <thead><tr><th style="width:34px"></th><th>Descrição</th><th>Data</th><th>Categoria</th><th>Valor</th></tr></thead>
+            <tbody>
+              ${prontas.map((l) => `
+                <tr>
+                  <td><input type="checkbox" data-imp-check="${l.id}" ${l.incluir ? 'checked' : ''} /></td>
+                  <td>
+                    <div class="row-title">${l.descricao}${l.duplicado ? `<span class="badge badge-warning" style="margin-left:8px">Já cadastrado</span>` : ''}</div>
+                  </td>
+                  <td>${formatDateCell(l.data)}</td>
+                  <td>
+                    <select data-imp-cat="${l.id}" style="min-width:150px">
+                      ${Store.state.categories.filter((c) => c.tipo === (l.entrada ? 'receita' : 'despesa')).map((c) => `<option value="${c.id}" ${l.categoryId === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('')}
+                    </select>
+                  </td>
+                  <td><strong class="${l.entrada ? 'amount-pos' : 'amount-neg'}">${formatCurrency(l.valor)}</strong></td>
+                </tr>`).join('')}
+            </tbody>
+          </table></div>
+          <button class="btn btn-primary btn-block" id="imp-confirmar" style="margin-top:16px" ${marcadas.length ? '' : 'disabled'}>
+            ${marcadas.length ? `Importar ${marcadas.length} lançamento${marcadas.length > 1 ? 's' : ''} para ${nomeDestino()}` : 'Marque ao menos um lançamento'}
+          </button>`}
+      </div>`}
+    `;
+
+    container.querySelectorAll('[data-imp-destino]').forEach((b) => b.onclick = () => {
+      if (b.dataset.impDestino === impDestino) return;
+      impDestino = b.dataset.impDestino;
+      impLinhas = null; impArquivo = ''; impSaldoFinal = null;
+      draw();
+    });
+    if (impDestino === 'banco') {
+      wireQuickAddButtons([{ key: 'imp-banco', type: 'select-bank' }]);
+      document.getElementById('f-imp-banco').onchange = (e) => { impBankId = e.target.value; impLinhas = null; draw(); };
+    } else {
+      document.getElementById('imp-cartao').onchange = (e) => { impCartaoId = e.target.value; impLinhas = null; draw(); };
+    }
+    document.getElementById('imp-modelo').onclick = impBaixarModelo;
+    document.getElementById('imp-escolher').onclick = () => document.getElementById('imp-file').click();
+    document.getElementById('imp-file').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const texto = impDecodificar(reader.result);
+        const ehOFX = /\.ofx$/i.test(file.name) || /<STMTTRN>/i.test(texto);
+        const lido = ehOFX ? impParseOFX(texto) : impParseCSV(texto);
+        if (lido.erro) { toast(lido.erro, 'danger'); return; }
+        impArquivo = file.name;
+        impSaldoFinal = ehOFX ? lido.saldoFinal : null;
+        impLinhas = lido.linhas.map((l) => {
+          const linha = Object.assign({ id: uid(), categoriaTexto: '' }, l);
+          linha.duplicado = !linha.erro && impJaCadastrado(linha);
+          linha.incluir = !linha.erro && !linha.duplicado;
+          linha.categoryId = linha.erro ? '' : impResolverCategoria(linha);
+          return linha;
+        });
+        e.target.value = '';
+        draw();
+        toast(`${impLinhas.filter((l) => !l.erro).length} lançamento(s) lidos — confira antes de importar`, 'success');
+      };
+      reader.readAsArrayBuffer(file);
+    };
+
+    if (impLinhas && impLinhas.length) {
+      const acha = (id) => impLinhas.find((l) => l.id === id);
+      container.querySelectorAll('[data-imp-check]').forEach((c) => c.onchange = () => { acha(c.dataset.impCheck).incluir = c.checked; draw(); });
+      container.querySelectorAll('[data-imp-cat]').forEach((sel) => sel.onchange = () => { acha(sel.dataset.impCat).categoryId = sel.value; });
+      const marcarTodos = document.getElementById('imp-marcar-todos');
+      if (marcarTodos) marcarTodos.onclick = () => { impLinhas.forEach((l) => { if (!l.erro) l.incluir = true; }); draw(); };
+      const desmarcar = document.getElementById('imp-desmarcar-todos');
+      if (desmarcar) desmarcar.onclick = () => { impLinhas.forEach((l) => { l.incluir = false; }); draw(); };
+      const soNovos = document.getElementById('imp-so-novos');
+      if (soNovos) soNovos.onclick = () => { impLinhas.forEach((l) => { l.incluir = !l.erro && !l.duplicado; }); draw(); };
+      const confirmar = document.getElementById('imp-confirmar');
+      if (confirmar) confirmar.onclick = () => impConfirmar(draw);
+    }
+  };
+  draw();
+}
+
+// cria de verdade. Cada linha vira exatamente o que viraria se fosse digitada a mao na aba
+// Lancamentos — mesma funcao, mesmo efeito no saldo do banco — pra nao existir "lancamento
+// importado" que se comporta diferente de "lancamento digitado".
+function impConfirmar(draw) {
+  const marcadas = impLinhas.filter((l) => l.incluir && !l.erro);
+  if (!marcadas.length) return;
+  let criados = 0;
+  let bloqueou = false;
+  const origem = `Importado de ${impArquivo}`;
+
+  for (const l of marcadas) {
+    if (impDestino === 'cartao') {
+      const item = addGastoVariavel({
+        descricao: l.descricao, valor: l.entrada ? -l.valor : l.valor, data: l.data,
+        bankId: null, cartaoId: impCartaoId, meioPagamento: null, estorno: l.entrada,
+        tipo: 'unico', parcelas: 1, divisoes: [], categoryId: l.categoryId, observacao: origem,
+      });
+      if (!item) { bloqueou = true; break; }
+      criados++;
+      continue;
+    }
+    if (l.entrada) {
+      const novo = Store.add('recebimentos', {
+        descricao: l.descricao, valor: l.valor, data: l.data, bankId: impBankId,
+        categoryId: l.categoryId, observacao: origem, tipo: 'unico', parcelas: 1, dataFinal: null,
+      });
+      if (!novo) { bloqueou = true; break; }
+      if (l.data <= todayISO()) toggleRecebimentoRecebido(novo.id, l.data.slice(0, 7));
+      criados++;
+      continue;
+    }
+    const item = addGastoVariavel({
+      descricao: l.descricao, valor: l.valor, data: l.data, bankId: impBankId,
+      cartaoId: null, meioPagamento: null, estorno: false,
+      tipo: 'unico', parcelas: 1, divisoes: [], categoryId: l.categoryId, observacao: origem,
+    });
+    if (!item) { bloqueou = true; break; }
+    criados++;
+  }
+
+  if (bloqueou) { toast(`${criados} lançamento(s) importados antes da assinatura bloquear o resto`, 'danger'); }
+  else toast(`${criados} lançamento(s) importados`, 'success');
+
+  const saldo = impSaldoFinal;
+  const banco = impDestino === 'banco' ? Store.bankById(impBankId) : null;
+  impLinhas = null; impArquivo = ''; impSaldoFinal = null;
+  draw();
+
+  // o OFX diz qual era o saldo real no fim do extrato; como cada baixa mexeu no saldo do
+  // banco, e aqui que da pra fechar a conta com um clique em vez de calculo na mao
+  if (criados && saldo !== null && banco && Math.round(banco.balance * 100) !== Math.round(saldo * 100)) {
+    confirmModal({
+      title: 'Fechar o saldo do banco',
+      text: `O extrato termina com ${formatCurrency(saldo)} e o ${banco.name} está marcado como ${formatCurrency(banco.balance)}. Quer usar o valor do extrato?`,
+      confirmLabel: `Usar ${formatCurrency(saldo)}`,
+      onConfirm: () => { Store.update('banks', banco.id, { balance: saldo }); toast('Saldo atualizado', 'success'); draw(); },
+    });
+  }
 }
 
 function pageAssistente(container) {
